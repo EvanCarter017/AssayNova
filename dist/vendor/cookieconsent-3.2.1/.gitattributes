@@ -1,0 +1,4 @@
+# Preserve the official package bytes on every checkout, including core.autocrlf=true.
+cookieconsent.esm.js -text
+cookieconsent.css -text
+LICENSE -text

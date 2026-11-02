@@ -39,6 +39,14 @@ const server = http.createServer(async (request, response) => {
   let encodedPathname;
   try { encodedPathname = new URL(request.url, 'http://localhost').pathname; pathname = decodeURIComponent(encodedPathname); }
   catch { response.writeHead(400); response.end('Bad request'); return; }
+  if (pathname === '/privacy/signals') {
+    response.writeHead(200, {
+      'Content-Type': mime['.json'], 'Cache-Control': 'no-store', 'Vary': 'Sec-GPC',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ gpc: request.headers['sec-gpc'] === '1' }));
+    return;
+  }
   if (liveReload && pathname === '/__dev/events') {
     if (request.method !== 'GET') { response.writeHead(405, { Allow: 'GET' }); response.end(); return; }
     response.writeHead(200, {
@@ -91,6 +99,12 @@ const server = http.createServer(async (request, response) => {
       const sourceFile = 'dist/' + path.relative(root, filename).split(path.sep).join('/');
       contents = Buffer.from(devTools.annotateHTML(contents.toString('utf8'), sourceFile)
         .replace(/<\/body>/i, '<script type="module" src="/__dev/client.js"></script></body>'));
+    }
+    if (path.extname(filename) === '.html') {
+      // Add production privacy assets after development annotation so original source lines remain accurate.
+      contents = Buffer.from(contents.toString('utf8')
+        .replace(/<\/head>/i, '<link rel="stylesheet" href="/vendor/cookieconsent-3.2.1/cookieconsent.css"><link rel="stylesheet" href="/privacy/consent.css"></head>')
+        .replace(/<\/body>/i, '<script type="module" src="/privacy/consent.js"></script></body>'));
     }
     response.writeHead(coaRoute && !coaRoute.report ? 404 : 200, {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',

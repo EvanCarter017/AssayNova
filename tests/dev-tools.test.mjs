@@ -12,6 +12,9 @@ import { primaryGesture, sourceHint, rendererForView } from '../dev/locator.js';
 
 const project = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const baselineHTML = await readFile(path.join(project, 'dist/index.html'), 'utf8');
+const privacyHTML = baselineHTML
+  .replace(/<\/head>/i, '<link rel="stylesheet" href="/vendor/cookieconsent-3.2.1/cookieconsent.css"><link rel="stylesheet" href="/privacy/consent.css"></head>')
+  .replace(/<\/body>/i, '<script type="module" src="/privacy/consent.js"></script></body>');
 const baselineApp = await readFile(path.join(project, 'dist/app.js'), 'utf8');
 const sourceLine = (source, needle) => {
   const index = source.indexOf(needle);
@@ -188,7 +191,7 @@ for (const mode of ['default', 'production', 'watch']) {
       const enabled = mode === 'watch';
       assert.equal(html.includes('/__dev/client.js'), enabled);
       assert.equal(html.includes('data-an-dev-file'), enabled);
-      if (!enabled) assert.equal(html, baselineHTML);
+      if (!enabled) assert.equal(html, privacyHTML);
       for (const route of ['client.js', 'locator.js', 'prompt.js', 'context', 'status']) {
         const result = await fetch(`${base}/__dev/${route}`);
         assert.equal(result.status, enabled ? 200 : 404, route);

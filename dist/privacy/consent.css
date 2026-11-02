@@ -1,0 +1,45 @@
+#cc-main {
+  --cc-font-family: Arial, Helvetica, sans-serif;
+  --cc-bg: #fff;
+  --cc-primary-color: #173c3a;
+  --cc-secondary-color: #40594e;
+  --cc-btn-primary-bg: #0d625c;
+  --cc-btn-primary-color: #fff;
+  --cc-btn-primary-border-color: #0d625c;
+  --cc-btn-primary-hover-bg: #084b47;
+  --cc-btn-primary-hover-border-color: #084b47;
+  --cc-btn-secondary-bg: #edf4ed;
+  --cc-btn-secondary-color: #173c3a;
+  --cc-btn-secondary-border-color: #ceddce;
+  --cc-btn-secondary-hover-bg: #dcebdc;
+  --cc-btn-secondary-hover-border-color: #a1baa3;
+  --cc-cookie-category-block-bg: #f2f6f0;
+  --cc-cookie-category-block-border: #d9e4d7;
+  --cc-toggle-on-bg: #0d625c;
+  --cc-toggle-readonly-bg: #637e6b;
+  --cc-separator-border-color: #d9e4d7;
+  --cc-modal-border-radius: 10px;
+  --cc-btn-border-radius: 5px;
+  --cc-z-index: 1000;
+}
+#cc-main .cm__desc, #cc-main .pm__section-desc { font-size: 14px; line-height: 1.65; }
+#cc-main [data-an-privacy-feedback] { display: block; margin-top: 12px; }
+#cc-main .cm__btn, #cc-main .pm__btn { min-height: 44px; }
+#cc-main .pm__table { overflow-wrap: anywhere; }
+#cc-main .cm__btn:focus-visible, #cc-main .pm__btn:focus-visible,
+.an-privacy-settings:focus-visible, .an-privacy-fallback button:focus-visible {
+  outline: 3px solid #1c8178; outline-offset: 3px;
+}
+.an-privacy-controls { flex-basis: 100%; max-width: 100%; }
+.site-footer:has(.an-privacy-controls) { flex-wrap: wrap; }
+.an-privacy-settings { padding: 10px 0; min-height: 44px; background: transparent; border: 0; color: #185b53; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.an-privacy-status { color: #456151; font: 12px/1.6 Arial, sans-serif; margin: 4px 0 0; max-width: 65ch; }
+.an-privacy-fallback { color: #173c3a; background: #fff; border: 1px solid #ceddce; border-radius: 10px; padding: 28px; width: min(600px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; box-sizing: border-box; font: 15px/1.65 Arial, sans-serif; }
+.an-privacy-fallback::backdrop { background: #123a3770; }
+.an-privacy-fallback h2 { font-size: 24px; margin: 0 0 16px; }
+.an-privacy-fallback p { margin: 12px 0; }
+.an-privacy-fallback code { overflow-wrap: anywhere; }
+.an-privacy-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.an-privacy-actions button { min-height: 44px; border: 1px solid #a1baa3; border-radius: 5px; padding: 10px 16px; background: #edf4ed; color: #173c3a; cursor: pointer; font: inherit; }
+@media (max-width: 480px) { #cc-main .cm--box { width: calc(100% - 24px); max-width: none; bottom: 12px; right: 12px; } }
+@media print { #cc-main, .an-privacy-controls, .an-privacy-fallback { display: none !important; } }

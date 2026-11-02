@@ -1,0 +1,67 @@
+# Cookie and storage controls
+
+This implements the current site's technical cookie/storage disclosure and permission boundary. It does not certify legal compliance or provide a complete privacy policy. Jurisdiction and business applicability, operator identity, contacts, lawful bases, data rights, international transfers, actual vendors and final privacy text require review before production rollout. No operator, controller or contact information is invented here.
+
+## Current behavior
+
+The current optional-service catalog is empty. No analytics, advertising, tracking SDKs, third-party fonts or embeds have been added. The notice says **Only necessary storage**, with **Continue** and **Privacy settings**. It allows browsing and COA lookup before a choice. Settings contain a storage inventory and are always available through **Privacy & cookie settings** in the footer. Closing settings, scrolling and navigation do not grant permission. There is no geographic lookup or special treatment of automated browsers.
+
+The controller runs in default, watch and production modes. The server injects its module and two self-hosted stylesheets when serving HTML. Injection occurs after development source annotation, leaving original file/line metadata unchanged. No HTML, app or global stylesheet source is rewritten. A single controller is retained through History API/hash navigation. The controls are omitted from print output and do not change the report or request dialogs.
+
+| Storage | Purpose | Retention |
+| --- | --- | --- |
+| `assaynova_privacy` | Necessary host-only preference cookie. CookieConsent supplies categories/services, revision, receipt timestamps, a random receipt ID and language. First-party `data` records schema/policy/catalog version, exact choices, issue/expiry timestamps and `explicit-choice` proof. The random ID is not used for analytics or sent to a consent logging endpoint. | 180 days from an explicit choice, equally for acceptance and rejection. Path `/`, SameSite `Lax`, Secure on HTTPS; no Domain attribute and no localStorage fallback. |
+| `assaynova.prototype.requests.v1` | Existing localStorage functionality: requests explicitly saved on this device through Save request, capped at 50 drafts. | Until the user clears the site's browser data. No time-based automatic expiry exists. Privacy controls neither read the contents nor remove this key. |
+
+There is no authentication cookie yet. Clearing browser site data also clears the preference, so the notice returns. Settings explain how to clear drafts through browser controls. This disclosure covers current storage, not a claimed final privacy policy.
+
+## Permission boundary
+
+`dist/privacy/policy.js` contains pure receipt/policy helpers and a lifecycle gate. It is independent of CookieConsent's accepted-category result and must remain the only path to optional service activation. Invalid, absent, expired, wrong-version or changed-policy/catalog receipts fail closed. Unknown/missing categories or services, malformed booleans and a service grant without its purpose also fail closed. The catalog fingerprint is a canonical declaration, not a cryptographic signature. `explicit-choice` records the UI action source; the browser-held receipt is neither a server audit log nor tamper-proof evidence.
+
+The browser reads only the named preference cookie. It verifies that the stored vendor categories/services match the receipt, including absence of unknown values. When a choice is made, it writes the receipt into CookieConsent's existing cookie and reads it back. A silent/throwing cookie failure produces useful feedback and keeps optional services off; no “saved” status is shown unless the saved receipt matches. If the cookie is corrupt, expired or from an old policy/catalog, it is discarded before vendor initialization and permission must be renewed.
+
+The controller action adapter records an explicit button action during event capture, and completes its fallback in the document bubbling listener after CookieConsent's target listener has written the complete cookie wrapper. It does not schedule saving in a capture-phase microtask, because browsers can run that microtask before the target listener. The pinned library's deferred first-consent/consent callbacks consume an action at most once, and an unchanged settings selection is still explicitly persisted even when the library emits no change callback. Behavioral tests exercise the capture checkpoint, target write, bubble save, deferred callbacks, reload and blocked-cookie sequence.
+
+`GET /privacy/signals` returns exactly `{ "gpc": true|false }`, determined only by whether `Sec-GPC` is exactly `1`. `HEAD` returns the same headers and no body. It uses `Cache-Control: no-store`, `Vary: Sec-GPC`, sets no cookies and does not log IPs or identifiers. The browser fetch omits credentials and combines the header signal with `navigator.globalPrivacyControl` using OR. An unavailable or invalid signal denies optional permission unless the navigator signal already establishes GPC=true. No country API or IP geolocation is used.
+
+GPC always disables marketing, sale and sharing, including older grants. Other optional purposes still require explicit consent. CookieConsent's `respectGpc` option deliberately is not the enforcement boundary: its documented prior-choice precedence is weaker than this policy. Restricted UI toggles are forced off/disabled while the signal is active, and the effective gate independently denies execution. GPC alone neither creates a saved receipt nor claims that all analytics is legally forbidden everywhere.
+
+Cross-tab changes use a same-origin BroadcastChannel containing only a version and a `deny`/`changed` message type, never preference contents or an identifier. Withdrawal and failed persistence broadcast `deny`, which latches optional permission off in receiving pages even if a failed write left an older valid grant in the shared cookie. Passive cookie rereads, settings reinitialization and `changed` messages cannot clear that page-session latch. Only a new local explicit action with an exactly verified persisted receipt can clear it; an action pending before incoming denial cannot unlock it. Receiving pages reinitialize settings, and latched pages show optional toggles off for review. Focus, visibility and a five-second cookie/expiry check cover cookie changes/expiry in browsers without BroadcastChannel; a failed cookie write cannot be communicated to another page when BroadcastChannel is unavailable. An in-flight start receives an aborted signal as soon as a revocation is processed. Aborted instances are stopped/cleaned before any permission-based restart, including a rapid grant/withdraw/grant sequence.
+
+## Adding a real optional service later
+
+No real service has been integrated or network-tested. Adding one requires a reviewed declaration and lifecycle implementation; the inert services in Node tests are not shipped in the browser catalog.
+
+1. Declare an actual purpose (`functional`, `analytics`, `marketing`, `sale` or `sharing`) with a truthful label/description and at least one actual service. Each service needs an ID, purpose, description, retention, exact optional cookie names/paths, exact local/session-storage keys, and `start`/`stop` hooks. Validation rejects undeclared/duplicate purposes/services, arbitrary cookie/domain patterns, shared storage ownership, and deletion of the necessary preference or draft keys. The current cleanup adapter intentionally supports host-only script-readable cookies. Vendor domain, HttpOnly or server-managed cookies need a separately reviewed mechanism.
+2. Perform **all** service imports, network requests, SDK setup and storage writes inside `start({ signal })`, after permission. Never put an SDK in HTML, a module's top-level code, a tag manager or a CookieConsent service callback. `manageScriptTags` is disabled. The gate serializes updates and prevents duplicate starts; asynchronous starts must honor their AbortSignal before continuing work.
+3. Implement `stop()` to cancel timers, listeners, queued requests, workers, subscriptions, SDK activity and all other effects. Stop runs before declared optional storage cleanup. Removing a script element alone does not undo execution. Vendor-specific APIs, remote opt-out/revocation or a reload may also be required. A stop/cleanup failure latches `reloadRequired` and blocks restarts; surface that state and require a reload. A start failure also calls stop/cleanup.
+4. Change the nonzero policy revision whenever purposes, vendors, hook behavior or disclosures change; catalog declaration changes also invalidate older receipts automatically. Review cookie size: the receipt lives in a single browser cookie, and a large catalog may exceed browser limits. Persistence verification then denies optional permission. Do not expand tracking or storage without a reviewed receipt design.
+5. With actual services configured, the controller derives initially-off categories/services from the catalog, provides equally weighted **Accept all / Reject optional / Customize**, supports granular selection, and uses the same lifetime for refusal. Settings provide change/withdrawal access. Test old grants under GPC, all vendor lifecycle effects and declared retention. A browser signal and a receipt are both necessary for service activation. Never make COA lookup or core content depend on optional consent.
+
+## Failure behavior and verification
+
+If CookieConsent fails to download or initialize, the service gate remains denied and the footer opens an independent native dialog with the current storage inventory and a retry action. Signal requests time out at five seconds; vendor load/init at six seconds. Cookie/storage restrictions do not crash the app. Status messages distinguish unavailability or failed saving from successful persistence. Reload checks the stored receipt; periodic/focus checks revoke invalid permission during long-lived pages. There is no general `localStorage.clear()` or broad cookie deletion.
+
+Automated gates use Node's built-in runner and real disposable HTTP fixtures on ephemeral ports (never 4317). Fixture cleanup validates the resolved owned prefix and direct temporary-directory parent before recursive deletion. Tests cover default deny/granular grant, GPC overriding previous restricted grants, corrupt/expired/revised/catalog-changed receipts, equal refusal/acceptance lifetime, validation/protected storage, deduplicated starts, in-flight cancellation, stop/cleanup and necessary-data preservation; HTTP tests cover all three modes, signals/GET/HEAD/headers, self-hosted assets and production development-tool exclusion. Vendor asset hashes are verified. Existing dev tests retain strict baseline HTML equivalence except for the deliberate privacy injection, and still check source-line preservation.
+
+Run:
+
+```text
+node --check server.mjs
+node --check dist/privacy/consent.js
+node --check dist/privacy/policy.js
+node --test tests/*.test.mjs
+git diff --check
+```
+
+The existing package test script is intentionally untouched by this isolated plan; integration should retain the wildcard test command from the companion COA plan. Browser review should verify first visit, settings inventory, footer reopen, reload persistence, keyboard focus/close, mobile overflow, GPC overrides, blocked cookies/storage, failed signal/vendor requests, absence of external tracking requests, and COA lookup without optional consent after integration.
+
+## Sources and dependency
+
+Runtime dependency: official optimized [CookieConsent 3.2.1](https://github.com/orestbida/cookieconsent), self-hosted and unmodified under MIT. See `dist/vendor/cookieconsent-3.2.1/PROVENANCE.md` and the upstream `LICENSE` for package integrity and per-file hashes.
+
+- [CookieConsent configuration](https://cookieconsent.orestbida.com/reference/configuration-reference.html), [API](https://cookieconsent.orestbida.com/reference/api-reference.html), and [script management](https://cookieconsent.orestbida.com/advanced/manage-scripts.html).
+- [EDPB Cookie Banner Taskforce report](https://www.edpb.europa.eu/system/files/2023-01/edpb_20230118_report_cookie_banner_taskforce_en.pdf).
+- [CNIL cookie guidance](https://www.cnil.fr/fr/cookies-et-autres-traceurs/que-dit-la-loi) and [consolidated recommendation](https://cnil.fr/sites/default/files/2026-01/recommandation_cookies_consolidee.pdf). The chosen 180-day lifetime is a product policy informed by guidance, not a universal statutory expiry.
+- [California Privacy Protection Agency FAQ](https://cppa.ca.gov/faq). Applicability of sale/sharing opt-out obligations depends on the actual business and processing. This implementation conservatively honors GPC without claiming every US rule is identical.
