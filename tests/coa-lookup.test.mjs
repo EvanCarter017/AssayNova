@@ -90,7 +90,7 @@ test('failed lookup destinations are safe, refreshable not-found routes rather t
 
 // Minimal DOM adapters run the actual app event handlers and History transitions.
 // They do not replace browser acceptance for layout, focus or native navigation.
-function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false } = {}) {
+function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false } = {}) {
   const documentEvents = new Map();
   const windowEvents = new Map();
   const nodes = new Map();
@@ -109,8 +109,10 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     if (nodes.has(name)) return nodes.get(name);
     const events = new Map();
     const attributes = new Map();
+    let html = '';
     const value = {
-      id: name.replace(/^#/, ''), tagName: 'DIV', parent: null, dataset: {}, isConnected: true, hidden: false, open: false, innerHTML: '', textContent: '', value: '', values: {}, events, attributes,
+      id: name.replace(/^#/, ''), tagName: 'DIV', parent: null, dataset: {}, isConnected: true, hidden: false, open: false, htmlWrites: 0, textContent: '', value: '', values: {}, events, attributes,
+      get innerHTML() { return html; }, set innerHTML(value) { html = value; this.htmlWrites++; },
       classList: { add() {}, remove() {}, toggle() {} },
       addEventListener(type, callback) { events.set(type, callback); },
       setAttribute(key, value) { attributes.set(key, String(value)); }, getAttribute(key) { return attributes.get(key) ?? null; }, hasAttribute(key) { return attributes.has(key); }, removeAttribute(key) { attributes.delete(key); },
@@ -165,7 +167,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   const unexpectedNetwork = (...args) => { networkCalls.push(args); throw new Error('This draft-only workflow must not send network requests'); };
   runInNewContext(runnable, {
     ...reportData, ...pageData, document, window, location, history, URL,
-    navigator: { clipboard: { writeText(value) { copied.push(value); return Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
+    navigator: { clipboard: { writeText(value) { copied.push(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
     fetch: unexpectedNetwork, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
     localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => { if (storageBlocked) throw new Error('Synthetic storage restriction'); storage.set(key, value); } },
     crypto: { randomUUID: () => '12345678-0000-0000-0000-000000000000' },
@@ -199,7 +201,13 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     symbolClick() { return dispatch(node('use-symbol')); },
     openMenu() { node('.menu-toggle').focus(); node('.menu-toggle').events.get('click')(); },
     desktopResize() { mediaChange({ matches: true }); },
-    hash(hash) { history.pushState(null, '', hash); windowEvents.get('hashchange')(); },
+    hash(hash, { focusTarget } = {}) {
+      const oldURL = currentURL.href;
+      history.pushState(null, '', hash);
+      if (focusTarget) node('#' + focusTarget).focus(); // Native fragment focus must survive the router's events.
+      windowEvents.get('popstate')({ state: null });
+      windowEvents.get('hashchange')({ oldURL, newURL: currentURL.href });
+    },
     hashEvent() { windowEvents.get('hashchange')(); },
     submitLookup(value, publicView = true) {
       const input = node(publicView ? '#coa-lookup-code' : '#report-id');
@@ -213,10 +221,12 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
       form.events.get('submit')({ preventDefault() {} });
     },
     travel(delta) {
+      const oldURL = currentURL.href;
       cursor += delta;
       assert.ok(cursor >= 0 && cursor < entries.length);
       currentURL = new URL(entries[cursor]);
       windowEvents.get('popstate')();
+      if (new URL(oldURL).hash !== currentURL.hash) windowEvents.get('hashchange')({ oldURL, newURL: currentURL.href });
     }
   };
 }
@@ -475,6 +485,62 @@ test('legacy hashes, trailing slashes and COA queries canonicalize without losin
   process.hash('#testing');
   assert.equal(process.location.pathname, '/testing-methods');
   assert.deepEqual(process.visibleViews(), ['#testing-view']);
+});
+
+test('native report fragments preserve skip focus, report DOM and pending manual-copy state across popstate then hashchange', async () => {
+  for (const code of ['AN-7K9Q-2M4X', 'AN-8P6R-3N5Y']) {
+    const app = bootApp('/coa/' + code, [], { clipboardBlocked: true });
+    app.click('copy-link');
+    await new Promise((resolve) => setImmediate(resolve)); // Settle the host/VM promise boundary.
+    const report = app.nodes.get('#coa-view');
+    const writes = report.htmlWrites;
+    const fallback = app.nodes.get('#report-copy-fallback');
+    const field = app.nodes.get('#report-copy-value');
+    const pendingLink = 'http://127.0.0.1:4999/coa/' + code;
+    assert.equal(fallback.hidden, false);
+    assert.equal(field.value, pendingLink);
+    assert.equal(app.clickLink('#main').defaultPrevented, false);
+    app.hash('#main', { focusTarget: 'main' });
+    assert.equal(app.location.hash, '#main');
+    assert.equal(app.focused(), '#main');
+    assert.equal(report.htmlWrites, writes, 'Native fragments must not replace report controls');
+    assert.equal(app.nodes.get('#report-copy-fallback'), fallback);
+    assert.equal(app.nodes.get('#report-copy-value'), field);
+    assert.equal(field.value, pendingLink);
+    assert.equal(fallback.hidden, false);
+    assert.equal(app.clickLink('/coa/' + code + '#report-title').defaultPrevented, false);
+    app.hash('#report-title', { focusTarget: 'report-title' });
+    assert.equal(app.location.hash, '#report-title');
+    assert.equal(app.focused(), '#report-title');
+    assert.equal(report.htmlWrites, writes);
+    app.click('copy-retry');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(app.copied.at(-1), pendingLink, 'Pending copy-link kind survives fragment history');
+    app.click('print');
+    assert.equal(app.printed(), 1);
+  }
+});
+
+test('native legacy fragment event pairs canonicalize once and focus the new visible page heading', () => {
+  for (const [hash, path, heading, view] of [
+    ['#testing', '/testing-methods', '#testing-page-title', '#testing-view'],
+    ['#verify', '/verify', '#verify-page-title', '#verify-view']
+  ]) {
+    const app = bootApp('/');
+    const reportWrites = app.nodes.get('#coa-view').htmlWrites;
+    const scrollCount = app.scrolls.length;
+    app.hash(hash);
+    assert.equal(app.location.pathname, path);
+    assert.equal(app.location.hash, '');
+    assert.equal(app.focused(), heading);
+    assert.deepEqual(app.visibleViews(), [view]);
+    assert.equal(app.nodes.get('#coa-view').htmlWrites, reportWrites + 1, 'The event pair renders only once');
+    assert.equal(app.scrolls.length, scrollCount, 'Native history rendering must not force scroll-to-top');
+    assert.equal(app.entryCount(), 2);
+    app.travel(-1);
+    assert.equal(app.location.pathname, '/');
+    assert.equal(app.focused(), '#hero-title');
+  }
 });
 
 test('page navigation closes stale dialogs, mobile request/drafts return to menu and routes remain underneath dialogs', () => {

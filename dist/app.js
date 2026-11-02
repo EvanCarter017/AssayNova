@@ -154,7 +154,7 @@ function routeLocation(address) {
   const page = resolvePageRoute(url.pathname);
   if (page) url.pathname = page.path;
   const coa = resolveCOARoute(url.pathname);
-  if (coa?.report) { url.pathname = coa.canonicalPath; url.search = ''; url.hash = ''; }
+  if (coa?.report) { url.pathname = coa.canonicalPath; url.search = ''; }
   return { url, page, coa, invalidLegacy };
 }
 
@@ -204,6 +204,12 @@ function scrollToCurrentHash() {
 function navigateToURL(address) {
   const current = routeLocation(address);
   if (current.url.href !== location.href) history.pushState(null, '', current.url.pathname + current.url.search + current.url.hash);
+  const previous = new URL(renderedURL, location.href);
+  if (current.url.hash && previous.pathname === current.url.pathname && previous.search === current.url.search) {
+    renderedURL = location.href;
+    scrollToCurrentHash();
+    return;
+  }
   renderCurrentRoute(true, current.invalidLegacy);
   if (current.url.hash) scrollToCurrentHash();
   else window.scrollTo(0, 0);
@@ -256,6 +262,7 @@ document.addEventListener('click', (event) => {
     let destination;
     try { destination = new URL(href, location.href); } catch { return; }
     if (destination.origin !== location.origin || !(resolvePageRoute(destination.pathname) || resolveCOARoute(destination.pathname))) return;
+    if (destination.hash && destination.pathname === location.pathname && destination.search === location.search) return;
     event.preventDefault();
     closeMobileNavigation();
     navigateToURL(destination.href);
@@ -321,11 +328,19 @@ mobileNavigation.addEventListener('click', (event) => { if (event.target.closest
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMobileNavigation(); });
 window.matchMedia('(min-width: 1101px)').addEventListener('change', (event) => { if (event.matches) closeMobileNavigation(); });
 
-window.addEventListener('popstate', () => renderCurrentRoute());
-window.addEventListener('hashchange', () => {
+function handleHistoryNavigation() {
   if (renderedURL === location.href) return;
-  if (location.pathname === '/' && ['#testing', '#verify'].includes(location.hash)) { renderCurrentRoute(true); window.scrollTo(0, 0); }
-  else renderedURL = location.href;
-});
+  const previous = new URL(renderedURL, location.href);
+  const current = routeLocation(location.href);
+  if (previous.pathname === current.url.pathname && previous.search === current.url.search) {
+    if (current.url.href !== location.href) history.replaceState(null, '', current.url.pathname + current.url.search + current.url.hash);
+    renderedURL = location.href;
+    return; // Native fragment focus/scroll and existing view state remain intact.
+  }
+  renderCurrentRoute(true); // preventScroll focus; browser owns history scroll restoration.
+}
+
+window.addEventListener('popstate', handleHistoryNavigation);
+window.addEventListener('hashchange', handleHistoryNavigation);
 renderCurrentRoute();
 scrollToCurrentHash();
