@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore the AssayNova laboratory testing platform concept. Discover testing, preview a certificate of analysis, and try the sample submission workflow.">
+  <meta name="theme-color" content="#092b3e">
+  <title>AssayNova — A clearer view of your sample.</title>
+  <link rel="icon" type="image/png" href="/assets/assaynova-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Zm0 0v5h5M9 12h6m-6 4h6"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v7L4.5 19a1.3 1.3 0 0 0 1.1 2h12.8a1.3 1.3 0 0 0 1.1-2L14 10V3M8 15h8"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 17h4l3-9 4 12 4-16 3 13h2"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m3 7 9-5 9 5-9 5Zm0 5 9 5 9-5M3 17l9 5 9-5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  </svg>
+
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="preview-bar"><span class="preview-dot"></span> A first look at AssayNova <span class="preview-separator">/</span><span>Concept website · demonstration data</span></div>
+  <header class="site-header">
+    <div class="header-inner container">
+      <a class="brand" href="#" aria-label="AssayNova home"><img src="/assets/assaynova-logo.png" alt="AssayNova" width="2172" height="724"></a>
+      <nav class="desktop-nav" aria-label="Main navigation"><a href="#testing">Our testing</a><a href="#process">How it works</a><a href="#verify">Verify a COA</a></nav>
+      <div class="header-actions"><button class="portal-link" data-action="portal">Client portal <svg class="icon small"><use href="#i-arrow-up"/></svg></button><button class="button button-dark button-small" data-action="submit">Submit a sample <svg class="icon small"><use href="#i-arrow"/></svg></button></div>
+      <button class="menu-toggle icon-button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-nav"><svg class="icon"><use href="#i-menu"/></svg></button>
+    </div>
+    <nav class="mobile-nav" id="mobile-nav" aria-label="Mobile navigation" hidden><a href="#testing">Our testing</a><a href="#process">How it works</a><a href="#verify">Verify a COA</a><button data-action="portal">Client portal</button><button data-action="submit">Submit a sample →</button></nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-grid container">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="tiny-line"></span> ANALYTICAL CLARITY, ONLINE</p>
+          <h1 id="hero-title">Know your sample.<br><span>Trust your next step.</span></h1>
+          <p class="hero-description">From sample submission to your certificate of analysis. A clearer, more connected way to manage laboratory testing.</p>
+          <div class="hero-actions"><button class="button button-teal" data-action="submit">Start your testing <svg class="icon"><use href="#i-arrow"/></svg></button><button class="text-button" data-action="report">Explore a sample COA <svg class="icon small"><use href="#i-arrow-up"/></svg></button></div>
+          <div class="hero-features"><span><svg class="icon small"><use href="#i-check"/></svg> Traceable samples</span><span><svg class="icon small"><use href="#i-check"/></svg> Clear reporting</span><span><svg class="icon small"><use href="#i-check"/></svg> One online workspace</span></div>
+        </div>
+        <div class="analysis-scene" aria-label="Illustrative certificate of analysis preview">
+          <div class="scene-coordinate coordinate-top">AN / ANALYTICAL OVERVIEW</div>
+          <div class="analysis-window">
+            <div class="analysis-window-top"><div><span class="status-light"></span> SAMPLE OVERVIEW</div><span class="mono">AN-2026-0042</span></div>
+            <div class="analysis-heading"><div><span class="muted-label">REFERENCE SAMPLE A</span><h2>A clearer picture.</h2></div><span class="pill pill-dark">Demo result</span></div>
+            <div class="chart-head"><span>Chromatographic profile</span><span class="mono">HPLC · UV</span></div>
+            <div class="chromatogram hero-chromatogram"><svg viewBox="0 0 520 190" role="img" aria-label="Illustrative HPLC chromatogram with one main peak">
+              <defs><linearGradient id="peak-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#52ddd2" stop-opacity=".32"/><stop offset="1" stop-color="#52ddd2" stop-opacity="0"/></linearGradient></defs>
+              <g class="chart-grid"><path d="M25 24H505M25 67H505M25 110H505M25 153H505M25 24V153M121 24V153M217 24V153M313 24V153M409 24V153M505 24V153"/></g>
+              <path fill="url(#peak-fill)" d="M25 149 48 149 52 145 57 149 114 149 120 140 126 149 214 149 224 147 230 149 258 149C270 149 275 145 282 105S293 26 301 25 310 80 315 111 324 148 335 149L405 149 411 145 417 149 505 149V153H25Z"/>
+              <path class="chart-line" d="M25 149 48 149 52 145 57 149 114 149 120 140 126 149 214 149 224 147 230 149 258 149C270 149 275 145 282 105S293 26 301 25 310 80 315 111 324 148 335 149L405 149 411 145 417 149 505 149"/>
+              <path class="peak-guide" d="M301 26V153"/><circle cx="301" cy="25" r="4" fill="#6ce3d5"/>
+              <g class="chart-labels"><text x="20" y="177">0.0</text><text x="112" y="177">3.0</text><text x="208" y="177">6.0</text><text x="301" y="177">9.0</text><text x="398" y="177">12.0</text><text x="475" y="177">15.0 min</text><text x="322" y="29" class="peak-label">8.42 min</text></g>
+            </svg></div>
+            <div class="analysis-metrics"><div><span>Chromatographic purity</span><strong>99.32<span>%</span></strong></div><div><span>Identity check</span><strong class="metric-identity"><svg class="icon"><use href="#i-check"/></svg> Consistent</strong></div></div>
+            <div class="analysis-bottom"><span><svg class="icon small"><use href="#i-file"/></svg> Certificate of analysis</span><button data-action="report" aria-label="Open demonstration certificate"><svg class="icon"><use href="#i-arrow-up"/></svg></button></div>
+          </div>
+          <div class="report-chip"><span class="report-chip-icon"><svg class="icon"><use href="#i-file"/></svg></span><div><strong>Your results. Connected.</strong><span>From your lab to your browser.</span></div><span class="chip-check"><svg class="icon small"><use href="#i-check"/></svg></span></div>
+          <div class="scene-coordinate coordinate-bottom">ILLUSTRATIVE DATA ONLY <span>01 / 03</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="verify" class="verify-section container" aria-labelledby="verify-title">
+      <div class="verify-intro"><span class="verify-icon"><svg class="icon"><use href="#i-search"/></svg></span><div><h2 id="verify-title">Have a COA? Look it up.</h2><p>Find the report behind the reference number.</p></div></div>
+      <div class="verify-interaction"><form id="verify-form" class="verify-form"><label for="report-id" class="sr-only">Certificate reference number</label><input id="report-id" name="reportId" type="text" placeholder="e.g. AN-2026-0042" autocomplete="off" spellcheck="false" required aria-describedby="verify-hint verify-error"><button type="submit" class="button button-dark">Find report <svg class="icon small"><use href="#i-arrow"/></svg></button></form><div class="verify-helper"><p id="verify-hint">Try our example: <button type="button" id="demo-lookup">AN-2026-0042</button></p><p id="verify-error" class="inline-error" role="status"></p></div></div>
+    </section>
+
+    <section id="testing" class="testing-section section-space container" aria-labelledby="testing-title">
+      <div class="section-heading"><div><p class="eyebrow">THE RIGHT TEST. A CLEARER ANSWER.</p><h2 id="testing-title">A closer look at<br>what matters.</h2></div><p class="section-description">Build a testing plan around your sample and your question. Explore the proposed service options below.</p></div>
+      <div class="services-grid">
+        <article class="service-card"><div class="service-topline"><span class="service-number">01 / PURITY</span><svg class="icon"><use href="#i-wave"/></svg></div><div class="service-visual purity-visual" aria-hidden="true"><svg viewBox="0 0 300 115"><path class="visual-grid" d="M0 30h300M0 65h300M0 100h300M60 0v115M120 0v115M180 0v115M240 0v115"/><path d="M0 100h54l6-15 6 15h59c12 0 15-79 25-79s14 79 26 79h65l7-8 7 8h45"/></svg></div><h3>Purity analysis</h3><p>Look beyond the label. Explore the chromatographic profile and relative purity of a sample.</p><div class="service-bottom"><span class="method-tag">HPLC</span><button class="text-button" data-action="submit" data-service="purity">Explore testing <svg class="icon small"><use href="#i-arrow"/></svg></button></div></article>
+        <article class="service-card"><div class="service-topline"><span class="service-number">02 / IDENTITY</span><svg class="icon"><use href="#i-flask"/></svg></div><div class="service-visual mass-visual" aria-hidden="true"><svg viewBox="0 0 300 115"><path class="visual-grid" d="M0 30h300M0 65h300M0 100h300M60 0v115M120 0v115M180 0v115M240 0v115"/><path d="M16 100v-9m12 9v-18m19 18v-10m22 10v-33m5 33v-15m36 15v-61m7 61v-33m30 33v-87m7 87v-26m35 26v-42m8 42v-18m31 18v-25m6 25v-13m23 13v-9m15 9v-16m17 16v-7"/></svg></div><h3>Identity confirmation</h3><p>Compare analytical signals with the expected identity to get a more complete understanding.</p><div class="service-bottom"><span class="method-tag">LC–MS</span><button class="text-button" data-action="submit" data-service="identity">Explore testing <svg class="icon small"><use href="#i-arrow"/></svg></button></div></article>
+        <article class="service-card service-card-mint"><div class="service-topline"><span class="service-number">03 / THE FULL PICTURE</span><svg class="icon"><use href="#i-layers"/></svg></div><div class="service-visual panel-visual" aria-hidden="true"><span><svg class="icon"><use href="#i-wave"/></svg> Purity <svg class="icon small"><use href="#i-check"/></svg></span><span><svg class="icon"><use href="#i-flask"/></svg> Identity <svg class="icon small"><use href="#i-check"/></svg></span></div><h3>Comprehensive panel</h3><p>Bring complementary analyses together in one easy-to-follow certificate of analysis.</p><div class="service-bottom"><span class="method-tag">COMBINED</span><button class="text-button" data-action="submit" data-service="comprehensive">Build your panel <svg class="icon small"><use href="#i-arrow"/></svg></button></div></article>
+      </div>
+      <p class="service-note">Service scope, sample requirements, turnaround, and pricing will be confirmed by the laboratory.</p>
+    </section>
+
+    <section id="process" class="process-section" aria-labelledby="process-title"><div class="container section-space">
+      <div class="section-heading"><div><p class="eyebrow">LESS FRICTION. MORE VISIBILITY.</p><h2 id="process-title">From your bench<br>to your browser.</h2></div><button class="button button-outline" data-action="submit">Start a sample request <svg class="icon small"><use href="#i-arrow"/></svg></button></div>
+      <div class="steps-grid"><article class="step"><span class="step-index">01</span><h3>Tell us about it.</h3><p>Choose a service and share the sample details that shape your testing request.</p><span class="step-label">SUBMIT ONLINE</span></article><article class="step"><span class="step-index">02</span><h3>Send your sample.</h3><p>Review the requirements with the lab, then follow the confirmed shipping instructions.</p><span class="step-label">PREPARE & SHIP</span></article><article class="step"><span class="step-index">03</span><h3>Follow the progress.</h3><p>Keep your sample reference, request details, and testing status in one workspace.</p><span class="step-label">STAY INFORMED</span></article><article class="step"><span class="step-index">04</span><h3>See the full result.</h3><p>Open your report, review the analysis, and share its certificate reference.</p><span class="step-label">REVIEW YOUR COA</span></article></div>
+    </div></section>
+
+    <section class="workspace-section container section-space" aria-labelledby="workspace-title"><div class="workspace-preview"><div class="workspace-top"><span class="workspace-dots"><i></i><i></i><i></i></span><span>ASSAYNOVA / CLIENT WORKSPACE</span><svg class="icon small"><use href="#i-lock"/></svg></div><div class="workspace-body"><div class="workspace-title"><div><span class="muted-label">YOUR WORKSPACE</span><h3>The details, together.</h3></div><span class="pill">Demo</span></div><div class="workspace-table"><div class="workspace-row table-labels"><span>SAMPLE</span><span>STATUS</span><span>REPORT</span></div><div class="workspace-row"><div><strong>Reference sample A</strong><small>AN-2026-0042</small></div><span class="state-tag">Completed</span><button class="mini-report" data-action="report" aria-label="Open Reference sample A report"><svg class="icon"><use href="#i-file"/></svg></button></div><div class="workspace-row"><div><strong>Reference sample B</strong><small>Illustrative sample</small></div><span class="state-tag state-pending">In analysis</span><span class="muted-dash">—</span></div></div><div class="workspace-foot"><span class="status-light"></span> A preview of your connected lab experience</div></div></div><div class="workspace-copy"><p class="eyebrow">ONE PLACE FOR YOUR ANSWERS</p><h2>Less searching.<br>More understanding.</h2><p>A dedicated space for sample requests and results. Check where things stand, open a report, and keep the context close.</p><button class="text-button" data-action="portal">Explore the client portal <svg class="icon small"><use href="#i-arrow"/></svg></button></div></section>
+
+    <section class="faq-section container section-space" aria-labelledby="faq-title"><div><p class="eyebrow">A LITTLE MORE CLARITY</p><h2 id="faq-title">Good questions.<br>Clear answers.</h2></div><div class="faq-list"><details><summary>How do I get started?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Select “Submit a sample” and enter your project details. In this concept preview, the request is saved on your device so you can explore the workflow.</p></details><details><summary>How do I verify a certificate of analysis?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Enter the report reference in the COA lookup above. Use AN-2026-0042 to try the demonstration. The sample certificate contains fictional data and is not a valid laboratory report.</p></details><details><summary>What should I send to the laboratory?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Sample quantity, packaging, shipping conditions, and documentation depend on the requested analysis. These requirements should be confirmed with the laboratory before shipping.</p></details><details><summary>Where can I see pricing and turnaround?<svg class="icon"><use href="#i-plus"/></svg></summary><p>These will be provided once the laboratory’s service catalog and operating details are finalized. This prototype does not quote or collect payments.</p></details></div></section>
+
+    <section class="closing-section container"><div><p class="eyebrow">YOUR NEXT ANSWER STARTS HERE</p><h2>Let’s take a closer look.</h2></div><button class="button button-teal" data-action="submit">Submit a sample <svg class="icon"><use href="#i-arrow"/></svg></button></section>
+  </main>
+  <footer class="site-footer container"><div><a class="brand footer-brand" href="#" aria-label="AssayNova home"><img src="/assets/assaynova-logo.png" alt="AssayNova" width="2172" height="724" loading="lazy"></a><p>Precision in testing. Clarity in every result.</p></div><div class="footer-right"><div><a href="#testing">Our testing</a><a href="#verify">Verify a COA</a><button data-action="portal">Client portal</button></div><p>© 2026 AssayNova <span>Concept preview · All results are illustrative</span></p></div></footer>
+
+  <dialog id="app-dialog" class="app-dialog" aria-labelledby="dialog-title"><button type="button" class="dialog-close icon-button" aria-label="Close dialog"><svg class="icon"><use href="#i-close"/></svg></button><div id="dialog-content"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

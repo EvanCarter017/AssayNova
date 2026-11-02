@@ -1,0 +1,13 @@
+{
+  "name": "assaynova-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AssayNova COA platform — local interface prototype",
+  "scripts": {
+    "dev": "node server.mjs --watch",
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check dist/app.js && node --check dist/data.js"
+  },
+  "engines": { "node": ">=20" }
+}
