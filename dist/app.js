@@ -234,6 +234,7 @@ document.addEventListener('click', (event) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
   }
+  const returnToMobileMenu = ['about', 'contact'].includes(target.dataset.action) && !!target.closest('#mobile-nav');
   closeMobileNavigation();
   const actions = {
     about: renderAbout,
@@ -252,6 +253,7 @@ document.addEventListener('click', (event) => {
     'request-detail': () => renderRequestDetail(target.dataset.id)
   };
   actions[target.dataset.action]?.();
+  if (returnToMobileMenu) previousFocus = menuButton;
 });
 document.addEventListener('submit', (event) => {
   if (!event.target.matches('#verify-form,#coa-lookup-form')) return;
