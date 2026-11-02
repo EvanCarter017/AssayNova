@@ -53,6 +53,14 @@ dialog.addEventListener('click', (event) => {
   if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeDialog();
 });
 
+function renderAbout() {
+  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">ABOUT ASSAYNOVA</p><h2 class="dialog-title" id="dialog-title">About us</h2><p class="dialog-description">Purity and identity testing, with clear access to certificates of analysis. Explore our testing services and use a COA Lookup Code to find a published report.</p></div>`);
+}
+
+function renderContact() {
+  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">CONTACT ASSAYNOVA</p><h2 class="dialog-title" id="dialog-title">Contact us</h2><p class="dialog-description">Contact details coming soon.</p><p class="dialog-description">Our contact email will appear here once it is configured.</p></div>`);
+}
+
 function renderSubmission(service = 'comprehensive') {
   if (!Object.hasOwn(SERVICE_NAMES, service)) service = 'comprehensive';
   openDialog(`<div class="dialog-padding">
@@ -228,6 +236,8 @@ document.addEventListener('click', (event) => {
   }
   closeMobileNavigation();
   const actions = {
+    about: renderAbout,
+    contact: renderContact,
     submit: () => renderSubmission(target.dataset.service),
     report: () => navigateToReport(target.dataset.lookupCode),
     home: () => { history.pushState(null, '', '/'); renderCurrentRoute(true); window.scrollTo(0, 0); },
