@@ -1,5 +1,5 @@
 // Server-only helpers. Source files are read by explicit routes, never by URL paths.
-const renderers = ['renderSubmission', 'renderSuccess', 'renderReport', 'renderPortal', 'renderRequestDetail'];
+const renderers = ['renderSubmission', 'renderSuccess', 'renderReport', 'renderReportNotFound', 'renderPortal', 'renderRequestDetail'];
 
 export function tagEnd(source, start) {
   let quote = '';

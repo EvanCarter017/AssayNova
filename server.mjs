@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveCOARoute } from './dist/data.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
 const liveReload = process.argv.includes('--watch') && process.env.NODE_ENV !== 'production';
@@ -35,7 +36,8 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   let pathname;
-  try { pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname); }
+  let encodedPathname;
+  try { encodedPathname = new URL(request.url, 'http://localhost').pathname; pathname = decodeURIComponent(encodedPathname); }
   catch { response.writeHead(400); response.end('Bad request'); return; }
   if (liveReload && pathname === '/__dev/events') {
     if (request.method !== 'GET') { response.writeHead(405, { Allow: 'GET' }); response.end(); return; }
@@ -77,7 +79,8 @@ const server = http.createServer(async (request, response) => {
     response.end(request.method === 'HEAD' ? undefined : 'Not found');
     return;
   }
-  const filename = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
+  const coaRoute = resolveCOARoute(encodedPathname);
+  const filename = path.resolve(root, '.' + (pathname === '/' || coaRoute ? '/index.html' : pathname));
   if (!filename.startsWith(root + path.sep)) {
     response.writeHead(403); response.end('Forbidden'); return;
   }
@@ -89,7 +92,7 @@ const server = http.createServer(async (request, response) => {
       contents = Buffer.from(devTools.annotateHTML(contents.toString('utf8'), sourceFile)
         .replace(/<\/body>/i, '<script type="module" src="/__dev/client.js"></script></body>'));
     }
-    response.writeHead(200, {
+    response.writeHead(coaRoute && !coaRoute.report ? 404 : 200, {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',

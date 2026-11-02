@@ -13,6 +13,14 @@ import { primaryGesture, sourceHint, rendererForView } from '../dev/locator.js';
 const project = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const baselineHTML = await readFile(path.join(project, 'dist/index.html'), 'utf8');
 const baselineApp = await readFile(path.join(project, 'dist/app.js'), 'utf8');
+const sourceLine = (source, needle) => {
+  const index = source.indexOf(needle);
+  assert.ok(index >= 0, `Expected source marker: ${needle}`);
+  return source.slice(0, index).split('\n').length;
+};
+const heroLine = sourceLine(baselineHTML, '<h1 id="hero-title"');
+const rendererLines = Object.fromEntries(['renderSubmission', 'renderSuccess', 'renderReport', 'renderReportNotFound', 'renderPortal', 'renderRequestDetail']
+  .map((name) => [name, sourceLine(baselineApp, `function ${name}(`)]));
 
 test('annotations use original opening-tag lines and preserve raw text, quoted >, comments and SVG', () => {
   const html = '<!doctype html>\n<!-- <fake> -->\n<div\n title="x > y">A<svg viewBox="0 0 1 1"><path d="M0 0"/></svg></div>\n<script>const s = "<div>";\nconst n = 4 > 2;</script>\n<style>.x::before{content:"<span>"}</style>\n<textarea><button>text</button></textarea>';
@@ -24,7 +32,7 @@ test('annotations use original opening-tag lines and preserve raw text, quoted >
   assert.ok(!annotated.includes('<fake data-'));
   assert.ok(!annotated.includes('<span data-'));
   assert.ok(!annotated.includes('<button data-'));
-  assert.match(annotateHTML(baselineHTML), /<h1 id="hero-title"[^>]*data-an-dev-line="48">/);
+  assert.match(annotateHTML(baselineHTML), new RegExp(`<h1 id="hero-title"[^>]*data-an-dev-line="${heroLine}">`));
 });
 
 test('renderer hints are actual declaration lines, not comments or template text', () => {
@@ -33,9 +41,7 @@ test('renderer hints are actual declaration lines, not comments or template text
   assert.deepEqual(Object.keys(definitions), ['renderRequestDetail']);
   assert.equal(definitions.renderRequestDetail.line, 5);
   const actual = rendererDefinitions(baselineApp);
-  assert.deepEqual(Object.fromEntries(Object.entries(actual).map(([key, value]) => [key, value.line])), {
-    renderSubmission: 51, renderSuccess: 99, renderReport: 114, renderPortal: 126, renderRequestDetail: 149
-  });
+  assert.deepEqual(Object.fromEntries(Object.entries(actual).map(([key, value]) => [key, value.line])), rendererLines);
   assert.match(actual.renderReport.precision, /not the exact child/);
 });
 
@@ -86,6 +92,24 @@ test('dynamic renderer provenance overrides copied HTML annotations and unavaila
   assert.equal(rendererForView({ success: true, requestDetail: true }), 'renderSuccess');
   assert.equal(rendererForView({ portal: true, requestDetail: true }), 'renderPortal');
   assert.equal(rendererForView({ requestDetail: true }), 'renderRequestDetail');
+});
+
+test('public report and recovery children have honest active-renderer provenance', () => {
+  const metadata = { renderers: rendererDefinitions(baselineApp) };
+  for (const name of ['renderReport', 'renderReportNotFound']) {
+    const container = { querySelector: (selector) => {
+      if (name === 'renderReport' && selector === '.report-heading,.report-body') return {};
+      if (name === 'renderReportNotFound' && selector === '.coa-not-found') return {};
+      return null;
+    } };
+    const target = { closest: (selector) => selector === '#coa-view' ? container : null, getAttribute: () => '48' };
+    const hint = sourceHint(target, metadata);
+    assert.equal(hint.function, name);
+    assert.equal(hint.file, 'dist/app.js');
+    assert.equal(hint.line, rendererLines[name]);
+    assert.match(hint.precision, /function-definition/);
+    assert.equal(sourceHint(target, {}).precision, 'unavailable');
+  }
 });
 
 test('context and markup are bounded, allowlisted, and exclude editable/control data', () => {
@@ -180,9 +204,9 @@ for (const mode of ['default', 'production', 'watch']) {
       if (enabled) {
         const metadata = await (await fetch(`${base}/__dev/context`)).json();
         assert.equal(metadata.projectRoot, fixture);
-        assert.equal(metadata.renderers.renderSubmission.line, 51);
-        assert.equal(metadata.renderers.renderReport.line, 114);
-        assert.match(html, /<h1 id="hero-title"[^>]*data-an-dev-line="48">/);
+        assert.equal(metadata.renderers.renderSubmission.line, rendererLines.renderSubmission);
+        assert.equal(metadata.renderers.renderReport.line, rendererLines.renderReport);
+        assert.match(html, new RegExp(`<h1 id="hero-title"[^>]*data-an-dev-line="${heroLine}">`));
       }
     });
   });

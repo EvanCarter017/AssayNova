@@ -35,9 +35,10 @@ function activeRenderer(container) {
 }
 
 export function sourceHint(target, metadata) {
-  const container = target.closest('#dialog-content');
+  const publicView = target.closest('#coa-view');
+  const container = publicView || target.closest('#dialog-content');
   if (container && target !== container) {
-    const renderer = activeRenderer(container);
+    const renderer = publicView?.querySelector('.coa-not-found') ? 'renderReportNotFound' : activeRenderer(container);
     return metadata?.renderers?.[renderer]
       ? { ...metadata.renderers[renderer], note: 'Active view inferred from known DOM markers; function definition only. Copied HTML annotations are ignored.' }
       : { precision: 'unavailable', note: 'Dynamic child: renderer metadata unavailable; do not attribute it to the static dialog shell.' };

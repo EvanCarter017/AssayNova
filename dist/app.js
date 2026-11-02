@@ -1,4 +1,4 @@
-import { DEMO_REPORT, SERVICE_NAMES, findDemoReport, validateSubmission } from './data.js';
+import { DEMO_REPORT, DEMO_REPORTS, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, resolveCOARoute, validateSubmission } from './data.js';
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
@@ -6,6 +6,11 @@ const storageKey = 'assaynova.prototype.requests.v1';
 const toast = document.querySelector('#toast');
 let previousFocus;
 let toastTimer;
+const homeView = document.querySelector('#home-view');
+const coaView = document.querySelector('#coa-view');
+const homeTitle = document.title;
+let activeReport = null;
+let pendingCopyKind = null;
 
 const icon = (name, small = false) => `<svg class="icon${small ? ' small' : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
@@ -108,28 +113,85 @@ function renderSuccess(request) {
 }
 
 function reportChart() {
-  return document.querySelector('.hero-chromatogram').innerHTML.replaceAll('peak-fill', 'report-peak-fill');
+  return `<svg viewBox="0 0 520 160" role="img" aria-label="Shared illustrative chromatogram schematic, not report-specific measurements"><g class="chart-grid"><path d="M20 25H500M20 70H500M20 115H500"/></g><path class="chart-line" fill="none" stroke-width="2" d="M20 122H100Q108 120 112 100Q116 78 120 100Q124 122 134 122H250Q265 120 276 52Q286 10 296 52Q308 122 326 122H500"/><text x="20" y="150" class="chart-labels">SCHEMATIC ONLY · NO MEASURED RETENTION-TIME AXIS</text></svg>`;
 }
 
-function renderReport() {
-  const report = DEMO_REPORT;
-  openDialog(`<div class="report-heading"><div class="brand"><img src="/assets/assaynova-logo.png" alt="AssayNova" width="2172" height="724"></div>
-    <div class="report-header-row"><div><p class="dialog-eyebrow">ILLUSTRATIVE LABORATORY REPORT</p><h2 id="dialog-title">Certificate of analysis</h2><p>${report.id} · Issued ${report.issued}</p></div><span class="report-demo-label">DEMONSTRATION ONLY</span></div></div>
-    <div class="report-body"><dl class="report-meta"><div><dt>Sample name</dt><dd>${report.sample}</dd></div><div><dt>Batch reference</dt><dd>${report.batch}</dd></div><div><dt>Sample received</dt><dd>${report.received}</dd></div><div><dt>Analysis method</dt><dd>${report.method}</dd></div></dl>
-      <div class="report-results"><div><span>Chromatographic purity</span><strong>${report.purity}</strong></div><div><span>Identity check</span><strong>${icon('check')}${report.identity}</strong></div></div>
-      <div class="report-chart"><h3>Chromatographic profile · illustrative</h3>${reportChart()}</div>
-      <p class="report-disclaimer"><strong>Not a valid COA.</strong> ${report.disclaimer}</p>
-      <div class="report-actions"><button class="button button-dark" data-action="print">${icon('download', true)} Print / save demo PDF</button><button class="text-button" data-action="copy">Copy report reference ${icon('file', true)}</button></div>
-    </div>`, true);
+function lookupForm() {
+  return `<form id="coa-lookup-form" class="coa-search" novalidate><label for="coa-lookup-code">Find another demo COA · COA Lookup Code</label><div class="coa-search-controls"><input id="coa-lookup-code" name="lookupCode" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. AN-8P6R-3N5Y" aria-describedby="coa-lookup-error" required><button class="button button-dark" type="submit">Find report</button></div><p id="coa-lookup-error" class="inline-error" role="status"></p><p class="coa-help">Use a COA Lookup Code, not a report or submission number. Try AN-7K9Q-2M4X or AN-8P6R-3N5Y.</p></form>`;
+}
+
+function renderReport(report) {
+  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>Public demo report · Fictional data</span></div><article class="coa-card" aria-labelledby="report-title"><div class="report-heading"><div class="brand"><img src="/assets/assaynova-logo.png" alt="AssayNova" width="2172" height="724"></div>
+    <div class="report-header-row"><div><p class="dialog-eyebrow">ILLUSTRATIVE LABORATORY REPORT</p><h1 id="report-title" tabindex="-1">Certificate of analysis</h1><p>${escape(report.id)} · Issued ${escape(report.issued)}</p></div><span class="report-demo-label">DEMONSTRATION ONLY</span></div><p class="coa-code">COA Lookup Code <strong>${escape(report.lookupCode)}</strong></p></div>
+    <div class="report-body"><dl class="report-meta"><div><dt>Sample name</dt><dd>${escape(report.sample)}</dd></div><div><dt>Batch reference</dt><dd>${escape(report.batch)}</dd></div><div><dt>Sample received</dt><dd>${escape(report.received)}</dd></div><div><dt>Analysis method</dt><dd>${escape(report.method)}</dd></div><div><dt>Report number</dt><dd>${escape(report.id)}</dd></div><div><dt>Publication</dt><dd>${escape(report.publication)} · fictional demo</dd></div><div><dt>Version</dt><dd>${escape(report.version)}</dd></div><div><dt>Illustrative retention time</dt><dd>${escape(report.retentionTime)}</dd></div></dl>
+      <div class="report-results"><div><span>Chromatographic purity</span><strong>${escape(report.purity)}</strong></div><div><span>Identity check</span><strong>${icon('check')}${escape(report.identity)}</strong></div></div>
+      <div class="report-chart"><h3>Shared illustrative chromatogram schematic</h3>${reportChart()}<p class="coa-help">This shared drawing is not analytical data for this report. The values above are fictional record-specific demonstration results.</p></div>
+      <p class="report-disclaimer"><strong>Not a valid COA.</strong> ${escape(report.disclaimer)}</p>
+      <div class="report-actions"><button class="button button-dark" data-action="print">${icon('download', true)} Print / save demo PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
+      <div id="report-copy-fallback" class="copy-fallback" role="region" aria-label="Manual copy" hidden><p>Automatic copy was unavailable. Select and copy the complete value below.</p><label for="report-copy-value">Value to copy</label><textarea id="report-copy-value" readonly></textarea><div class="dialog-buttons"><button class="text-button" data-action="copy-select">Select all</button><button class="text-button" data-action="copy-retry">Try copying again</button></div></div>
+    </div></article>${lookupForm()}`;
+}
+
+function renderReportNotFound() {
+  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>Fictional demo records only</span></div><div class="coa-not-found coa-card"><p class="eyebrow">COA LOOKUP</p><h1 id="report-title" tabindex="-1">No demo COA found.</h1><p>This address does not identify a published demo report. Check the COA Lookup Code or search again below.</p><p class="demo-notice">A report or submission number is not a COA Lookup Code. This prototype contains fictional records, not valid laboratory reports.</p></div>${lookupForm()}`;
+}
+
+function renderCurrentRoute(focus = false) {
+  const url = new URL(location.href);
+  const legacy = url.pathname === '/' && url.searchParams.has('coa');
+  const legacyReport = legacy ? findLegacyReport(url.searchParams.get('coa')) : null;
+  if (legacyReport) {
+    history.replaceState(null, '', reportPath(legacyReport.lookupCode));
+    url.pathname = reportPath(legacyReport.lookupCode);
+  }
+  const route = resolveCOARoute(url.pathname);
+  activeReport = null;
+  clearTimeout(toastTimer);
+  toast.hidden = true;
+  pendingCopyKind = null;
+  coaView.innerHTML = '';
+  previousFocus = null;
+  if (dialog.open) dialog.close();
+  homeView.hidden = !!route;
+  coaView.hidden = !route;
+  document.body.classList.toggle('report-page', !!route);
+  if (route) {
+    activeReport = route.report;
+    if (activeReport) {
+      if (location.pathname !== route.canonicalPath || location.search || location.hash) history.replaceState(null, '', route.canonicalPath);
+      renderReport(activeReport);
+      document.title = `${activeReport.id} · ${activeReport.lookupCode} · AssayNova demo COA`;
+    } else {
+      renderReportNotFound();
+      document.title = 'Demo COA not found · AssayNova';
+    }
+    if (focus) coaView.querySelector('#report-title')?.focus({ preventScroll: true });
+  } else {
+    document.title = homeTitle;
+    if (legacy && !legacyReport) {
+      document.querySelector('#verify-error').textContent = 'No published demo report matches that legacy link. Enter a COA Lookup Code below.';
+      document.querySelector('#verify').scrollIntoView();
+    }
+    if (focus) document.querySelector('#hero-title').focus({ preventScroll: true });
+  }
+}
+
+function navigateToReport(code) {
+  const destination = reportPath(code);
+  if (!destination) return;
+  history.pushState(null, '', destination);
+  renderCurrentRoute(true);
+  window.scrollTo(0, 0);
 }
 
 function renderPortal(tab = 'reports') {
   const requests = readRequests();
+  const reportRows = DEMO_REPORTS.filter((report) => findReportByLookupCode(report.lookupCode) === report).map((report) => `<tr><td><strong>${escape(report.sample)}</strong><small>${escape(report.id)}</small><small>COA Lookup Code: ${escape(report.lookupCode)}</small></td><td>${escape(report.method)}<small>Fictional sample</small></td><td><span class="state-tag">Published demo</span></td><td><a class="text-button" href="${reportPath(report.lookupCode)}" data-action="report" data-lookup-code="${report.lookupCode}">Open COA ${icon('arrow-up', true)}</a></td></tr>`).join('');
   const requestRows = requests.map((request) => `<tr><td><strong>${escape(request.sample)}</strong><small>${escape(request.id)}</small></td><td>${escape(SERVICE_NAMES[request.service])}<small>${request.quantity} sample${request.quantity === 1 ? '' : 's'}</small></td><td><span class="state-tag state-pending">Draft request</span></td><td><button class="text-button" data-action="request-detail" data-id="${escape(request.id)}">Details ${icon('arrow-up', true)}</button></td></tr>`).join('');
   openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">YOUR CONNECTED LAB WORKSPACE</p><h2 class="dialog-title" id="dialog-title">A place for every detail.</h2><p class="dialog-description">An early look at your sample requests and reports.</p>
     <p class="demo-notice">Demo workspace · Report data is fictional. Saved requests are only available in this browser; no sign-in or real order is created.</p>
     <div class="portal-toolbar"><div class="portal-tabs" role="tablist" aria-label="Workspace sections"><button class="portal-tab" id="tab-reports" role="tab" data-tab="reports" aria-selected="${tab === 'reports'}" aria-controls="panel-reports" tabindex="${tab === 'reports' ? '0' : '-1'}">Reports</button><button class="portal-tab" id="tab-requests" role="tab" data-tab="requests" aria-selected="${tab === 'requests'}" aria-controls="panel-requests" tabindex="${tab === 'requests' ? '0' : '-1'}">My requests (${requests.length})</button></div><button class="button button-dark" data-action="submit">${icon('plus', true)} New request</button></div>
-    <div class="portal-panel" id="panel-reports" role="tabpanel" aria-labelledby="tab-reports" tabindex="0"${tab !== 'reports' ? ' hidden' : ''}><table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">ANALYSIS</th><th scope="col">STATUS</th><th scope="col">REPORT</th></tr></thead><tbody><tr><td><strong>Reference sample A</strong><small>${DEMO_REPORT.id}</small></td><td>HPLC / LC–MS<small>Fictional sample</small></td><td><span class="state-tag">Completed</span></td><td><button class="text-button" data-action="report">Open COA ${icon('arrow-up', true)}</button></td></tr><tr><td><strong>Reference sample B</strong><small>Illustrative workflow</small></td><td>HPLC<small>Fictional sample</small></td><td><span class="state-tag state-pending">In analysis</span></td><td>—</td></tr></tbody></table><p class="portal-bottom-note">The entries above demonstrate the intended workspace. They do not represent actual samples or live testing activity.</p></div>
+    <div class="portal-panel" id="panel-reports" role="tabpanel" aria-labelledby="tab-reports" tabindex="0"${tab !== 'reports' ? ' hidden' : ''}><table class="portal-table"><thead><tr><th scope="col">SAMPLE / REPORT / LOOKUP CODE</th><th scope="col">ANALYSIS</th><th scope="col">STATUS</th><th scope="col">REPORT</th></tr></thead><tbody>${reportRows}</tbody></table><p class="portal-bottom-note">The entries above demonstrate the intended workspace. They do not represent actual samples or live testing activity.</p></div>
     <div class="portal-panel" id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0"${tab !== 'requests' ? ' hidden' : ''}>${requests.length ? `<table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">REQUESTED SERVICE</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead><tbody>${requestRows}</tbody></table><p class="portal-bottom-note">These are local preview requests. They have not been transmitted to a laboratory.</p>` : `<div class="empty-state">${icon('flask')}<h3>Your next sample starts here.</h3><p>Create a demo request to see how this workspace comes together.</p><button class="button button-teal" data-action="submit">Create a demo request ${icon('arrow', true)}</button></div>`}</div></div>`, true);
 }
 
@@ -153,23 +215,45 @@ function renderRequestDetail(id) {
     <dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Email</dt><dd>${escape(request.email)}</dd></div><div><dt>Organization</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft request · local preview</dd></div><div><dt>Notes</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl><p class="demo-notice">Saved on this device only. Nothing has been sent to a laboratory.</p><div class="dialog-buttons"><button class="button button-dark" data-action="requests">Back to requests ${icon('arrow', true)}</button></div></div>`);
 }
 
-async function copyReference() {
-  try { await navigator.clipboard.writeText(DEMO_REPORT.id); showToast('Copied: ' + DEMO_REPORT.id); }
-  catch { showToast('Report reference: ' + DEMO_REPORT.id); }
+async function copyReportValue(kind) {
+  const report = activeReport;
+  if (!report) return;
+  const value = kind === 'link' ? new URL(reportPath(report.lookupCode), location.origin).href : report.lookupCode;
+  pendingCopyKind = kind;
+  try {
+    await navigator.clipboard.writeText(value);
+    if (activeReport === report) showToast(kind === 'link' ? 'Report link copied.' : 'COA Lookup Code copied: ' + value);
+  } catch {
+    if (activeReport !== report) return;
+    const fallback = document.querySelector('#report-copy-fallback');
+    const field = document.querySelector('#report-copy-value');
+    fallback.hidden = false;
+    field.value = value;
+    field.focus();
+    field.select();
+  }
 }
 
 document.addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');
   if (!target) return;
+  if (target.matches('a[href]')) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+  }
   closeMobileNavigation();
   const actions = {
     submit: () => renderSubmission(target.dataset.service),
-    report: renderReport,
+    report: () => navigateToReport(target.dataset.lookupCode),
+    home: () => { history.pushState(null, '', '/'); renderCurrentRoute(true); window.scrollTo(0, 0); },
     portal: () => renderPortal(),
     requests: () => renderPortal('requests'),
     close: closeDialog,
-    print: () => window.print(),
-    copy: copyReference,
+    print: () => { if (activeReport) window.print(); },
+    'copy-code': () => copyReportValue('code'),
+    'copy-link': () => copyReportValue('link'),
+    'copy-retry': () => copyReportValue(pendingCopyKind),
+    'copy-select': () => { const field = document.querySelector('#report-copy-value'); field?.focus(); field?.select(); },
     'request-detail': () => renderRequestDetail(target.dataset.id)
   };
   actions[target.dataset.action]?.();
@@ -187,21 +271,24 @@ dialog.addEventListener('keydown', (event) => {
   }
 });
 
-document.querySelector('#verify-form').addEventListener('submit', (event) => {
+document.addEventListener('submit', (event) => {
+  if (!event.target.matches('#verify-form,#coa-lookup-form')) return;
   event.preventDefault();
-  const input = document.querySelector('#report-id');
-  const report = findDemoReport(input.value);
-  const error = document.querySelector('#verify-error');
+  const input = event.target.querySelector('input[name="lookupCode"]');
+  const report = findReportByLookupCode(input.value);
+  const error = event.target.id === 'verify-form' ? document.querySelector('#verify-error') : document.querySelector('#coa-lookup-error');
   input.setAttribute('aria-invalid', String(!report));
-  if (report) { error.textContent = ''; renderReport(); }
-  else { error.textContent = 'No demo report found. Try AN-2026-0042.'; input.focus(); }
+  if (report) { error.textContent = ''; navigateToReport(report.lookupCode); }
+  else { error.textContent = 'No published demo COA found. Use a COA Lookup Code such as AN-7K9Q-2M4X, not a report or submission number.'; input.focus(); }
 });
-document.querySelector('#report-id').addEventListener('input', (event) => {
-  document.querySelector('#verify-error').textContent = '';
+document.addEventListener('input', (event) => {
+  if (!event.target.matches('#report-id,#coa-lookup-code')) return;
+  const error = document.querySelector(event.target.id === 'report-id' ? '#verify-error' : '#coa-lookup-error');
+  if (error) error.textContent = '';
   event.target.removeAttribute('aria-invalid');
 });
 document.querySelector('#demo-lookup').addEventListener('click', () => {
-  document.querySelector('#report-id').value = DEMO_REPORT.id;
+  document.querySelector('#report-id').value = DEMO_REPORT.lookupCode;
   document.querySelector('#verify-form').requestSubmit();
 });
 
@@ -222,13 +309,5 @@ mobileNavigation.addEventListener('click', (event) => { if (event.target.closest
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMobileNavigation(); });
 window.matchMedia('(min-width: 761px)').addEventListener('change', (event) => { if (event.matches) closeMobileNavigation(); });
 
-const sharedReference = new URL(window.location.href).searchParams.get('coa');
-if (sharedReference) {
-  document.querySelector('#report-id').value = sharedReference;
-  if (findDemoReport(sharedReference)) renderReport();
-  else {
-    document.querySelector('#verify-error').textContent = 'No demo report found. Try AN-2026-0042.';
-    document.querySelector('#report-id').setAttribute('aria-invalid', 'true');
-    document.querySelector('#verify').scrollIntoView();
-  }
-}
+window.addEventListener('popstate', () => renderCurrentRoute(true));
+renderCurrentRoute();
