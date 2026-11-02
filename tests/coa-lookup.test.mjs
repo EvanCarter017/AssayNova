@@ -291,7 +291,7 @@ test('normal product labels retain sample-report honesty and new drafts preserve
   assert.ok(!/\b(?:demo|concept|prototype|preview)\b/i.test(text(homeHTML)));
   assert.equal((homeHTML.match(/data-action="portal">Saved drafts/g) || []).length, 3);
   assert.ok(!/Client portal|CLIENT WORKSPACE|YOUR WORKSPACE/.test(homeHTML));
-  const publicReports = homeHTML.match(/<section class="workspace-section[\s\S]*?<\/section>/)[0];
+  const publicReports = homeHTML.match(/<section id="home-reports"[\s\S]*?<\/section>/)[0];
   assert.match(publicReports, /Sample reports/);
   for (const code of ['AN-7K9Q-2M4X', 'AN-8P6R-3N5Y']) assert.ok(publicReports.includes(`data-action="report" data-lookup-code="${code}"`));
   assert.match(publicReports, /href="\/verify">Find a COA/);
@@ -698,6 +698,18 @@ for (const mode of ['default', 'production', 'watch']) {
       assert.equal((await fetch(base + reportPath(DEMO_REPORT.lookupCode), { method: 'POST' })).status, 405);
       assert.equal((await fetch(base + '/?coa=AN-2026-0042')).status, 200);
       assert.equal((await fetch(base + '/__dev/context')).status, mode === 'watch' ? 200 : 404);
+      const heroPath = '/assets/assaynova-lab-hero.jpg';
+      const hero = await fetch(base + heroPath);
+      assert.equal(hero.status, 200);
+      assert.equal(hero.headers.get('content-type'), 'image/jpeg');
+      const heroBytes = Buffer.from(await hero.arrayBuffer());
+      assert.deepEqual([...heroBytes.subarray(0, 3)], [0xff, 0xd8, 0xff]);
+      assert.deepEqual(heroBytes, await readFile(path.join(project, 'dist', heroPath)));
+      const heroHead = await fetch(base + heroPath, { method: 'HEAD' });
+      assert.equal(heroHead.status, 200);
+      assert.equal(heroHead.headers.get('content-type'), 'image/jpeg');
+      assert.equal(heroHead.headers.get('cache-control'), hero.headers.get('cache-control'));
+      assert.equal((await heroHead.arrayBuffer()).byteLength, 0);
       for (const asset of ['/app.js', '/data.js', '/routes.js', '/styles.css', '/assets/assaynova-logo.png']) assert.equal((await fetch(base + asset)).status, 200, asset);
     });
   });
