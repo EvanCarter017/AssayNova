@@ -1,4 +1,5 @@
 import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from './data.js';
+import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
@@ -6,9 +7,9 @@ const storageKey = 'assaynova.prototype.requests.v1';
 const toast = document.querySelector('#toast');
 let previousFocus;
 let toastTimer;
-const homeView = document.querySelector('#home-view');
+const pageViews = Object.fromEntries(PAGE_ROUTES.map((route) => [route.path, document.querySelector('#' + route.view)]));
 const coaView = document.querySelector('#coa-view');
-const homeTitle = document.title;
+let renderedURL = '';
 let activeReport = null;
 let pendingCopyKind = null;
 
@@ -43,6 +44,7 @@ function openDialog(html, wide = false) {
 
 function closeDialog() { dialog.close(); }
 dialog.addEventListener('close', () => {
+  if (dialog.open) return;
   document.body.classList.remove('dialog-open');
   if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
 });
@@ -52,14 +54,6 @@ dialog.addEventListener('click', (event) => {
   const bounds = dialog.getBoundingClientRect();
   if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeDialog();
 });
-
-function renderAbout() {
-  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">ABOUT ASSAYNOVA</p><h2 class="dialog-title" id="dialog-title">About us</h2><p class="dialog-description">Purity and identity testing, with clear access to certificates of analysis. Explore our testing services and use a COA Lookup Code to find a published report.</p></div>`);
-}
-
-function renderContact() {
-  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">CONTACT ASSAYNOVA</p><h2 class="dialog-title" id="dialog-title">Contact us</h2><p class="dialog-description">Contact details coming soon.</p><p class="dialog-description">Our contact email will appear here once it is configured.</p></div>`);
-}
 
 function renderSubmission(service = 'comprehensive') {
   if (!Object.hasOwn(SERVICE_NAMES, service)) service = 'comprehensive';
@@ -145,15 +139,28 @@ function renderReportNotFound() {
   coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA Lookup</span></div><div class="coa-not-found coa-card"><p class="eyebrow">COA LOOKUP</p><h1 id="report-title" tabindex="-1">No COA found.</h1><p>This code does not identify a published report. Check the COA Lookup Code or search again below.</p><p class="coa-help">Report and submission numbers are separate from COA Lookup Codes.</p></div>${lookupForm()}`;
 }
 
-function renderCurrentRoute(focus = false) {
-  const url = new URL(location.href);
-  const legacy = url.pathname === '/' && url.searchParams.has('coa');
-  const legacyReport = legacy ? findLegacyReport(url.searchParams.get('coa')) : null;
-  if (legacyReport) {
-    history.replaceState(null, '', reportPath(legacyReport.lookupCode));
-    url.pathname = reportPath(legacyReport.lookupCode);
+function routeLocation(address) {
+  const url = new URL(address, location.href);
+  let invalidLegacy = false;
+  if (url.pathname === '/' && url.searchParams.has('coa')) {
+    const report = findLegacyReport(url.searchParams.get('coa'));
+    url.pathname = report ? reportPath(report.lookupCode) : '/verify';
+    url.search = ''; url.hash = '';
+    invalidLegacy = !report;
+  } else if (url.pathname === '/' && ['#testing', '#verify'].includes(url.hash)) {
+    url.pathname = url.hash === '#testing' ? '/testing-methods' : '/verify';
+    url.hash = '';
   }
-  const route = resolveCOARoute(url.pathname);
+  const page = resolvePageRoute(url.pathname);
+  if (page) url.pathname = page.path;
+  const coa = resolveCOARoute(url.pathname);
+  if (coa?.report) { url.pathname = coa.canonicalPath; url.search = ''; url.hash = ''; }
+  return { url, page, coa, invalidLegacy };
+}
+
+function renderCurrentRoute(focus = false, legacyError = false) {
+  const current = routeLocation(location.href);
+  if (current.url.href !== location.href) history.replaceState(null, '', current.url.pathname + current.url.search + current.url.hash);
   activeReport = null;
   clearTimeout(toastTimer);
   toast.hidden = true;
@@ -161,36 +168,48 @@ function renderCurrentRoute(focus = false) {
   coaView.innerHTML = '';
   previousFocus = null;
   if (dialog.open) dialog.close();
-  homeView.hidden = !!route;
-  coaView.hidden = !route;
-  document.body.classList.toggle('report-page', !!route);
-  if (route) {
-    activeReport = route.report;
+  const page = current.page || PAGE_ROUTES[0];
+  for (const route of PAGE_ROUTES) pageViews[route.path].hidden = !!current.coa || route.path !== page.path;
+  coaView.hidden = !current.coa;
+  document.body.classList.toggle('report-page', !!current.coa);
+  const error = document.querySelector('#verify-error');
+  error.textContent = legacyError || current.invalidLegacy ? 'No report matches that link. Enter a COA Lookup Code below.' : '';
+  document.querySelector('#report-id').removeAttribute('aria-invalid');
+  if (current.coa) {
+    activeReport = current.coa.report;
     if (activeReport) {
-      if (location.pathname !== route.canonicalPath || location.search || location.hash) history.replaceState(null, '', route.canonicalPath);
       renderReport(activeReport);
       document.title = `${activeReport.id} · ${activeReport.lookupCode} · AssayNova`;
     } else {
       renderReportNotFound();
       document.title = 'COA not found · AssayNova';
     }
-    if (focus) coaView.querySelector('#report-title')?.focus({ preventScroll: true });
-  } else {
-    document.title = homeTitle;
-    if (legacy && !legacyReport) {
-      document.querySelector('#verify-error').textContent = 'No report matches that link. Enter a COA Lookup Code below.';
-      document.querySelector('#verify').scrollIntoView();
-    }
-    if (focus) document.querySelector('#hero-title').focus({ preventScroll: true });
+  } else document.title = page.title;
+  const activePath = current.coa ? '/verify' : page.path;
+  for (const link of document.querySelectorAll('.desktop-nav a,.mobile-nav a')) {
+    if (new URL(link.getAttribute('href'), location.href).pathname === activePath) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
   }
+  if (focus) document.getElementById(current.coa ? 'report-title' : page.heading)?.focus({ preventScroll: true });
+  renderedURL = location.href;
 }
 
-function navigateToReport(code) {
-  const destination = lookupResultPath(code);
-  history.pushState(null, '', destination);
-  renderCurrentRoute(true);
-  window.scrollTo(0, 0);
+function scrollToCurrentHash() {
+  let id;
+  try { id = decodeURIComponent(location.hash.slice(1)); } catch { return; }
+  const target = id && document.getElementById(id);
+  if (target && !target.closest('[hidden]')) target.scrollIntoView();
 }
+
+function navigateToURL(address) {
+  const current = routeLocation(address);
+  if (current.url.href !== location.href) history.pushState(null, '', current.url.pathname + current.url.search + current.url.hash);
+  renderCurrentRoute(true, current.invalidLegacy);
+  if (current.url.hash) scrollToCurrentHash();
+  else window.scrollTo(0, 0);
+}
+
+function navigateToReport(code) { navigateToURL(lookupResultPath(code)); }
 
 function renderPortal() {
   const requests = readRequests();
@@ -228,20 +247,28 @@ async function copyReportValue(kind) {
 }
 
 document.addEventListener('click', (event) => {
+  if (event.defaultPrevented) return;
+  const anchor = event.target.closest('a[href]');
+  if (anchor) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || anchor.hasAttribute('target') || anchor.hasAttribute('download')) return;
+    const href = anchor.getAttribute('href');
+    if (!href || href.startsWith('#')) return;
+    let destination;
+    try { destination = new URL(href, location.href); } catch { return; }
+    if (destination.origin !== location.origin || !(resolvePageRoute(destination.pathname) || resolveCOARoute(destination.pathname))) return;
+    event.preventDefault();
+    closeMobileNavigation();
+    navigateToURL(destination.href);
+    return;
+  }
   const target = event.target.closest('[data-action]');
   if (!target) return;
-  if (target.matches('a[href]')) {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-  }
-  const returnToMobileMenu = ['about', 'contact'].includes(target.dataset.action) && !!target.closest('#mobile-nav');
+  const returnToMobileMenu = !!target.closest('#mobile-nav');
   closeMobileNavigation();
   const actions = {
-    about: renderAbout,
-    contact: renderContact,
     submit: () => renderSubmission(target.dataset.service),
     report: () => navigateToReport(target.dataset.lookupCode),
-    home: () => { history.pushState(null, '', '/'); renderCurrentRoute(true); window.scrollTo(0, 0); },
+    home: () => navigateToURL('/'),
     portal: () => renderPortal(),
     requests: () => renderPortal(),
     close: closeDialog,
@@ -253,7 +280,7 @@ document.addEventListener('click', (event) => {
     'request-detail': () => renderRequestDetail(target.dataset.id)
   };
   actions[target.dataset.action]?.();
-  if (returnToMobileMenu) previousFocus = menuButton;
+  if (returnToMobileMenu && dialog.open) previousFocus = menuButton;
 });
 document.addEventListener('submit', (event) => {
   if (!event.target.matches('#verify-form,#coa-lookup-form')) return;
@@ -292,7 +319,13 @@ menuButton.addEventListener('click', () => {
 });
 mobileNavigation.addEventListener('click', (event) => { if (event.target.closest('a')) closeMobileNavigation(); });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeMobileNavigation(); });
-window.matchMedia('(min-width: 761px)').addEventListener('change', (event) => { if (event.matches) closeMobileNavigation(); });
+window.matchMedia('(min-width: 1101px)').addEventListener('change', (event) => { if (event.matches) closeMobileNavigation(); });
 
-window.addEventListener('popstate', () => renderCurrentRoute(true));
+window.addEventListener('popstate', () => renderCurrentRoute());
+window.addEventListener('hashchange', () => {
+  if (renderedURL === location.href) return;
+  if (location.pathname === '/' && ['#testing', '#verify'].includes(location.hash)) { renderCurrentRoute(true); window.scrollTo(0, 0); }
+  else renderedURL = location.href;
+});
 renderCurrentRoute();
+scrollToCurrentHash();

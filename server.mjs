@@ -4,6 +4,7 @@ import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCOARoute } from './dist/data.js';
+import { resolvePageRoute } from './dist/routes.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
 const liveReload = process.argv.includes('--watch') && process.env.NODE_ENV !== 'production';
@@ -88,7 +89,8 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   const coaRoute = resolveCOARoute(encodedPathname);
-  const filename = path.resolve(root, '.' + (pathname === '/' || coaRoute ? '/index.html' : pathname));
+  const pageRoute = resolvePageRoute(encodedPathname);
+  const filename = path.resolve(root, '.' + (pageRoute || coaRoute ? '/index.html' : pathname));
   if (!filename.startsWith(root + path.sep)) {
     response.writeHead(403); response.end('Forbidden'); return;
   }

@@ -41,6 +41,7 @@ node server.mjs --watch
 
 - 英文品牌首页，沿用现有的 AssayNova Logo、海军蓝与青绿色。
 - 响应式布局、手机导航、服务介绍、送检步骤、FAQ。
+- 原生 History API 单页导航：Home、Testing Methods、About us、Verify COA、Contact us 为独立视图。普通站内导航保留同一文档；修饰键、新标签页、下载、外链和未知路径仍由浏览器原生处理。
 - COA Lookup Code 精确查询：`AN-7K9Q-2M4X` 与 `AN-8P6R-3N5Y` 分别打开不同的公开样例报告页。支持大小写和首尾空格处理，不做模糊匹配或默认首条回退。
 - 独立报告页、浏览器前进/后退、打印 / 保存示例 PDF、复制当前查找码或同源报告链接；剪贴板失败时显示可全选的手动复制文本。
 - 无需账户的请求表单：必填联系邮箱，保留校验、草稿保存及 Saved drafts 查看详情。Email notifications 明确标为 Not connected；保存只发生在当前设备，不会发送请求或邮件。
@@ -61,7 +62,23 @@ COA Lookup Code 与报告编号、送检请求编号是不同的标识。普通�
 
 每个报告的样品、批次、日期、结果、保留时间、版本和发布状态均绑定所选记录。身份结果使用明确的 outcome：匹配时显示确认标记，部分匹配使用中性色/琥珀色且不显示成功勾选。曲线明确标为共用示意图，不是该报告的实测图谱。
 
-报告页重新查找失败会清除当前报告及复制/打印控件，进入相应的未找到 URL；格式错误或空白输入使用固定的 `/coa/not-found`，不把原始输入拼进路径。刷新和浏览器前进/后退保持同样的结果。首页查找失败保留行内提示。未知 `/coa/<查找码>` 地址返回 HTTP 404 和可恢复的页面外壳；缺失图片、脚本和无关路径继续返回普通 404。服务器仅为单个 COA 路径段提供页面路由，不提供任意文件读取或通配站点回退。
+报告页重新查找失败会清除当前报告及复制/打印控件，进入相应的未找到 URL；格式错误或空白输入使用固定的 `/coa/not-found`，不把原始输入拼进路径。刷新和浏览器前进/后退保持同样的结果。Verify COA 页查找失败保留行内提示。未知 `/coa/<查找码>` 地址返回 HTTP 404 和可恢复的页面外壳；缺失图片、脚本和无关路径继续返回普通 404。服务器仅为明确列出的页面及单个 COA 路径段提供页面路由，不提供任意文件读取或通配站点回退。
+
+## 页面与兼容链接
+
+| 路径 | 独立视图 |
+| --- | --- |
+| `/` | Home：品牌介绍、流程、公开样例报告与 FAQ |
+| `/testing-methods` | 完整检测服务与请求草稿入口 |
+| `/about` | 现有服务介绍与报告访问说明 |
+| `/verify` | 完整 COA Lookup Code 查找表单 |
+| `/contact` | 待配置的联系邮箱占位说明，不提供发送功能 |
+
+这些路径均支持直接打开、刷新、前进/后退与 GET/HEAD。末尾斜杠在客户端归一化；重复选择当前页面不会新增历史记录。常规导航更新页面标题、可见视图和两个导航菜单的 `aria-current`，并聚焦新页面标题；前进/后退不强制滚到顶部，保留浏览器默认滚动恢复。
+
+旧 `/#testing`、`/#verify` 会转到 `/testing-methods`、`/verify`，旧链接点击只增加一个规范历史条目。`/#process` 仍定位首页流程，`#main` 跳过导航链接保持原生行为。有效的旧 `/?coa=报告编号` 进入对应 COA；未知旧编号进入 Verify COA 并显示提示。页内请求/Saved drafts 弹窗保留其下方页面路径；History 导航关闭旧弹窗，隐私控制器在页面切换中保留单一实例和既有选择。
+
+页面白名单位于 `dist/routes.js`，浏览器与本地服务器共用。将来增加页面需同步维护视图、标题、导航和 HTTP 测试；实际部署托管需配置同样精确的路径重写与 404 状态规则。当前没有安装框架、路由依赖或新增后端。
 
 当前固定报告内容是公开的虚构样例，不是有效检测报告。请求仅保存于当前浏览器的 localStorage（最多 50 条），不会发送给实验室。新草稿引用使用 `AN-REQ-*`；保留既有存储键和旧 `AN-DEMO-*` 草稿，不清空旧记录。
 
@@ -78,6 +95,7 @@ dist/index.html     页面结构
 dist/styles.css     响应式样式
 dist/app.js         表单、弹窗、本机草稿与公开报告交互
 dist/data.js        样例报告、查找和请求校验
+dist/routes.js      浏览器与服务器共用的明确页面白名单
 dist/assets/        现有品牌图片
 server.mjs          零依赖的本地静态服务器
 start.ps1           PowerShell 启动入口
@@ -92,6 +110,7 @@ docs/email-notifications.md  邮件未连接的现状与后续设计边界
 node --check server.mjs
 node --check dist/app.js
 node --check dist/data.js
+node --check dist/routes.js
 node --check dev-client.js
 node --check dev/locator.js
 node --check dev/prompt.js
