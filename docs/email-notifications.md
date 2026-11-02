@@ -1,0 +1,25 @@
+# Account-free requests and email notifications
+
+Account work is cancelled. The current product uses a contact email and local request drafts; it does not implement accounts, authentication, a database, request delivery or email delivery.
+
+## Current boundary
+
+- The request form requires a syntactically valid contact email. It does not verify ownership of that mailbox.
+- **Email notifications / Not connected** is a static status. No provider, adapter, credentials, SDK, send API, `mailto` action or outgoing request has been added.
+- **Save request** validates the form and saves a draft only in this browser's `assaynova.prototype.requests.v1` localStorage key, capped at 50 records. Existing records and IDs remain compatible. Saving is neither laboratory submission nor email delivery.
+- Confirmation and draft detail show **Draft · Not sent** and explain that notifications are not connected. Saved email addresses stay inside the existing private `success-details` region and are escaped before rendering.
+- **Saved drafts** lists only drafts on the current device. It has no Reports tab, account workspace, cloud history or customer-owned report list. Public fictional sample reports remain accessible from the homepage and COA Lookup, with their sample disclaimers.
+- The HTTP server remains read-only. No backend, provider connection or account implementation exists. No existing device draft is uploaded automatically.
+
+## Design after a provider is chosen
+
+The following is future work, not an implemented interface or provider adapter:
+
+1. Define an explicit customer submission step with server-side validation, durable request storage, clear accepted/failed outcomes and duplicate-submission handling. Keep local drafts compatible, and require an explicit user action before uploading any old draft.
+2. Design transactional operator notifications and customer acknowledgements/status updates around the actual request lifecycle. Make sender identity, recipient handling and notification expectations clear. Never describe delivery as successful before the provider confirms the relevant outcome.
+3. Keep provider keys and other secrets in server environment configuration only. Do not place them in browser code, localStorage, committed files or customer-visible diagnostics.
+4. Specify delivery retries, idempotency, failure handling and safe operational monitoring. Distinguish a saved request from queued, accepted, delivered or failed mail; provider responses and user-facing status must remain truthful.
+5. Add proportionate anti-abuse measures and input limits before exposing a submission/send endpoint. Define retention, access controls and handling of contact details against the real operating requirements.
+6. Design secure report links and disclosure rules for real customer reports. Today's public sample COA routes are not customer authorization or a secure-link design; decide expiry, revocation and access rules when the provider and real report workflow are selected.
+
+Transactional request handling must not depend on optional analytics or marketing consent. Do not reuse optional marketing permission as authorization to submit requests or send transactional messages. Any separate marketing use needs its own reviewed purpose and choices. This placeholder does not authorize implementing these future systems.

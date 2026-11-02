@@ -1,4 +1,4 @@
-import { DEMO_REPORT, DEMO_REPORTS, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from './data.js';
+import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from './data.js';
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
@@ -58,12 +58,12 @@ function renderSubmission(service = 'comprehensive') {
   openDialog(`<div class="dialog-padding">
     <p class="dialog-eyebrow">YOUR NEXT ANSWER STARTS HERE</p>
     <h2 class="dialog-title" id="dialog-title">Tell us about your sample.</h2>
-    <p class="dialog-description">A few details to bring your testing request into focus.</p>
-    <p class="demo-notice">Save a draft on this device. Saving does not send your request to the laboratory.</p>
+    <p class="dialog-description">No account needed. Add a contact email and the details of your testing request.</p>
+    <div class="demo-notice email-connection"><p class="email-connection-heading"><strong>Email notifications</strong><span class="email-connection-status">Not connected</span></p><p>No email is sent. Save a draft on this device. Saving does not send your request to the laboratory.</p></div>
     <form class="submission-form" id="submission-form" novalidate>
       <div class="form-grid">
         <div class="form-field"><label for="request-name">Your name</label><input id="request-name" name="name" required maxlength="100" autocomplete="name" placeholder="Full name" aria-describedby="error-name"><span class="field-error" id="error-name"></span></div>
-        <div class="form-field"><label for="request-email">Email address</label><input id="request-email" name="email" type="email" required maxlength="160" autocomplete="email" placeholder="you@company.com" aria-describedby="error-email"><span class="field-error" id="error-email"></span></div>
+        <div class="form-field"><label for="request-email">Contact email</label><input id="request-email" name="email" type="email" required maxlength="160" autocomplete="email" placeholder="you@company.com" aria-describedby="request-email-help error-email"><small class="field-helper" id="request-email-help">For future request updates once email is connected. No email is sent now.</small><span class="field-error" id="error-email"></span></div>
         <div class="form-field full"><label for="request-company">Company or laboratory <span>Optional</span></label><input id="request-company" name="company" maxlength="160" autocomplete="organization" placeholder="Your organization"></div>
         <div class="form-field full"><label for="request-sample">Sample or project name</label><input id="request-sample" name="sample" required maxlength="160" placeholder="A name you will recognize" aria-describedby="error-sample"><span class="field-error" id="error-sample"></span></div>
         <div class="form-field"><label for="request-service">Testing service</label><select id="request-service" name="service" aria-describedby="error-service">${Object.entries(SERVICE_NAMES).map(([key, name]) => `<option value="${key}"${key === service ? ' selected' : ''}>${name}</option>`).join('')}</select><span class="field-error" id="error-service"></span></div>
@@ -103,13 +103,13 @@ function renderSubmission(service = 'comprehensive') {
 
 function renderSuccess(request) {
   openDialog(`<div class="dialog-padding"><div class="success-icon">${icon('check')}</div>
-    <p class="dialog-eyebrow">REQUEST SAVED</p>
-    <h2 class="dialog-title" id="dialog-title">One step closer to clarity.</h2>
+    <p class="dialog-eyebrow">SAVED DRAFT</p>
+    <h2 class="dialog-title" id="dialog-title">Draft saved on this device.</h2>
     <p class="dialog-description">Your request draft is saved on this device. It has not been sent to the laboratory.</p>
     <div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div>
-    <dl class="success-details"><div><dt>Sample</dt><dd>${escape(request.sample)}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Number of samples</dt><dd>${request.quantity}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div></dl>
-    <p class="demo-notice">Reopen this draft from the client portal on this device.</p>
-    <div class="dialog-buttons"><button class="button button-teal" data-action="requests">View in client portal ${icon('arrow', true)}</button><button class="text-button" data-action="close">Back to website</button></div></div>`);
+    <dl class="success-details"><div><dt>Sample</dt><dd>${escape(request.sample)}</dd></div><div><dt>Contact email</dt><dd>${escape(request.email)}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Number of samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div></dl>
+    <p class="demo-notice">Email notifications: Not connected. No email is sent. Reopen this draft from Saved drafts on this device.</p>
+    <div class="dialog-buttons"><button class="button button-teal" data-action="requests">View saved drafts ${icon('arrow', true)}</button><button class="text-button" data-action="close">Back to website</button></div></div>`);
 }
 
 function reportChart() {
@@ -184,35 +184,20 @@ function navigateToReport(code) {
   window.scrollTo(0, 0);
 }
 
-function renderPortal(tab = 'reports') {
+function renderPortal() {
   const requests = readRequests();
-  const reportRows = DEMO_REPORTS.filter((report) => findReportByLookupCode(report.lookupCode) === report).map((report) => `<tr><td><strong>${escape(report.sample)}</strong><small>${escape(report.id)}</small><small>COA Lookup Code: ${escape(report.lookupCode)}</small></td><td>${escape(report.method)}<small>Sample report</small></td><td><span class="state-tag">Published</span></td><td><a class="text-button" href="${reportPath(report.lookupCode)}" data-action="report" data-lookup-code="${report.lookupCode}">Open COA ${icon('arrow-up', true)}</a></td></tr>`).join('');
-  const requestRows = requests.map((request) => `<tr><td><strong>${escape(request.sample)}</strong><small>${escape(request.id)}</small></td><td>${escape(SERVICE_NAMES[request.service])}<small>${request.quantity} sample${request.quantity === 1 ? '' : 's'}</small></td><td><span class="state-tag state-pending">Draft request</span></td><td><button class="text-button" data-action="request-detail" data-id="${escape(request.id)}">Details ${icon('arrow-up', true)}</button></td></tr>`).join('');
-  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">YOUR CONNECTED LAB WORKSPACE</p><h2 class="dialog-title" id="dialog-title">A place for every detail.</h2><p class="dialog-description">Keep your sample requests and reports together.</p>
-    <p class="demo-notice">Request drafts are saved on this device and have not been sent to the laboratory.</p>
-    <div class="portal-toolbar"><div class="portal-tabs" role="tablist" aria-label="Workspace sections"><button class="portal-tab" id="tab-reports" role="tab" data-tab="reports" aria-selected="${tab === 'reports'}" aria-controls="panel-reports" tabindex="${tab === 'reports' ? '0' : '-1'}">Reports</button><button class="portal-tab" id="tab-requests" role="tab" data-tab="requests" aria-selected="${tab === 'requests'}" aria-controls="panel-requests" tabindex="${tab === 'requests' ? '0' : '-1'}">My requests (${requests.length})</button></div><button class="button button-dark" data-action="submit">${icon('plus', true)} New request</button></div>
-    <div class="portal-panel" id="panel-reports" role="tabpanel" aria-labelledby="tab-reports" tabindex="0"${tab !== 'reports' ? ' hidden' : ''}><table class="portal-table"><thead><tr><th scope="col">SAMPLE / REPORT / LOOKUP CODE</th><th scope="col">ANALYSIS</th><th scope="col">STATUS</th><th scope="col">REPORT</th></tr></thead><tbody>${reportRows}</tbody></table><p class="portal-bottom-note">Open a report to view its COA Lookup Code and full certificate.</p></div>
-    <div class="portal-panel" id="panel-requests" role="tabpanel" aria-labelledby="tab-requests" tabindex="0"${tab !== 'requests' ? ' hidden' : ''}>${requests.length ? `<table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">REQUESTED SERVICE</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead><tbody>${requestRows}</tbody></table><p class="portal-bottom-note">Drafts saved on this device. They have not been sent to the laboratory.</p>` : `<div class="empty-state">${icon('flask')}<h3>Your next sample starts here.</h3><p>Save a request to keep your sample details together.</p><button class="button button-teal" data-action="submit">New request ${icon('arrow', true)}</button></div>`}</div></div>`, true);
-}
-
-function selectPortalTab(tab, focus = false) {
-  dialog.querySelectorAll('[data-tab]').forEach((button) => {
-    const selected = button.dataset.tab === tab;
-    button.setAttribute('aria-selected', String(selected));
-    button.tabIndex = selected ? 0 : -1;
-    if (focus && selected) button.focus();
-  });
-  for (const name of ['reports', 'requests']) {
-    const panel = document.querySelector(`#panel-${name}`);
-    if (panel) panel.hidden = name !== tab;
-  }
+  const requestRows = requests.map((request) => `<tr><td><strong>${escape(request.sample)}</strong><small>${escape(request.id)}</small></td><td>${escape(SERVICE_NAMES[request.service])}<small>${escape(request.quantity)} sample${request.quantity === 1 ? '' : 's'}</small></td><td><span class="state-tag state-pending">Draft · Not sent</span></td><td><button class="text-button" data-action="request-detail" data-id="${escape(request.id)}">Details ${icon('arrow-up', true)}</button></td></tr>`).join('');
+  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">ON THIS DEVICE</p><h2 class="dialog-title" id="dialog-title">Saved drafts</h2><p class="dialog-description">No account needed. These drafts are stored only in this browser.</p>
+    <p class="demo-notice">Not sent to the laboratory. Email notifications are not connected, so no email is sent.</p>
+    <div class="portal-toolbar"><h3 class="drafts-heading" id="saved-drafts-title">${requests.length} saved draft${requests.length === 1 ? '' : 's'}</h3><button class="button button-dark" data-action="submit">${icon('plus', true)} New request</button></div>
+    <section class="portal-panel" id="panel-requests" aria-labelledby="saved-drafts-title" tabindex="0">${requests.length ? `<table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">REQUESTED SERVICE</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead><tbody>${requestRows}</tbody></table><p class="portal-bottom-note">Drafts stay on this device until you clear this site's data. They have not been sent to the laboratory.</p>` : `<div class="empty-state">${icon('flask')}<h3>No saved drafts yet.</h3><p>Save a request draft to keep its details on this device. Nothing is sent.</p><button class="button button-teal" data-action="submit">New request ${icon('arrow', true)}</button></div>`}</section></div>`, true);
 }
 
 function renderRequestDetail(id) {
   const request = readRequests().find((entry) => entry.id === id);
-  if (!request) { renderPortal('requests'); return; }
+  if (!request) { renderPortal(); return; }
   openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">${escape(request.sample)}</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div>
-    <dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Email</dt><dd>${escape(request.email)}</dd></div><div><dt>Organization</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div><div><dt>Notes</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl><p class="demo-notice">Saved on this device. Not sent to the laboratory.</p><div class="dialog-buttons"><button class="button button-dark" data-action="requests">Back to requests ${icon('arrow', true)}</button></div></div>`);
+    <dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Contact email</dt><dd>${escape(request.email)}</dd></div><div><dt>Organization</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div><div><dt>Notes</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl><p class="demo-notice">Saved on this device. Not sent to the laboratory. Email notifications: Not connected. No email is sent.</p><div class="dialog-buttons"><button class="button button-dark" data-action="requests">Back to saved drafts ${icon('arrow', true)}</button></div></div>`);
 }
 
 async function copyReportValue(kind) {
@@ -247,7 +232,7 @@ document.addEventListener('click', (event) => {
     report: () => navigateToReport(target.dataset.lookupCode),
     home: () => { history.pushState(null, '', '/'); renderCurrentRoute(true); window.scrollTo(0, 0); },
     portal: () => renderPortal(),
-    requests: () => renderPortal('requests'),
+    requests: () => renderPortal(),
     close: closeDialog,
     print: () => { if (activeReport) window.print(); },
     'copy-code': () => copyReportValue('code'),
@@ -258,19 +243,6 @@ document.addEventListener('click', (event) => {
   };
   actions[target.dataset.action]?.();
 });
-dialog.addEventListener('click', (event) => {
-  const tab = event.target.closest('[data-tab]');
-  if (tab) selectPortalTab(tab.dataset.tab);
-});
-dialog.addEventListener('keydown', (event) => {
-  if (!event.target.matches('[data-tab]')) return;
-  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-    event.preventDefault();
-    const tab = event.key === 'Home' ? 'reports' : event.key === 'End' ? 'requests' : event.target.dataset.tab === 'reports' ? 'requests' : 'reports';
-    selectPortalTab(tab, true);
-  }
-});
-
 document.addEventListener('submit', (event) => {
   if (!event.target.matches('#verify-form,#coa-lookup-form')) return;
   event.preventDefault();
