@@ -10,6 +10,7 @@ let toastTimer;
 const pageViews = Object.fromEntries(PAGE_ROUTES.map((route) => [route.path, document.querySelector('#' + route.view)]));
 const coaView = document.querySelector('#coa-view');
 let renderedURL = '';
+let historyFocusRevision = 0;
 let activeReport = null;
 let pendingCopyKind = null;
 
@@ -31,6 +32,7 @@ function showToast(message) {
 }
 
 function openDialog(html, wide = false) {
+  historyFocusRevision++;
   if (!dialog.open) previousFocus = document.activeElement;
   dialog.classList.toggle('wide', wide);
   dialogContent.innerHTML = html;
@@ -159,6 +161,7 @@ function routeLocation(address) {
 }
 
 function renderCurrentRoute(focus = false, legacyError = false) {
+  historyFocusRevision++;
   const current = routeLocation(location.href);
   if (current.url.href !== location.href) history.replaceState(null, '', current.url.pathname + current.url.search + current.url.hash);
   activeReport = null;
@@ -202,6 +205,7 @@ function scrollToCurrentHash() {
 }
 
 function navigateToURL(address) {
+  historyFocusRevision++;
   const current = routeLocation(address);
   if (current.url.href !== location.href) history.pushState(null, '', current.url.pathname + current.url.search + current.url.hash);
   const previous = new URL(renderedURL, location.href);
@@ -333,11 +337,22 @@ function handleHistoryNavigation() {
   const previous = new URL(renderedURL, location.href);
   const current = routeLocation(location.href);
   if (previous.pathname === current.url.pathname && previous.search === current.url.search) {
+    historyFocusRevision++;
     if (current.url.href !== location.href) history.replaceState(null, '', current.url.pathname + current.url.search + current.url.hash);
     renderedURL = location.href;
     return; // Native fragment focus/scroll and existing view state remain intact.
   }
-  renderCurrentRoute(true); // preventScroll focus; browser owns history scroll restoration.
+  renderCurrentRoute();
+  const revision = historyFocusRevision;
+  const expectedURL = location.href;
+  const headingId = current.coa ? 'report-title' : (current.page || PAGE_ROUTES[0]).heading;
+  requestAnimationFrame(() => {
+    // Native fragment focusing runs after popstate. Restore only the still-current
+    // page heading; a later fragment, navigation or dialog cancels this callback.
+    if (revision !== historyFocusRevision || location.href !== expectedURL || dialog.open) return;
+    const heading = document.getElementById(headingId);
+    if (heading && !heading.closest('[hidden]')) heading.focus({ preventScroll: true });
+  });
 }
 
 window.addEventListener('popstate', handleHistoryNavigation);

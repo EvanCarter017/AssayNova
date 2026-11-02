@@ -100,6 +100,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   let printed = 0;
   let focused = null;
   const scrolls = [];
+  const frames = [];
   let nextTarget = 0;
   let mediaChange;
   let currentURL = new URL(initialPath, 'http://127.0.0.1:4999');
@@ -155,6 +156,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     }
   }
   node('#report-title').parent = node('#coa-view');
+  node('#main').setAttribute('tabindex', '-1');
   node('#mobile-nav').hidden = true;
   node('.menu-toggle').setAttribute('aria-expanded', 'false');
   const window = {
@@ -172,7 +174,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => { if (storageBlocked) throw new Error('Synthetic storage restriction'); storage.set(key, value); } },
     crypto: { randomUUID: () => '12345678-0000-0000-0000-000000000000' },
     FormData: class { constructor(form) { this.form = form; } entries() { return Object.entries(this.form.values); } },
-    setTimeout: () => 0, clearTimeout() {}
+    requestAnimationFrame: (callback) => frames.push(callback), setTimeout: () => 0, clearTimeout() {}
   });
   function dispatch(target, options = {}) {
     document.activeElement = target;
@@ -204,10 +206,16 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     hash(hash, { focusTarget } = {}) {
       const oldURL = currentURL.href;
       history.pushState(null, '', hash);
-      if (focusTarget) node('#' + focusTarget).focus(); // Native fragment focus must survive the router's events.
       windowEvents.get('popstate')({ state: null });
+      // Actual browsers perform fragment focusing after popstate listeners. An
+      // unfocusable fragment target clears synchronous route focus to the body.
+      if (focusTarget) {
+        assert.ok(node('#' + focusTarget).hasAttribute('tabindex') || focusTarget === 'report-title');
+        node('#' + focusTarget).focus();
+      } else node('body').focus();
       windowEvents.get('hashchange')({ oldURL, newURL: currentURL.href });
     },
+    flushFrames() { for (const callback of frames.splice(0)) callback(0); },
     hashEvent() { windowEvents.get('hashchange')(); },
     submitLookup(value, publicView = true) {
       const input = node(publicView ? '#coa-lookup-code' : '#report-id');
@@ -501,6 +509,7 @@ test('native report fragments preserve skip focus, report DOM and pending manual
     assert.equal(field.value, pendingLink);
     assert.equal(app.clickLink('#main').defaultPrevented, false);
     app.hash('#main', { focusTarget: 'main' });
+    app.flushFrames();
     assert.equal(app.location.hash, '#main');
     assert.equal(app.focused(), '#main');
     assert.equal(report.htmlWrites, writes, 'Native fragments must not replace report controls');
@@ -510,6 +519,7 @@ test('native report fragments preserve skip focus, report DOM and pending manual
     assert.equal(fallback.hidden, false);
     assert.equal(app.clickLink('/coa/' + code + '#report-title').defaultPrevented, false);
     app.hash('#report-title', { focusTarget: 'report-title' });
+    app.flushFrames();
     assert.equal(app.location.hash, '#report-title');
     assert.equal(app.focused(), '#report-title');
     assert.equal(report.htmlWrites, writes);
@@ -532,15 +542,32 @@ test('native legacy fragment event pairs canonicalize once and focus the new vis
     app.hash(hash);
     assert.equal(app.location.pathname, path);
     assert.equal(app.location.hash, '');
+    assert.equal(app.focused(), 'body', 'Native fragment steps occur after synchronous app listeners');
+    app.flushFrames();
     assert.equal(app.focused(), heading);
     assert.deepEqual(app.visibleViews(), [view]);
     assert.equal(app.nodes.get('#coa-view').htmlWrites, reportWrites + 1, 'The event pair renders only once');
     assert.equal(app.scrolls.length, scrollCount, 'Native history rendering must not force scroll-to-top');
     assert.equal(app.entryCount(), 2);
     app.travel(-1);
+    app.flushFrames();
     assert.equal(app.location.pathname, '/');
     assert.equal(app.focused(), '#hero-title');
   }
+});
+
+test('deferred native-history focus is cancelled by a later skip fragment or request dialog', () => {
+  const skip = bootApp('/');
+  skip.hash('#testing');
+  skip.hash('#main', { focusTarget: 'main' });
+  skip.flushFrames();
+  assert.equal(skip.focused(), '#main', 'A pending page heading must not steal native skip-link focus');
+  const dialog = bootApp('/');
+  dialog.hash('#verify');
+  dialog.click('submit');
+  dialog.flushFrames();
+  assert.equal(dialog.focused(), '#dialog-title');
+  assert.equal(dialog.nodes.get('#app-dialog').open, true);
 });
 
 test('page navigation closes stale dialogs, mobile request/drafts return to menu and routes remain underneath dialogs', () => {

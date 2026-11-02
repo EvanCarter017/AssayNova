@@ -21,6 +21,7 @@ test('page markup has unique IDs and one static heading/view per declared page',
   const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8');
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(new Set(ids).size, ids.length, 'Static IDs must not be duplicated when sections move');
+  assert.match(html, /<main\b[^>]*id="main"[^>]*tabindex="-1"/, 'The native skip-link target must accept focus');
   for (const route of PAGE_ROUTES) {
     assert.ok(ids.includes(route.view));
     assert.match(html, new RegExp(`<h1[^>]*id="${route.heading}"[^>]*tabindex="-1"`));
