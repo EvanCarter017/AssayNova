@@ -20,10 +20,10 @@
 
 /* Header wordmark and navigation are scoped away from footer and reports. */
 .site-header .brand{width:164px;height:37px}.site-header .brand img{width:176px;left:-9px;top:-11px}
-.site-header .desktop-nav button{padding:0;background:transparent;font-size:12px;font-weight:500;color:#51646c}.site-header .desktop-nav button:hover{color:var(--teal)}.site-header .desktop-nav a:focus-visible,.site-header .desktop-nav button:focus-visible{outline:3px solid var(--teal);outline-offset:5px}
+.site-header .desktop-nav a,.site-header .desktop-nav button{font-size:16px}.site-header .desktop-nav button{padding:0;background:transparent;font-weight:500;color:#51646c}.site-header .desktop-nav button:hover{color:var(--teal)}.site-header .desktop-nav a:focus-visible,.site-header .desktop-nav button:focus-visible{outline:3px solid var(--teal);outline-offset:5px}
 @media(min-width:761px){.site-header .header-inner{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);column-gap:24px}.site-header .desktop-nav{justify-self:center;margin-left:0}.site-header .header-actions{justify-self:end}}
 @media(min-width:761px) and (max-width:1180px){.site-header .header-inner{column-gap:18px}.site-header .desktop-nav{gap:18px}}
-@media(min-width:761px) and (max-width:960px){.site-header .header-inner{column-gap:12px}.site-header .desktop-nav{gap:12px}.site-header .desktop-nav button{font-size:11px}}
+@media(min-width:761px) and (max-width:960px){.site-header .header-inner{column-gap:12px}.site-header .desktop-nav{gap:12px}.site-header .desktop-nav a,.site-header .desktop-nav button{font-size:14px}}
 @media(max-width:760px){.site-header .brand{width:140px;height:35px}.site-header .brand img{width:151px;left:-8px;top:-7px}}
 @media(max-width:390px){.site-header .brand{width:126px}.site-header .brand img{width:135px;left:-7px;top:-4px}}
 
