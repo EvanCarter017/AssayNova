@@ -132,7 +132,7 @@ function boot() {
       autoShow: true, disablePageInteraction: false, manageScriptTags: false, autoClearCookies: false, respectGpc: false,
       cookie: { name: POLICY.cookie, domain: '', path: '/', secure: true, sameSite: 'Lax', expiresAfterDays: POLICY.days, useLocalStorage: false },
       categories,
-      guiOptions: { consentModal: { layout: 'box wide', position: 'bottom right', equalWeightButtons: true }, preferencesModal: { layout: 'box', equalWeightButtons: true } },
+      guiOptions: { consentModal: { layout: 'bar inline', position: 'bottom', equalWeightButtons: true }, preferencesModal: { layout: 'box', equalWeightButtons: true } },
       onFirstConsent: actions.onVendorChoice, onChange: actions.onVendorChoice,
       onConsent: () => { refresh(); updateStatus(); },
       onModalShow: () => { applySignalToUI(true); updateStatus(); },
@@ -140,13 +140,13 @@ function boot() {
       onModalHide: ({ modalName }) => { if (modalName === 'preferencesModal') previousFocus?.isConnected && previousFocus.focus({ preventScroll: true }); },
       language: { default: 'en', translations: { en: {
         consentModal: {
-          title: optional ? 'Your privacy choices' : 'Only necessary storage',
-          description: optional ? 'Choose whether to allow the optional services listed in Privacy settings. Browsing and COA lookup work without optional services.' : 'We use a preference cookie to remember this notice. Requests are saved on this device only when you choose Save request. Analytics and advertising are not enabled. You can keep browsing before making a choice.',
-          ...(optional ? { acceptAllBtn: 'Accept all', acceptNecessaryBtn: 'Reject optional', showPreferencesBtn: 'Customize' } : { acceptNecessaryBtn: 'Continue', showPreferencesBtn: 'Privacy settings' })
+          title: 'Cookies & privacy',
+          description: optional ? 'Essential storage stays active with either choice. Choose whether to allow the optional services listed in Customize. You can browse and use COA lookup without optional services.' : 'Essential storage stays active with either choice. Analytics and advertising are currently disabled. Customize explains the storage we use. You can keep browsing before choosing.',
+          acceptAllBtn: 'Accept All', acceptNecessaryBtn: 'Reject All', showPreferencesBtn: 'Customize'
         },
         preferencesModal: {
           title: 'Privacy & cookie settings', closeIconLabel: 'Close privacy settings',
-          ...(optional ? { acceptAllBtn: 'Accept all', acceptNecessaryBtn: 'Reject optional', savePreferencesBtn: 'Save choices' } : { savePreferencesBtn: 'Continue' }),
+          acceptAllBtn: 'Accept All', acceptNecessaryBtn: 'Reject All', savePreferencesBtn: 'Save preferences',
           sections: [
             { title: 'Storage on this device', description: 'These settings explain cookies and browser storage used by this site. They do not delete saved request drafts. You can clear drafts using your browser’s site-data controls.' },
             { title: 'Necessary storage — always available', linkedCategory: 'necessary', description: 'Used to remember your privacy choice and to save requests when you explicitly choose Save request. Optional consent is never required to browse or use COA lookup.', cookieTable: { caption: 'Current storage inventory', headers: { name: 'Name', purpose: 'Purpose', retention: 'Retention' }, body: [

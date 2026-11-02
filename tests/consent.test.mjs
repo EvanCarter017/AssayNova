@@ -248,8 +248,8 @@ test('successful withdrawal also broadcasts denial, while passive rereads never 
   assert.equal(peer.commit(null, previous, previous, previous).saved, false, 'A passive reload has no explicit-action ticket');
 });
 
-function firstConsentHarness({ writable = true } = {}) {
-  const catalog = validateCatalog(CATALOG);
+function firstConsentHarness({ writable = true, catalog: input = CATALOG } = {}) {
+  const catalog = validateCatalog(input);
   const synchronization = createPreferenceSyncGuard(catalog);
   let internalCookie = {};
   let raw = '';
@@ -267,12 +267,15 @@ function firstConsentHarness({ writable = true } = {}) {
   return {
     actions, synchronization, results, order, readStored,
     raw: () => raw, writes: () => writes,
-    target({ first = true, synchronousCallback = false } = {}) {
+    target({ first = true, synchronousCallback = false, action = 'necessary' } = {}) {
       order.push('vendor-target');
       // CookieConsent 3.2.1 Je()/Fe(): first builds and writes the full wrapper.
       // Its UI handlers then defer Ve()->onFirstConsent, onConsent via rAF/timer.
-      internalCookie = { categories: ['necessary'], services: { necessary: [] }, revision: POLICY.revision, data: internalCookie.data ?? null };
-      if (first) write();
+      const categories = ['necessary', ...(action === 'all' ? catalog.purposes.map(({ id }) => id) : [])];
+      const services = { necessary: [], ...Object.fromEntries(catalog.purposes.map(({ id }) => [id, action === 'all' ? catalog.services.filter(({ purpose }) => purpose === id).map(({ id }) => id) : []])) };
+      const changed = JSON.stringify([categories, services]) !== JSON.stringify([internalCookie.categories, internalCookie.services]);
+      internalCookie = { categories, services, revision: POLICY.revision, data: internalCookie.data ?? null };
+      if (first || changed) write();
       if (synchronousCallback) this.firstCallback();
     },
     firstCallback() { order.push('onFirstConsent'); actions.onVendorChoice({ cookie: structuredClone(internalCookie) }); },
@@ -338,6 +341,55 @@ test('first-consent blocked-cookie failure stays honestly denied through the sam
   assert.equal(page.results[0].saved, false);
   assert.deepEqual(page.results[0].message, { version: 1, type: 'deny' });
   assert.equal(page.synchronization.blocked, true);
+});
+
+test('all versus necessary vendor actions persist exact distinct optional choices through the production adapter', async () => {
+  const catalog = fixtureCatalog(); // Inert declared services; the shipped catalog remains empty.
+  for (const action of ['all', 'necessary']) {
+    const page = firstConsentHarness({ catalog });
+    page.actions.begin();
+    await Promise.resolve();
+    assert.equal(page.writes(), 0, 'Intent alone cannot grant permission');
+    page.target({ action });
+    assert.equal(page.readStored(), null, 'A vendor selection without a matching receipt is denied');
+    page.actions.afterDispatch();
+    page.firstCallback();
+    const receipt = page.readStored();
+    assert.ok(receipt);
+    assert.deepEqual(page.consentCallback(), receipt);
+    assert.equal(page.results.length, 1);
+    assert.equal(page.results[0].saved, true);
+    const allowed = action === 'all';
+    const expected = deniedChoices(catalog);
+    for (const purpose of catalog.purposes) expected.purposes[purpose.id] = allowed;
+    for (const service of catalog.services) expected.services[service.id] = allowed;
+    assert.deepEqual(receipt.choices, expected);
+    assert.deepEqual(JSON.parse(decodeURIComponent(page.raw())).data, receipt, 'Exact persisted read-back includes the intended choices');
+    assert.equal(receipt.expiresAt - receipt.issuedAt, 180 * 86400000);
+    assert.deepEqual(effectivePermissions(catalog, receipt, false), Object.fromEntries(catalog.services.map(({ id }) => [id, allowed])));
+    assert.deepEqual(effectivePermissions(catalog, receipt, true), { measurement_test: allowed, promotion_test: false, sale_test: false, sharing_test: false });
+  }
+});
+
+test('necessary action withdraws a previously persisted all grant without touching necessary storage', () => {
+  const catalog = fixtureCatalog();
+  const page = firstConsentHarness({ catalog });
+  page.actions.begin();
+  page.target({ action: 'all' });
+  page.actions.afterDispatch();
+  assert.ok(Object.values(effectivePermissions(catalog, page.readStored(), false)).every(Boolean));
+  page.actions.begin();
+  page.target({ first: false, action: 'necessary' });
+  page.actions.afterDispatch();
+  const rejected = page.readStored();
+  assert.ok(rejected);
+  assert.ok(Object.values(effectivePermissions(catalog, rejected, false)).every((value) => !value));
+  assert.equal(page.results.at(-1).saved, true);
+  assert.deepEqual(page.results.at(-1).message, { version: 1, type: 'deny' });
+  const stored = JSON.parse(decodeURIComponent(page.raw()));
+  assert.deepEqual(stored.categories, ['necessary']);
+  assert.deepEqual(stored.services.necessary, []);
+  assert.ok(stored.data, 'The necessary preference receipt remains stored');
 });
 
 test('failed stop still cleans declared storage and requires reload before any restart', async () => {
