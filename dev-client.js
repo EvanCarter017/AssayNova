@@ -1,4 +1,7 @@
 // Development-only live updates. Injected by server.mjs --watch; never shipped in dist/.
+import { installLocator } from '/__dev/locator.js';
+
+const disposeLocator = installLocator();
 const events = new EventSource('/__dev/events');
 let connectedVersion;
 let seenRevision;
@@ -35,4 +38,4 @@ events.addEventListener('change', (event) => {
   console.info('[AssayNova] Styles updated:', paths.join(', '));
 });
 
-window.addEventListener('pagehide', () => events.close(), { once: true });
+window.addEventListener('pagehide', () => { events.close(); disposeLocator(); }, { once: true });

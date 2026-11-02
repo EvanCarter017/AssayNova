@@ -5,7 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
-const liveReload = process.argv.includes('--watch');
+const liveReload = process.argv.includes('--watch') && process.env.NODE_ENV !== 'production';
+const devTools = liveReload ? await import('./dev/context.mjs') : null;
+const devModules = new Map([
+  ['/__dev/client.js', './dev-client.js'],
+  ['/__dev/locator.js', './dev/locator.js'],
+  ['/__dev/prompt.js', './dev/prompt.js']
+]);
 const clients = new Set();
 const version = Date.now().toString();
 let revision = 0;
@@ -50,10 +56,25 @@ const server = http.createServer(async (request, response) => {
     response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ liveReload: true, version, revision, clients: clients.size, lastChange }));
     return;
   }
-  if (liveReload && pathname === '/__dev/client.js') {
-    const client = await readFile(new URL('./dev-client.js', import.meta.url));
-    response.writeHead(200, { 'Content-Type': mime['.js'], 'Cache-Control': 'no-store' });
-    response.end(request.method === 'HEAD' ? undefined : client);
+  if (liveReload && (devModules.has(pathname) || pathname === '/__dev/context')) {
+    try {
+      const contents = pathname === '/__dev/context'
+        ? JSON.stringify(devTools.sourceMetadata(path.dirname(root), await readFile(path.join(root, 'app.js'), 'utf8')))
+        : await readFile(new URL(devModules.get(pathname), import.meta.url));
+      response.writeHead(200, {
+        'Content-Type': pathname === '/__dev/context' ? mime['.json'] : mime['.js'],
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'
+      });
+      response.end(request.method === 'HEAD' ? undefined : contents);
+    } catch {
+      response.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end(request.method === 'HEAD' ? undefined : 'Development context unavailable');
+    }
+    return;
+  }
+  if (pathname === '/__dev' || pathname.startsWith('/__dev/')) {
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end(request.method === 'HEAD' ? undefined : 'Not found');
     return;
   }
   const filename = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
@@ -64,7 +85,9 @@ const server = http.createServer(async (request, response) => {
     if (!(await stat(filename)).isFile()) throw new Error('Not a file');
     let contents = await readFile(filename);
     if (liveReload && path.extname(filename) === '.html') {
-      contents = Buffer.from(contents.toString('utf8').replace('</body>', '<script type="module" src="/__dev/client.js"></script></body>'));
+      const sourceFile = 'dist/' + path.relative(root, filename).split(path.sep).join('/');
+      contents = Buffer.from(devTools.annotateHTML(contents.toString('utf8'), sourceFile)
+        .replace(/<\/body>/i, '<script type="module" src="/__dev/client.js"></script></body>'));
     }
     response.writeHead(200, {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',
