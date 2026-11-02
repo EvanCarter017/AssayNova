@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEMO_REPORT, DEMO_REPORTS, normalizeLookupCode, findReportByLookupCode, findLegacyReport, reportPath, resolveCOARoute, validateSubmission } from '../dist/data.js';
+import { runInNewContext } from 'node:vm';
+import * as reportData from '../dist/data.js';
+import { DEMO_REPORT, DEMO_REPORTS, normalizeLookupCode, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from '../dist/data.js';
 
 test('published immutable lookup codes identify two distinct fictional report records', () => {
   assert.ok(Object.isFrozen(DEMO_REPORTS));
@@ -17,12 +19,15 @@ test('published immutable lookup codes identify two distinct fictional report re
   assert.equal(first.id, 'AN-2026-0042');
   assert.equal(first.sample, 'Reference sample A');
   assert.equal(second.sample, 'Reference sample C');
-  for (const key of ['id', 'batch', 'purity', 'identity', 'retentionTime', 'lookupCode']) assert.notEqual(first[key], second[key], key);
+  for (const key of ['id', 'batch', 'purity', 'identity', 'identityOutcome', 'retentionTime', 'lookupCode']) assert.notEqual(first[key], second[key], key);
+  assert.equal(first.identityOutcome, 'matched');
+  assert.equal(second.identityOutcome, 'partial');
   for (const report of DEMO_REPORTS) {
     assert.ok(Object.isFrozen(report));
     assert.equal(report.publication, 'published');
     assert.notEqual(report.lookupCode, report.id);
-    assert.match(report.disclaimer, /Fictional demonstration data/);
+    assert.match(report.disclaimer, /Fictional data/);
+    assert.match(report.disclaimer, /Not a valid certificate of analysis/);
     assert.throws(() => { report.lookupCode = 'AN-0000-0000'; }, TypeError);
   }
 });
@@ -70,6 +75,169 @@ test('existing submission validation still validates requests independently from
 });
 
 const project = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const appSource = await readFile(path.join(project, 'dist/app.js'), 'utf8');
+
+test('failed lookup destinations are safe, refreshable not-found routes rather than stale report URLs', () => {
+  for (const value of ['AN-0000-0000', 'AN-2026-0042', '', '   ', '<script>alert(1)</script>', 'AN-7K9Q- 2M4X', '../secret?value=private']) {
+    const destination = lookupResultPath(value);
+    assert.match(destination, /^\/coa\/[A-Za-z0-9-]+$/);
+    assert.equal(resolveCOARoute(destination).report, null);
+    assert.ok(!destination.includes('private'));
+  }
+  assert.equal(lookupResultPath('an-8p6r-3n5y '), '/coa/AN-8P6R-3N5Y');
+});
+
+// Minimal DOM adapters run the actual app event handlers and History transitions.
+// They do not replace browser acceptance for layout, focus or native navigation.
+function bootApp(initialPath = '/', savedRequests = []) {
+  const documentEvents = new Map();
+  const windowEvents = new Map();
+  const nodes = new Map();
+  const copied = [];
+  const storage = new Map([['assaynova.prototype.requests.v1', JSON.stringify(savedRequests)]]);
+  let printed = 0;
+  let currentURL = new URL(initialPath, 'http://127.0.0.1:4999');
+  let entries = [currentURL.href];
+  let cursor = 0;
+  const node = (name) => {
+    if (nodes.has(name)) return nodes.get(name);
+    const events = new Map();
+    const value = {
+      id: name.replace(/^#/, ''), hidden: false, open: false, innerHTML: '', textContent: '', value: '', values: {}, events,
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener(type, callback) { events.set(type, callback); },
+      setAttribute() {}, removeAttribute() {}, focus() {}, select() {}, scrollIntoView() {},
+      close() { this.open = false; }, showModal() { this.open = true; },
+      querySelector(selector) { return node(selector); }, querySelectorAll() { return []; }
+    };
+    nodes.set(name, value);
+    return value;
+  };
+  const location = Object.fromEntries(['href', 'pathname', 'origin', 'search', 'hash'].map((key) => [key, '']));
+  for (const key of Object.keys(location)) Object.defineProperty(location, key, { get: () => currentURL[key] });
+  const history = {
+    pushState(_state, _title, destination) { currentURL = new URL(destination, currentURL); entries = entries.slice(0, cursor + 1); entries.push(currentURL.href); cursor++; },
+    replaceState(_state, _title, destination) { currentURL = new URL(destination, currentURL); entries[cursor] = currentURL.href; }
+  };
+  const document = {
+    title: 'AssayNova', activeElement: null, body: node('body'),
+    querySelector: node,
+    addEventListener(type, callback) {
+      if (!documentEvents.has(type)) documentEvents.set(type, []);
+      documentEvents.get(type).push(callback);
+    }
+  };
+  const window = {
+    location, scrollTo() {}, print() { printed++; },
+    addEventListener(type, callback) { windowEvents.set(type, callback); },
+    matchMedia() { return { addEventListener() {} }; }
+  };
+  const runnable = appSource.replace(/^import[^\n]+\r?\n/, '');
+  assert.notEqual(runnable, appSource);
+  runInNewContext(runnable, {
+    ...reportData, document, window, location, history, URL,
+    navigator: { clipboard: { writeText(value) { copied.push(value); return Promise.resolve(); } } },
+    localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    crypto: { randomUUID: () => '12345678-0000-0000-0000-000000000000' },
+    FormData: class { constructor(form) { this.form = form; } entries() { return Object.entries(this.form.values); } },
+    setTimeout: () => 0, clearTimeout() {}
+  });
+  return {
+    nodes, copied, location, printed: () => printed,
+    requests: () => JSON.parse(storage.get('assaynova.prototype.requests.v1')),
+    click(action, extra = {}) {
+      const target = { dataset: { action, ...extra }, closest() { return this; }, matches() { return false; } };
+      for (const callback of documentEvents.get('click') || []) callback({ target, button: 0, preventDefault() {} });
+    },
+    submitLookup(value, publicView = true) {
+      const input = node(publicView ? '#coa-lookup-code' : '#report-id');
+      input.value = value;
+      const form = { id: publicView ? 'coa-lookup-form' : 'verify-form', matches: () => true, querySelector: () => input };
+      for (const callback of documentEvents.get('submit') || []) callback({ target: form, preventDefault() {} });
+    },
+    saveRequest(values) {
+      const form = node('#submission-form');
+      form.values = values;
+      form.events.get('submit')({ preventDefault() {} });
+    },
+    travel(delta) {
+      cursor += delta;
+      assert.ok(cursor >= 0 && cursor < entries.length);
+      currentURL = new URL(entries[cursor]);
+      windowEvents.get('popstate')();
+    }
+  };
+}
+
+test('actual public form handlers clear A on failure, survive refresh/history and then select C exactly', () => {
+  const app = bootApp('/coa/AN-7K9Q-2M4X');
+  const view = app.nodes.get('#coa-view');
+  assert.ok(view.innerHTML.includes('AN-2026-0042'));
+  assert.ok(view.innerHTML.includes('identity-matched'));
+  assert.ok(view.innerHTML.includes('href="#i-check"'));
+  app.submitLookup('AN-0000-0000');
+  assert.equal(app.location.pathname, '/coa/AN-0000-0000');
+  assert.ok(view.innerHTML.includes('No COA found.'));
+  assert.ok(!view.innerHTML.includes('AN-2026-0042'));
+  assert.ok(!/data-action="(?:print|copy-code|copy-link)"/.test(view.innerHTML));
+  app.click('copy-code'); app.click('print');
+  assert.equal(app.copied.length, 0);
+  assert.equal(app.printed(), 0);
+  assert.ok(bootApp(app.location.pathname).nodes.get('#coa-view').innerHTML.includes('No COA found.'));
+  app.travel(-1);
+  assert.ok(view.innerHTML.includes('AN-2026-0042'));
+  app.travel(1);
+  assert.ok(view.innerHTML.includes('No COA found.'));
+  app.submitLookup('<script>private</script>');
+  assert.equal(app.location.pathname, '/coa/not-found');
+  assert.ok(bootApp(app.location.pathname).nodes.get('#coa-view').innerHTML.includes('No COA found.'));
+  app.submitLookup('an-8p6r-3n5y ');
+  assert.equal(app.location.pathname, '/coa/AN-8P6R-3N5Y');
+  assert.ok(view.innerHTML.includes('AN-2026-0043'));
+  assert.ok(view.innerHTML.includes('Reference sample C'));
+  assert.ok(view.innerHTML.includes('97.84%'));
+  assert.ok(view.innerHTML.includes('Partial match'));
+  assert.ok(view.innerHTML.includes('identity-neutral'));
+  assert.ok(!view.innerHTML.includes('href="#i-check"'));
+  assert.ok(!view.innerHTML.includes('AN-2026-0042'));
+  app.click('copy-code'); app.click('copy-link');
+  assert.deepEqual(app.copied, ['AN-8P6R-3N5Y', 'http://127.0.0.1:4999/coa/AN-8P6R-3N5Y']);
+  app.travel(-1); assert.ok(view.innerHTML.includes('No COA found.'));
+  app.travel(1); assert.ok(view.innerHTML.includes('AN-2026-0043'));
+  app.click('home');
+  assert.equal(view.innerHTML, '');
+  app.click('copy-code');
+  assert.equal(app.copied.length, 2);
+  app.submitLookup('bad input', false);
+  assert.equal(app.location.pathname, '/');
+  assert.match(app.nodes.get('#verify-error').textContent, /No COA found/);
+});
+
+test('normal product labels retain sample-report honesty and new drafts preserve old stored references', async () => {
+  const homeHTML = await readFile(path.join(project, 'dist/index.html'), 'utf8');
+  const text = (html) => html.replace(/<[^>]*>/g, ' ');
+  assert.ok(!homeHTML.includes('class="preview-bar"'));
+  assert.ok(!/\b(?:demo|concept|prototype|preview)\b/i.test(text(homeHTML)));
+  const sample = bootApp('/coa/AN-7K9Q-2M4X');
+  assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Sample report/);
+  assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Not a valid certificate of analysis/);
+  const old = { id: 'AN-DEMO-OLD12345', sample: 'Older saved sample', name: 'Saved name', email: 'saved@example.invalid', service: 'purity', quantity: 1 };
+  const app = bootApp('/', [old]);
+  app.click('requests');
+  assert.ok(app.nodes.get('#dialog-content').innerHTML.includes(old.id));
+  app.click('submit');
+  assert.match(text(app.nodes.get('#dialog-content').innerHTML), /Save request/);
+  assert.match(text(app.nodes.get('#dialog-content').innerHTML), /Saving does not send your request/);
+  app.saveRequest({ name: 'New saved name', email: 'new@example.invalid', company: '', sample: 'New saved sample', service: 'purity', quantity: '1', notes: '' });
+  assert.equal(app.requests().length, 2);
+  assert.match(app.requests()[0].id, /^AN-REQ-/);
+  assert.equal(app.requests()[1].id, old.id);
+  const confirmation = text(app.nodes.get('#dialog-content').innerHTML);
+  assert.match(confirmation, /Draft · Not sent/);
+  assert.match(confirmation, /has not been sent to the laboratory/);
+  assert.ok(!/\b(?:demo|concept|prototype|preview)\b/i.test(confirmation));
+});
+
 async function availablePort() {
   const socket = createServer();
   await new Promise((resolve, reject) => socket.listen(0, '127.0.0.1', resolve).once('error', reject));
@@ -136,7 +304,7 @@ for (const mode of ['default', 'production', 'watch']) {
         assert.equal((await fetch(base + route.toLowerCase())).status, 200);
         assert.equal((await fetch(base + route + '/')).status, 200);
       }
-      for (const route of ['/coa/AN-0000-0000', '/coa/AN-2026-0042', '/coa/unknown']) {
+      for (const route of ['/coa/AN-0000-0000', '/coa/AN-2026-0042', '/coa/unknown', '/coa/not-found']) {
         const response = await fetch(base + route);
         assert.equal(response.status, 404);
         assert.ok((await response.text()).includes('id="coa-view"'), 'Unknown code keeps a recoverable app shell');

@@ -2,30 +2,32 @@ const firstReport = Object.freeze({
   id: 'AN-2026-0042',
   lookupCode: 'AN-7K9Q-2M4X',
   publication: 'published',
-  version: '1.0 demo',
+  version: '1.0',
   sample: 'Reference sample A',
-  batch: 'DEMO-2401',
+  batch: 'SAMPLE-2401',
   received: '2026-10-26',
   issued: '2026-10-30',
   purity: '99.32%',
   identity: 'Consistent',
+  identityOutcome: 'matched',
   method: 'HPLC / LC–MS',
   status: 'Completed',
   retentionTime: '8.42 min',
-  disclaimer: 'Fictional demonstration data. This is not a valid certificate of analysis and must not be used for research, quality release, or purchasing decisions.'
+  disclaimer: 'Fictional data for illustration. Not a valid certificate of analysis.'
 });
 
 const secondReport = Object.freeze({
   id: 'AN-2026-0043',
   lookupCode: 'AN-8P6R-3N5Y',
   publication: 'published',
-  version: '1.0 demo',
+  version: '1.0',
   sample: 'Reference sample C',
-  batch: 'DEMO-2402',
+  batch: 'SAMPLE-2402',
   received: '2026-10-27',
   issued: '2026-10-31',
   purity: '97.84%',
-  identity: 'Illustrative match',
+  identity: 'Partial match',
+  identityOutcome: 'partial',
   method: 'HPLC / LC–MS',
   status: 'Completed',
   retentionTime: '9.16 min',
@@ -69,6 +71,13 @@ export function findLegacyReport(value) {
 export function reportPath(value) {
   const report = findReportByLookupCode(value);
   return report ? '/coa/' + report.lookupCode : null;
+}
+
+// Invalid input gets a fixed, recoverable URL rather than leaking it into a path.
+// Valid-looking unknown codes keep their exact identity, with no first-record fallback.
+export function lookupResultPath(value) {
+  const code = normalizeLookupCode(value);
+  return code ? '/coa/' + code : '/coa/not-found';
 }
 
 // Accept one narrow, URL-safe segment only; no asset or arbitrary-path fallback.
