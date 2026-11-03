@@ -69,3 +69,8 @@
 #home-view .home-reports>.container.home-section{padding-top:36px}
 @media(max-width:900px){#home-view .home-intents-bridge .home-intents{top:-18px;grid-template-columns:minmax(0,1fr);margin-bottom:-18px;padding:10px}#home-view .home-intents-bridge .home-intent{min-height:80px;padding:12px;border-right:0;border-bottom:1px solid #d9e7e2}#home-view .home-intents-bridge .home-intent:last-child{border-bottom:0}#home-view .home-reports>.container.home-section{padding-top:24px}}
 @media(max-width:760px){#home-view .home-intents-bridge .home-intent{gap:10px}#home-view .home-intents-bridge .home-intent>.icon:first-child{padding:6px}#home-view .home-intents-bridge .home-intent .home-intent-description{font-size:15px}}
+
+/* Report-to-process transition within the existing section padding. */
+#home-view #home-reports{position:relative;--home-report-fade-space:92px}#home-view #home-reports::after{content:"";position:absolute;inset-inline:0;bottom:calc(-1 * var(--home-report-fade-space));height:calc(2 * var(--home-report-fade-space));background:linear-gradient(180deg,var(--navy-deep),#fff);pointer-events:none}
+@media(max-width:1100px){#home-view #home-reports{--home-report-fade-space:72px}}
+@media(max-width:760px){#home-view #home-reports{--home-report-fade-space:56px}}
