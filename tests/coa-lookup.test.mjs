@@ -325,7 +325,7 @@ test('both saved-draft entry actions show only this device drafts with a keyboar
       const html = app.nodes.get('#dialog-content').innerHTML;
       assert.match(html, /id="dialog-title">Saved drafts/);
       assert.match(html, /stored only in this browser/);
-      assert.match(html, /Email notifications are not connected/);
+      assert.match(html, /These are saved drafts, not submitted requests/);
       assert.match(html, /<section[^>]*id="panel-requests"[^>]*tabindex="0"/);
       assert.ok(!/role="tab|panel-reports|data-tab=|data-action="report"|Reference sample [AC]|AN-2026-004[23]/.test(html));
       assert.ok(html.includes(saved.length ? old.id : 'No saved drafts yet.'));
@@ -350,9 +350,9 @@ test('actual request handler requires a contact email, associates its helper and
   const emailInput = formHTML.match(/<input[^>]*id="request-email"[^>]*>/)[0];
   for (const attribute of ['type="email"', 'required', 'maxlength="160"', 'autocomplete="email"', 'aria-describedby="request-email-help error-email"']) assert.ok(emailInput.includes(attribute));
   assert.match(formHTML, /id="request-email-help"/);
-  assert.match(formHTML, /Email notifications/);
-  assert.match(formHTML, /Not connected/);
-  assert.match(formHTML, /No email is sent/);
+  assert.match(formHTML, /Request draft/);
+  assert.match(formHTML, /On this device/);
+  assert.match(formHTML, /Saving does not send your request or email/);
   assert.ok(!/type="password"|data-action="(?:login|register|send)"|mailto:/.test(formHTML));
   const values = { name: 'Synthetic contact', email: '', company: '', sample: 'Synthetic new draft', service: 'purity', quantity: '1', notes: '' };
   for (const email of ['', 'invalid-address']) {
@@ -371,7 +371,7 @@ test('actual request handler requires a contact email, associates its helper and
   assert.equal(app.requests()[1].id, old.id);
   const confirmation = app.nodes.get('#dialog-content').innerHTML;
   assert.match(confirmation, /Draft · Not sent/);
-  assert.match(confirmation, /Email notifications: Not connected/);
+  assert.match(confirmation, /No email is sent when a draft is saved/);
   const details = confirmation.match(/<dl class="success-details">[\s\S]*?<\/dl>/)[0];
   assert.ok(details.includes('a&amp;b@example.invalid'));
   assert.ok(!confirmation.replace(details, '').includes('a&amp;b@example.invalid'));
