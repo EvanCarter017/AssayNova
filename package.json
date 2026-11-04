@@ -1,9 +1,9 @@
 {
-  "name": "assaynova-prototype",
+  "name": "assaynova",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AssayNova COA platform — local interface prototype",
+  "description": "AssayNova laboratory testing and COA platform",
   "scripts": {
     "dev": "node server.mjs --watch",
     "start": "node server.mjs",

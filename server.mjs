@@ -127,7 +127,7 @@ server.on('error', (error) => {
   process.exitCode = 1;
 });
 server.listen(port, '127.0.0.1', () => {
-  console.log(`AssayNova prototype ready\nLocal: http://127.0.0.1:${port}\nProject: ${path.dirname(root)}\nLive reload: ${liveReload ? 'ON — CSS updates in place; HTML/JS changes reload the page' : 'OFF (add --watch to enable)'}\nPress Ctrl+C to stop.`);
+  console.log(`AssayNova ready\nLocal: http://127.0.0.1:${port}\nProject: ${path.dirname(root)}\nLive reload: ${liveReload ? 'ON — CSS updates in place; HTML/JS changes reload the page' : 'OFF (add --watch to enable)'}\nPress Ctrl+C to stop.`);
   if (liveReload) {
     watcher = watch(root, { recursive: true }, (event, filename) => {
       if (!filename) return;
