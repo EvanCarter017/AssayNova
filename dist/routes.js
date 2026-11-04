@@ -1,7 +1,7 @@
 // Exact first-party page routes shared by the browser and the local HTTP server.
 export const PAGE_ROUTES = Object.freeze([
   { path: '/', view: 'home-view', heading: 'hero-title', title: 'AssayNova — A clearer view of your sample.' },
-  { path: '/testing-methods', view: 'testing-view', heading: 'testing-page-title', title: 'Testing Methods · AssayNova' },
+  { path: '/testing-methods', view: 'testing-view', heading: 'testing-page-title', title: 'Our Testing · AssayNova' },
   { path: '/about', view: 'about-view', heading: 'about-title', title: 'About us · AssayNova' },
   { path: '/verify', view: 'verify-view', heading: 'verify-page-title', title: 'Verify COA · AssayNova' },
   { path: '/contact', view: 'contact-view', heading: 'contact-title', title: 'Contact us · AssayNova' }
