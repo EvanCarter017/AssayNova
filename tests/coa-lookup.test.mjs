@@ -248,7 +248,7 @@ test('actual public form handlers clear A on failure, survive refresh/history an
     assert.ok(!html.includes(`/reports/${other}.`));
     assert.ok(!/AN-2026-004[23]|99\.32%|97\.84%|Consistent|Partial match|identity-matched|identity-neutral|Chromatogram schematic/.test(html));
     assert.ok(html.includes('Report fields'));
-    assert.ok(html.includes('[Product name]') && html.includes('[Authorized signature]'));
+    assert.ok(html.includes('[Product name]') && html.includes('Dylan Greene'));
     assert.equal((html.match(/<dd>--\.--%<\/dd>/g) || []).length, 3);
   };
   const app = bootApp('/coa/AN-7K9Q-2M4X');

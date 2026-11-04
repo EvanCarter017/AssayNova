@@ -104,9 +104,12 @@ python build_sample_coa.py --lookup-code AN-8P6R-3N5Y --output-dir ../../dist/re
 ```
 
 Only those exact code-to-filename mappings are accepted. Every analytical value,
-client/product field, date, plot and signoff is a placeholder. No private JSON,
-scientific raster or signature is read. The default product slot contains a
-code-native generic vial. Add `--product-image /path/to/image.png` (or a JPEG)
+client/product field, date and plot is a placeholder. The lower-left signature is
+the original Dylan Greene design, read from the portable template asset
+`assets/dylan-greene-signature.png`; `[Title]` remains a placeholder. This design
+exception does not digitally sign or approve a report. No private JSON or
+scientific raster is read. The default product slot contains a code-native
+generic vial. Add `--product-image /path/to/image.png` (or a JPEG)
 to replace it. The image is validated, fitted proportionally and embedded without
 publishing its filesystem path. Rendering is buffered before replacing outputs.
 

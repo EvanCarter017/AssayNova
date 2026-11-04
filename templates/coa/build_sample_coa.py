@@ -159,8 +159,13 @@ def make_drawing(code, product_image=None):
         rule(drawing, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
     title(drawing, "Method", ledger_x, 132, PAGE_W - MARGIN - ledger_x)
     text(drawing, "[Analytical method]", ledger_x, 112, 9, color=MUTED)
-    text(drawing, "[Authorized signature]", MARGIN, 60, 10, color=MUTED)
-    text(drawing, "[Title]", MARGIN, 42, 8.5, color=MUTED)
+    signature = ROOT / "assets" / "dylan-greene-signature.png"
+    with PILImage.open(signature) as image:
+        scale = min(150 / image.width, 44 / image.height)
+        signature_width, signature_height = image.width * scale, image.height * scale
+    drawing.add(Image(MARGIN + (168 - signature_width) / 2, 97 - signature_height,
+                      signature_width, signature_height, path=str(signature)))
+    text(drawing, "[Title]", MARGIN + 84, 42, 8.5, color=MUTED, anchor="middle")
     return drawing
 
 
@@ -280,7 +285,7 @@ def render(drawing, code):
     heading = ET.Element("{http://www.w3.org/2000/svg}title", {"id": "sample-title"})
     heading.text = "Placeholder sample COA - " + code
     description = ET.Element("{http://www.w3.org/2000/svg}desc", {"id": "sample-description"})
-    description.text = "Single-page portrait sample report with placeholder fields, results, analytical figures and signoff. COA Lookup Code " + code + ". A product image appears beside the analytical result placeholders."
+    description.text = "Single-page portrait sample report with placeholder fields, results and analytical figures, and the Dylan Greene handwritten signature at the lower left. COA Lookup Code " + code + ". A product image appears beside the analytical result placeholders."
     metadata = ET.Element("{http://www.w3.org/2000/svg}metadata")
     metadata.text = "Font outlines derived from Bitstream Vera; see bitstream-vera-license.txt."
     root.insert(0, heading); root.insert(1, description)
