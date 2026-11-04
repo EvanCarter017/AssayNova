@@ -10,6 +10,8 @@ import { runInNewContext } from 'node:vm';
 import * as reportData from '../dist/data.js';
 import * as pageData from '../dist/routes.js';
 import * as supportData from '../dist/support.js';
+import * as submissionData from '../dist/submission.js';
+import { createRequestPage } from '../dist/request-page.js';
 import { DEMO_REPORT, DEMO_REPORTS, normalizeLookupCode, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from '../dist/data.js';
 
 test('published immutable lookup codes identify two distinct fictional report records', () => {
@@ -105,6 +107,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   const scrolls = [];
   const frames = [];
   let nextTarget = 0;
+  let requestNodeSerial = 0;
   let mediaChange;
   let currentURL = new URL(initialPath, 'http://127.0.0.1:4999');
   let entries = [currentURL.href];
@@ -118,6 +121,20 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
       id: name.replace(/^#/, ''), tagName: 'DIV', parent: null, dataset: {}, isConnected: true, hidden: false, open: false, htmlWrites: 0, textContent: '', value: '', values: {}, events, attributes,
       get innerHTML() { return html; }, set innerHTML(value) {
         html = value; this.htmlWrites++;
+        if (name === '#request-flow') {
+          for (const [key, child] of [...nodes]) if (child.parent === this) { child.isConnected = false; nodes.delete(key); }
+          const decode = (text) => text.replace(/&(amp|lt|gt|quot|#39);/g, (_match, entity) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]);
+          for (const match of value.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)) {
+            const attrs = [...match[2].matchAll(/([^\s=/>]+)(?:="([^"]*)")?/g)].map(([, key, value]) => [key, decode(value || '')]);
+            const id = attrs.find(([key]) => key === 'id')?.[1];
+            const child = node(id ? '#' + id : 'request-node-' + requestNodeSerial++);
+            child.parent = this; child.tagName = match[1].toUpperCase(); child.isConnected = true;
+            child.attributes.clear(); child.dataset = {};
+            for (const [key, value] of attrs) { child.setAttribute(key, value); if (key.startsWith('data-')) child.dataset[key.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value; }
+            child.disabled = child.hasAttribute('disabled'); child.name = child.getAttribute('name') || '';
+            child.textContent = decode(value.slice(match.index + match[0].length).split('<')[0]);
+          }
+        }
         if (name === '#dialog-content') {
           for (const [key, child] of [...nodes]) if (key === '#recovery-form' || key.startsWith('#support-')) { child.isConnected = false; nodes.delete(key); }
           if (value.includes('id="recovery-form"')) {
@@ -135,14 +152,23 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
       classList: { add() {}, remove() {}, toggle() {} },
       addEventListener(type, callback) { events.set(type, callback); },
       setAttribute(key, value) { attributes.set(key, String(value)); }, getAttribute(key) { return attributes.get(key) ?? null; }, hasAttribute(key) { return attributes.has(key); }, removeAttribute(key) { attributes.delete(key); },
-      focus() { focused = name; document.activeElement = this; }, select() {}, scrollIntoView() { scrolls.push(this.id); },
-      matches(selector) { return selector.split(',').some((item) => item === 'a[href]' ? this.tagName === 'A' && attributes.has('href') : item === '[data-action]' ? !!this.dataset.action : item === '[data-recovery-action]' ? !!this.dataset.recoveryAction : item === '[hidden]' ? this.hidden : item.startsWith('#') && this.id === item.slice(1)); },
+      focus() { focused = name; document.activeElement = this; }, select() {}, remove() { this.isConnected = false; }, scrollIntoView() { scrolls.push(this.id); },
+      matches(selector) { return selector.split(',').some((item) => {
+        if (item === 'a[href]') return this.tagName === 'A' && attributes.has('href');
+        if (item === '[data-action]') return !!this.dataset.action;
+        if (item === '[data-recovery-action]') return !!this.dataset.recoveryAction;
+        if (item === '[hidden]') return this.hidden;
+        if (item.startsWith('#')) return this.id === item.slice(1);
+        if (item.startsWith('.')) return (attributes.get('class') || '').split(/\s+/).includes(item.slice(1));
+        const parts = [...item.matchAll(/\[([^\]=]+)(?:="([^"]*)")?\]/g)];
+        return parts.length > 0 && parts.every(([, key, value]) => value === undefined ? attributes.has(key) : attributes.get(key) === value);
+      }); },
       closest(selector) { for (let current = this; current; current = current.parent) if (current.matches(selector)) return current; return null; },
       close() { this.open = false; events.get('close')?.(); }, showModal() { this.open = true; },
       elements: { namedItem(key) { return node((name === '#recovery-form' ? '#support-' : '#request-') + key); } },
       requestSubmit() { for (const callback of documentEvents.get('submit') || []) callback({ target: this, preventDefault() {} }); },
-      querySelector(selector) { return selector === '[aria-invalid=true]' ? [...nodes.values()].find((item) => item.attributes.get('aria-invalid') === 'true') : selector === 'input[name="lookupCode"]' ? node(this.id === 'verify-form' ? '#report-id' : '#coa-lookup-code') : node(selector); },
-      querySelectorAll(selector) { return [...nodes.values()].filter((item) => selector === '[aria-invalid]' ? item.attributes.has('aria-invalid') : selector === '.field-error' && item.id.startsWith('error-')); }
+      querySelector(selector) { if (this.id === 'request-flow') return [...nodes.values()].find(item => item.parent === this && item.isConnected && item.matches(selector)) || null; return selector === '[aria-invalid=true]' ? [...nodes.values()].find((item) => item.attributes.get('aria-invalid') === 'true') : selector === 'input[name="lookupCode"]' ? node(this.id === 'verify-form' ? '#report-id' : '#coa-lookup-code') : node(selector); },
+      querySelectorAll(selector) { if (this.id === 'request-flow') return [...nodes.values()].filter(item => item.parent === this && item.isConnected && item.matches(selector)); return [...nodes.values()].filter((item) => selector === '[aria-invalid]' ? item.attributes.has('aria-invalid') : selector === '.field-error' && item.id.startsWith('error-')); }
     };
     nodes.set(name, value);
     return value;
@@ -167,6 +193,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   for (const route of pageData.PAGE_ROUTES) {
     node('#' + route.heading).parent = node('#' + route.view);
     for (const kind of ['desktop', 'mobile']) {
+      if (route.path === '/submit-sample') continue;
       const link = node(`${kind}-nav-${route.path}`);
       link.tagName = 'A'; link.setAttribute('href', route.path);
       if (kind === 'mobile') link.parent = node('#mobile-nav');
@@ -186,7 +213,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   assert.notEqual(runnable, appSource);
   const unexpectedNetwork = (...args) => { networkCalls.push(args); throw new Error('This draft-only workflow must not send network requests'); };
   runInNewContext(runnable, {
-    ...reportData, ...pageData, ...supportData, document, window, location, history, URL,
+    ...reportData, ...pageData, ...supportData, ...submissionData, createRequestPage, document, window, location, history, URL,
     navigator: { clipboard: { writeText(value) { copied.push(value); if (clipboardWrite) return clipboardWrite(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
     fetch: unexpectedNetwork, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
     localStorage: {
@@ -198,9 +225,25 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     FormData: class { constructor(form) { this.form = form; } entries() { return Object.entries(this.form.values); } },
     requestAnimationFrame: (callback) => frames.push(callback), setTimeout: () => 0, clearTimeout() {}
   });
+  function setRequestField(key, value) {
+    const flow = node('#request-flow'); const field = flow.querySelector(`[data-rq-field="${key}"]`);
+    assert.ok(field, 'Expected request field ' + key); field.value = String(value);
+    flow.events.get('input')({ type: 'input', target: field });
+  }
+  function submitRequestStep() { const flow = node('#request-flow'); flow.events.get('submit')({ target: { id: 'request-step-form' }, preventDefault() {} }); }
+  function enterRequestContact(values) {
+    const flow = node('#request-flow');
+    const back = flow.querySelector('[data-rq-step="1"]'); assert.ok(back);
+    flow.events.get('click')({ target: back });
+    const first = flow.querySelectorAll('[data-rq-field]').find(field => field.dataset.rqField.endsWith(':name'));
+    const id = first.dataset.rqField.split(':')[1];
+    for (const [key, value] of Object.entries({ name: values.sample || 'Synthetic sample', service: values.service || 'purity', quantity: values.quantity || '1' })) setRequestField(`sample:${id}:${key}`, value);
+    submitRequestStep(); return !!flow.querySelector('[data-rq-field="email"]');
+  }
   function dispatch(target, options = {}) {
     document.activeElement = target;
     const event = { target, button: 0, defaultPrevented: false, ...options, preventDefault() { this.defaultPrevented = true; } };
+    if (target.closest('#request-flow')) node('#request-flow').events.get('click')?.(event);
     if (target.closest('#mobile-nav')) node('#mobile-nav').events.get('click')?.(event);
     for (const callback of documentEvents.get('click') || []) callback(event);
     return event;
@@ -249,10 +292,13 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     recoveryInput(key, value) { const field = node('#support-' + key); field.value = value; node('#recovery-form').events.get('input')({ target: field }); },
     saveRecovery() { node('#recovery-form').events.get('submit')({ preventDefault() {} }); },
     recoveryAction(action) { const target = node('recovery-action-' + nextTarget++); target.dataset.recoveryAction = action; return node('#recovery-form').events.get('click')({ target }); },
+    enterRequestContact(values = {}) { return enterRequestContact(values); },
     saveRequest(values) {
-      const form = node('#submission-form');
-      form.values = values;
-      form.events.get('submit')({ preventDefault() {} });
+      if (!enterRequestContact(values)) return;
+      for (const key of ['name', 'email', 'company', 'notes']) setRequestField(key, values[key] ?? '');
+      submitRequestStep();
+      const flow = node('#request-flow');
+      if (flow.querySelector('[data-rq-step="3"]')?.getAttribute('aria-current') === 'step') submitRequestStep();
     },
     travel(delta) {
       const oldURL = currentURL.href;
@@ -335,15 +381,16 @@ test('normal product labels retain sample-report honesty and new drafts preserve
   app.click('requests');
   assert.ok(app.nodes.get('#dialog-content').innerHTML.includes(old.id));
   app.click('submit');
-  assert.match(text(app.nodes.get('#dialog-content').innerHTML), /Save request/);
-  assert.match(text(app.nodes.get('#dialog-content').innerHTML), /Saving does not send your request/);
+  assert.equal(app.location.pathname, '/submit-sample');
+  assert.match(app.nodes.get('#request-flow').innerHTML, /Testing &amp; samples|Testing & samples/);
+  assert.equal(app.nodes.get('#app-dialog').open, false);
   app.saveRequest({ name: 'New saved name', email: 'new@example.invalid', company: '', sample: 'New saved sample', service: 'purity', quantity: '1', notes: '' });
   assert.equal(app.requests().length, 2);
   assert.match(app.requests()[0].id, /^AN-REQ-/);
   assert.equal(app.requests()[1].id, old.id);
-  const confirmation = text(app.nodes.get('#dialog-content').innerHTML);
+  const confirmation = text(app.nodes.get('#request-flow').innerHTML);
   assert.match(confirmation, /Draft · Not sent/);
-  assert.match(confirmation, /has not been sent to the laboratory/);
+  assert.match(confirmation, /Saving does not send your request or email/);
   assert.ok(!/\b(?:demo|concept|prototype|preview)\b/i.test(confirmation));
 });
 
@@ -367,47 +414,38 @@ test('both saved-draft entry actions show only this device drafts with a keyboar
     app.click('request-detail', { id: 'missing-synthetic-id' });
     assert.equal(app.nodes.get('#dialog-content').innerHTML, firstView);
     app.click('submit');
-    assert.match(app.nodes.get('#dialog-content').innerHTML, /id="submission-form"/);
+    assert.equal(app.location.pathname, '/submit-sample');
+    assert.match(app.nodes.get('#request-flow').innerHTML, /id="request-step-form"/);
+    assert.equal(app.nodes.get('#app-dialog').open, false);
     app.click('close');
     assert.equal(app.nodes.get('#app-dialog').open, false);
     assert.equal(app.networkCalls.length, 0);
   }
 });
 
-test('actual request handler requires a contact email, associates its helper and saves an unverified unsent local draft', () => {
+test('actual independent request requires a contact email and saves an unverified unsent local draft', () => {
   const old = { id: 'AN-DEMO-KEEP001', sample: 'Synthetic older draft', email: 'older@example.invalid', service: 'purity', quantity: 1 };
   const app = bootApp('/', [old]);
-  app.click('submit');
-  const formHTML = app.nodes.get('#dialog-content').innerHTML;
-  const emailInput = formHTML.match(/<input[^>]*id="request-email"[^>]*>/)[0];
-  for (const attribute of ['type="email"', 'required', 'maxlength="160"', 'autocomplete="email"', 'aria-describedby="request-email-help error-email"']) assert.ok(emailInput.includes(attribute));
-  assert.match(formHTML, /id="request-email-help"/);
-  assert.match(formHTML, /Request draft/);
-  assert.match(formHTML, /On this device/);
-  assert.match(formHTML, /Saving does not send your request or email/);
+  app.click('submit'); app.enterRequestContact();
+  const formHTML = app.nodes.get('#request-flow').innerHTML;
+  const emailInput = formHTML.match(/<input[^>]*id="rq-email"[^>]*>/)[0];
+  for (const attribute of ['type="email"', 'required', 'maxlength="160"', 'autocomplete="email"', 'aria-describedby="rq-email-help rq-email-error"']) assert.ok(emailInput.includes(attribute));
+  assert.match(formHTML, /Use the contact address you want associated/);
   assert.ok(!/type="password"|data-action="(?:login|register|send)"|mailto:/.test(formHTML));
   const values = { name: 'Synthetic contact', email: '', company: '', sample: 'Synthetic new draft', service: 'purity', quantity: '1', notes: '' };
   for (const email of ['', 'invalid-address']) {
     app.saveRequest({ ...values, email });
-    assert.match(app.nodes.get('#error-email').textContent, /valid email address/);
-    assert.equal(app.nodes.get('#request-email').attributes.get('aria-invalid'), 'true');
-    assert.equal(app.focused(), '#request-email');
-    assert.deepEqual(app.requests(), [old]);
+    assert.match(app.nodes.get('#rq-email-error').textContent, /valid email address|contact email/);
+    assert.equal(app.nodes.get('#rq-email').getAttribute('aria-invalid'), 'true');
+    assert.equal(app.focused(), '#rq-email'); assert.deepEqual(app.requests(), [old]);
   }
   app.saveRequest({ ...values, email: '  a&b@example.invalid  ' });
-  assert.equal(app.nodes.get('#request-email').attributes.has('aria-invalid'), false);
-  assert.equal(app.requests().length, 2);
-  assert.equal(app.requests()[0].email, 'a&b@example.invalid');
-  assert.equal(app.requests()[0].status, 'Draft request');
-  assert.match(app.requests()[0].id, /^AN-REQ-/);
-  assert.equal(app.requests()[1].id, old.id);
-  const confirmation = app.nodes.get('#dialog-content').innerHTML;
-  assert.match(confirmation, /Draft · Not sent/);
-  assert.match(confirmation, /No email is sent when a draft is saved/);
-  const details = confirmation.match(/<dl class="success-details">[\s\S]*?<\/dl>/)[0];
-  assert.ok(details.includes('a&amp;b@example.invalid'));
-  assert.ok(!confirmation.replace(details, '').includes('a&amp;b@example.invalid'));
-  assert.equal(app.networkCalls.length, 0);
+  assert.equal(app.requests().length, 2); assert.equal(app.requests()[0].email, 'a&b@example.invalid');
+  assert.equal(app.requests()[0].version, 2); assert.equal(app.requests()[0].status, 'Draft request'); assert.match(app.requests()[0].id, /^AN-REQ-/); assert.equal(app.requests()[1].id, old.id);
+  const confirmation = app.nodes.get('#request-flow').innerHTML;
+  assert.match(confirmation, /Request draft/); assert.match(confirmation, /On this device/); assert.match(confirmation, /Draft · Not sent/); assert.match(confirmation, /Saving does not send your request or email/); assert.match(confirmation, /No email is sent when a draft is saved/);
+  assert.ok(confirmation.includes('a&amp;b@example.invalid'));
+  assert.match(confirmation, /data-request-private/); assert.equal(app.networkCalls.length, 0);
 });
 
 test('saved detail escapes supplied legacy strings and keeps the email in the private success-details region', () => {
@@ -440,8 +478,8 @@ test('local save keeps the 50-draft cap and reports blocked storage without subm
   const blocked = bootApp('/', [saved[0]], { storageBlocked: true });
   blocked.click('submit');
   blocked.saveRequest(values);
-  assert.match(blocked.nodes.get('#submission-error').textContent, /could not save/);
-  assert.match(blocked.nodes.get('#dialog-content').innerHTML, /id="submission-form"/);
+  assert.match(blocked.nodes.get('#rq-errors').textContent, /could not save/);
+  assert.match(blocked.nodes.get('#request-flow').innerHTML, /id="request-step-form"/);
   assert.deepEqual(blocked.requests(), [saved[0]]);
   assert.equal(app.networkCalls.length + blocked.networkCalls.length, 0);
 });
@@ -451,7 +489,7 @@ test('actual SPA anchors select one view/title/active navigation without replaci
     const direct = bootApp(route.path);
     assert.deepEqual(direct.visibleViews(), ['#' + route.view]);
     assert.equal(direct.document.title, route.title);
-    assert.equal(direct.navLinks.filter((link) => link.getAttribute('aria-current') === 'page').length, 2);
+    assert.equal(direct.navLinks.filter((link) => link.getAttribute('aria-current') === 'page').length, route.path === '/submit-sample' ? 0 : 2);
     const before = direct.entryCount();
     assert.equal(direct.clickLink(route.path).defaultPrevented, true);
     assert.equal(direct.entryCount(), before);
@@ -468,12 +506,12 @@ test('actual SPA anchors select one view/title/active navigation without replaci
   }
   const scrollCount = app.scrolls.length;
   app.travel(-1);
-  assert.equal(app.location.pathname, '/verify');
-  assert.equal(app.document.title, 'Verify COA · AssayNova');
+  assert.equal(app.location.pathname, pageData.PAGE_ROUTES.at(-2).path);
+  assert.equal(app.document.title, pageData.PAGE_ROUTES.at(-2).title);
   app.hashEvent();
   assert.equal(app.scrolls.length, scrollCount, 'Back/Forward and its hash event must not force scroll-to-top');
   app.travel(1);
-  assert.deepEqual(app.visibleViews(), ['#contact-view']);
+  assert.deepEqual(app.visibleViews(), ['#request-view']);
 });
 
 test('actual anchor interception preserves modified, nonprimary, external, target, download, unknown and skip-link defaults', () => {
@@ -588,7 +626,7 @@ test('native legacy fragment event pairs canonicalize once and focus the new vis
   }
 });
 
-test('deferred native-history focus is cancelled by a later skip fragment or request dialog', () => {
+test('deferred native-history focus is cancelled by a later skip fragment or request page', () => {
   const skip = bootApp('/');
   skip.hash('#testing');
   skip.hash('#main', { focusTarget: 'main' });
@@ -598,18 +636,18 @@ test('deferred native-history focus is cancelled by a later skip fragment or req
   dialog.hash('#verify');
   dialog.click('submit');
   dialog.flushFrames();
-  assert.equal(dialog.focused(), '#dialog-title');
-  assert.equal(dialog.nodes.get('#app-dialog').open, true);
+  assert.equal(dialog.focused(), '#request-page-title');
+  assert.equal(dialog.nodes.get('#app-dialog').open, false);
 });
 
-test('page navigation closes stale dialogs, mobile request/drafts return to menu and routes remain underneath dialogs', () => {
+test('request navigation uses its own page while saved-draft dialogs and mobile menu retain focus behavior', () => {
   for (const route of pageData.PAGE_ROUTES) {
     const app = bootApp(route.path);
     const event = app.click('submit');
-    assert.equal(app.location.pathname, route.path);
-    assert.equal(app.nodes.get('#app-dialog').open, true);
-    app.click('close');
-    assert.equal(app.document.activeElement, event.target, 'Desktop close restores the exact trigger');
+    assert.equal(app.location.pathname, '/submit-sample');
+    assert.equal(app.nodes.get('#app-dialog').open, false);
+    assert.equal(app.focused(), '#request-page-title');
+    if (route.path !== '/submit-sample') { app.travel(-1); app.flushFrames(); assert.equal(app.focused(), '#' + route.heading); }
     app.openMenu();
     app.click('portal', {}, { mobile: true });
     assert.equal(app.nodes.get('#mobile-nav').hidden, true);
@@ -702,7 +740,7 @@ for (const mode of ['default', 'production', 'watch']) {
         const response = await fetch(base + route);
         assert.equal(response.status, 200);
         assert.match(response.headers.get('content-type'), /text\/html/);
-        assert.match(response.headers.get('content-security-policy'), /script-src 'self'/);
+        assert.equal(response.headers.get('content-security-policy'), "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
         const html = await response.text();
         assert.ok(html.includes('id="coa-view"'));
         assert.ok(html.includes('src="/app.js"'));
@@ -905,7 +943,7 @@ test('Nova Support ignores late clipboard outcomes after close, replacement, inp
     assert.equal(fallback.hidden, true, action);
     if (action === 'save') assert.match(latest, /^Draft saved/);
     if (action === 'new-copy') assert.match(latest, /^Request details copied/);
-    if (action === 'replace') { assert.equal(form.isConnected, false); assert.match(app.nodes.get('#dialog-content').innerHTML, /id="submission-form"/); }
+    if (action === 'replace') { assert.equal(app.nodes.get('#app-dialog').open, false); assert.equal(app.location.pathname, '/submit-sample'); assert.match(app.nodes.get('#request-flow').innerHTML, /id="request-step-form"/); }
     assert.equal(app.networkCalls.length, 0);
   }
 });
@@ -929,17 +967,12 @@ test('Nova Support rejects malformed saved drafts and safely prefills hostile te
   assert.equal(app.networkCalls.length, 0);
 });
 
-test('request dialog keeps service presets and native grouped fields with Cancel returning focus', () => {
-  const app = bootApp('/testing-methods');
-  const trigger = app.click('submit', { service: 'purity' }).target;
-  const html = app.nodes.get('#dialog-content').innerHTML;
-  assert.equal((html.match(/<fieldset\b/g) || []).length, 2);
-  assert.match(html, /<legend>Your details<\/legend>/);
-  assert.match(html, /<legend>Sample &amp; analysis<\/legend>/);
-  assert.match(html, /value="purity" selected/);
-  assert.match(html, /type="button" data-action="close">Cancel/);
-  app.click('close');
-  assert.equal(app.document.activeElement, trigger);
-  assert.equal(app.location.pathname, '/testing-methods');
-  assert.equal(app.networkCalls.length, 0);
+test('independent request keeps presets, native sample groups and browser Back/Forward focus', () => {
+  const app = bootApp('/testing-methods'); app.click('submit', { service: 'purity' });
+  assert.equal(app.location.pathname, '/submit-sample'); assert.equal(app.focused(), '#request-page-title'); assert.equal(app.nodes.get('#app-dialog').open, false);
+  const html = app.nodes.get('#request-flow').innerHTML;
+  assert.match(html, /<fieldset class="rq-sample"/); assert.match(html, /value="purity" selected/);
+  assert.match(html, /href="\/testing-methods">Back to Our Testing/);
+  app.travel(-1); app.flushFrames(); assert.equal(app.location.pathname, '/testing-methods'); assert.equal(app.focused(), '#testing-page-title');
+  app.travel(1); app.flushFrames(); assert.equal(app.location.pathname, '/submit-sample'); assert.equal(app.focused(), '#request-page-title'); assert.equal(app.networkCalls.length, 0);
 });

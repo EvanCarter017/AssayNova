@@ -1,4 +1,6 @@
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
+import * as promptHelpers from '../dev/prompt.js';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -84,7 +86,7 @@ test('intercepted primary gesture survives Alt release, cancels copy on Escape, 
 
 test('dynamic renderer provenance overrides copied HTML annotations and unavailable metadata stays honest', () => {
   const container = { querySelector: (selector) => selector === '.report-heading,.report-body' ? {} : null };
-  const target = { closest: () => container, getAttribute: (name) => name === 'data-an-dev-file' ? 'dist/index.html' : '63' };
+  const target = { closest: (selector) => selector === '#dialog-content' ? container : null, getAttribute: (name) => name === 'data-an-dev-file' ? 'dist/index.html' : '63' };
   const metadata = { renderers: { renderReport: { file: 'dist/app.js', line: 114, function: 'renderReport', precision: 'function-definition' } } };
   assert.equal(sourceHint(target, metadata).function, 'renderReport');
   assert.equal(sourceHint(target, metadata).line, 114);
@@ -249,4 +251,47 @@ test('watch event stream keeps CSS changes and closes cleanly', async () => {
       controller.abort();
     }
   });
+});
+
+test('request-private markup strips all identifying opening attributes including marked void images', () => {
+  for (const marker of ['data-request-private', 'data-request-private=""', 'data-request-private="yes"']) {
+    for (const html of [`<img ${marker} role="img" src="blob:SECRET_FILE" alt="SECRET_NAME" title="SECRET_EMAIL" id="SECRET_REF" class="SECRET_CLASS" name="SECRET_NAME">`, `<section><h2>Public heading</h2><div ${marker} id="SECRET_REF"><h3>SECRET_SAMPLE</h3><img src="blob:SECRET_FILE" alt="SECRET_NAME"><span>SECRET_EMAIL</span></div></section>`]) {
+      const clean = sanitizeMarkup(html);
+      assert.ok(!clean.includes('SECRET'), clean);
+      assert.ok(!/src=|alt=|title=|name=|data-request-private=/.test(clean), clean);
+      assert.match(clean, /content omitted/);
+      const prompt = buildPrompt({ htmlExcerpt: html, visibleText: 'Public heading', element: { tag: 'section' } });
+      assert.ok(!prompt.includes('SECRET'));
+    }
+  }
+});
+
+test('live locator masks request summary/review children and ancestors and returns honest dynamic provenance', async () => {
+  class Element {
+    constructor(tag, attributes = {}, children = []) { this.localName = tag; this.nodeType = 1; this.attributes = attributes; this.childNodes = children; this.id = attributes.id || ''; for (const child of children) child.parentElement = this; }
+    hasAttribute(name) { return Object.hasOwn(this.attributes, name); }
+    getAttribute(name) { return this.attributes[name] ?? null; }
+    matches(selector) { return selector.split(',').some(part => { if (part.startsWith('#')) return this.id === part.slice(1); if (part.startsWith('.')) return (this.attributes.class || '').split(/\s+/).includes(part.slice(1)); const attr = /^\[([^\]=]+)(?:="([^"]*)")?\]/.exec(part); return attr ? this.hasAttribute(attr[1]) && (attr[2] === undefined || this.getAttribute(attr[1]) === attr[2]) : this.localName === part; }); }
+    closest(selector) { for (let value = this; value; value = value.parentElement) if (value.matches(selector)) return value; return null; }
+  }
+  const text = value => ({ nodeType: 3, textContent: value });
+  const image = new Element('img', { 'data-request-private': '', src: 'blob:SECRET_FILE', alt: 'SECRET_FILENAME', role: 'img' });
+  const privateBlock = new Element('div', { 'data-request-private': '', title: 'SECRET_REF' }, [new Element('h3', {}, [text('SECRET_SAMPLE')]), text('SECRET_EMAIL'), image]);
+  const heading = new Element('h2', {}, [text('Public heading')]);
+  const root = new Element('section', { id: 'request-flow' }, [heading, privateBlock]);
+  const document = { createTreeWalker(target, _kind, filter) { const values = []; const collect = node => { if (node.nodeType === 3) values.push(node); else for (const child of node.childNodes) collect(child); }; collect(target); let i = 0; return { nextNode() { while (i < values.length) { const value = values[i++]; if (filter.acceptNode(value) === 1) return value; } return null; } }; } };
+  const source = (await readFile(path.join(project, 'dev/locator.js'), 'utf8')).replace(/^import[^\n]+\r?\n/, '').replace(/export function/g, 'function');
+  const context = { ...promptHelpers, Element, Node: { TEXT_NODE: 3 }, NodeFilter: { SHOW_TEXT: 4, FILTER_REJECT: 2, FILTER_ACCEPT: 1 }, document, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) };
+  runInNewContext(source + '\nglobalThis.actual = { privateContent, safeText, htmlExcerpt, sourceHint };', context);
+  assert.equal(context.actual.privateContent(image), true);
+  assert.equal(context.actual.safeText(root), 'Public heading');
+  for (const selected of [root, privateBlock, image]) {
+    const excerpt = context.actual.htmlExcerpt(selected);
+    assert.ok(!excerpt.includes('SECRET'), excerpt);
+    assert.ok(!buildPrompt({ htmlExcerpt: excerpt, visibleText: context.actual.safeText(selected) }).includes('SECRET'));
+  }
+  const hint = context.actual.sourceHint(image, { renderers: {} });
+  assert.equal(hint.precision, 'unavailable'); assert.equal(hint.file, undefined);
+  const outer = { closest: () => null, getAttribute: key => key === 'data-an-dev-file' ? 'dist/index.html' : '100' };
+  assert.equal(context.actual.sourceHint(outer, {}).line, 100);
 });

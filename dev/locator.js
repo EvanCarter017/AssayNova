@@ -1,7 +1,7 @@
 import { buildPrompt, boundedText, sanitizeAddress, sanitizeMarkup, STYLE_PROPERTIES } from './prompt.js';
 
 const actionableSelector = 'button,a[href],input,select,textarea,summary,[role="button"],[role="link"],[data-action]';
-const privateSelector = 'input,textarea,select,option,[contenteditable]:not([contenteditable="false"]),.success-details,.reference-box,#panel-requests';
+const privateSelector = 'input,textarea,select,option,[contenteditable]:not([contenteditable="false"]),[data-request-private],.success-details,.reference-box,#panel-requests';
 const omitted = '[private or editable content omitted]';
 
 // Keep the intercepted sequence latched through click, regardless of Alt release
@@ -35,6 +35,8 @@ function activeRenderer(container) {
 }
 
 export function sourceHint(target, metadata) {
+  const requestFlow = target.closest('#request-flow');
+  if (requestFlow && target !== requestFlow) return { precision: 'unavailable', note: 'Dynamic request-page child: no verified original template mapping is available.' };
   const publicView = target.closest('#coa-view');
   const container = publicView || target.closest('#dialog-content');
   if (container && target !== container) {

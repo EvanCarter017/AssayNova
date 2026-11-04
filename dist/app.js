@@ -1,10 +1,12 @@
 import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from './data.js';
 import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
 import { SUPPORT_DRAFT_KEY, normalizeSupport, validateSupport, parseSupportDraft, formatSupportRequest } from './support.js';
+import { REQUEST_DRAFT_KEY, readableRequests, effectiveReportRecipient, SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES } from './submission.js';
+import { createRequestPage } from './request-page.js';
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
-const storageKey = 'assaynova.prototype.requests.v1';
+const storageKey = REQUEST_DRAFT_KEY;
 const toast = document.querySelector('#toast');
 let previousFocus;
 let toastTimer;
@@ -19,11 +21,11 @@ const icon = (name, small = false) => `<svg class="icon${small ? ' small' : ''}"
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
 function readRequests() {
-  try {
-    const value = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    return Array.isArray(value) ? value.filter((request) => request && typeof request.id === 'string' && typeof request.sample === 'string' && Object.hasOwn(SERVICE_NAMES, request.service)).slice(0, 50) : [];
-  } catch { return []; }
+  try { return readableRequests(localStorage.getItem(storageKey)); }
+  catch { return []; }
 }
+
+const requestPage = createRequestPage(document.querySelector('#request-flow'), { storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, makeId: () => crypto.randomUUID(), openSavedDrafts: () => renderPortal() });
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -58,45 +60,14 @@ dialog.addEventListener('click', (event) => {
   if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeDialog();
 });
 
-function renderSubmission(service = 'comprehensive') {
-  if (!Object.hasOwn(SERVICE_NAMES, service)) service = 'comprehensive';
-  openDialog(`<div class="request-dialog">
-    <p class="dialog-eyebrow">SAMPLE REQUEST</p>
-    <h2 class="dialog-title" id="dialog-title">Tell us about your sample.</h2>
-    <p class="dialog-description">No account needed. Add a contact email and the details of your testing request.</p>
-    <form class="submission-form" id="submission-form" novalidate>
-      <fieldset class="request-group"><legend>Your details</legend><div class="form-grid"><div class="form-field"><label for="request-name">Your name</label><input id="request-name" name="name" required maxlength="100" autocomplete="name" placeholder="Full name" aria-describedby="error-name"><span class="field-error" id="error-name"></span></div><div class="form-field"><label for="request-email">Contact email</label><input id="request-email" name="email" type="email" required maxlength="160" autocomplete="email" placeholder="you@company.com" aria-describedby="request-email-help error-email"><small class="field-helper" id="request-email-help">Use the contact address you want associated with this request.</small><span class="field-error" id="error-email"></span></div><div class="form-field full"><label for="request-company">Company or laboratory <span>Optional</span></label><input id="request-company" name="company" maxlength="160" autocomplete="organization" placeholder="Your organization"></div></div></fieldset>
-      <fieldset class="request-group"><legend>Sample &amp; analysis</legend><div class="form-grid"><div class="form-field full"><label for="request-sample">Sample or project name</label><input id="request-sample" name="sample" required maxlength="160" placeholder="A name you will recognize" aria-describedby="error-sample"><span class="field-error" id="error-sample"></span></div><div class="form-field"><label for="request-service">Testing service</label><select id="request-service" name="service" aria-describedby="error-service">${Object.entries(SERVICE_NAMES).map(([key, name]) => `<option value="${key}"${key === service ? ' selected' : ''}>${name}</option>`).join('')}</select><span class="field-error" id="error-service"></span></div><div class="form-field"><label for="request-quantity">Number of samples</label><input id="request-quantity" name="quantity" type="number" min="1" max="100" step="1" value="1" required aria-describedby="error-quantity"><span class="field-error" id="error-quantity"></span></div><div class="form-field full"><label for="request-notes">What would you like to understand? <span>Optional</span></label><textarea id="request-notes" name="notes" maxlength="1200" placeholder="Add context, questions, or specific testing needs."></textarea></div></div></fieldset>
-      <div class="demo-notice email-connection"><p class="email-connection-heading"><strong>Request draft</strong><span class="email-connection-status">On this device</span></p><p>Saving does not send your request or email. Keep a draft on this device and return to it from Saved drafts.</p></div>
-      <p class="inline-error" id="submission-error" role="alert"></p>
-      <div class="form-footer"><p>Review your details before saving.</p><div class="request-actions"><button class="text-button" type="button" data-action="close">Cancel</button><button class="button button-teal" type="submit">Save request ${icon('arrow', true)}</button></div></div>
-    </form>
-  </div>`);
-  const form = document.querySelector('#submission-form');
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(form).entries());
-    for (const key of Object.keys(values)) values[key] = values[key].trim();
-    const errors = validateSubmission(values);
-    form.querySelectorAll('[aria-invalid]').forEach((input) => input.removeAttribute('aria-invalid'));
-    form.querySelectorAll('.field-error').forEach((element) => { element.textContent = ''; });
-    for (const [key, message] of Object.entries(errors)) {
-      const field = form.elements.namedItem(key);
-      field.setAttribute('aria-invalid', 'true');
-      document.querySelector(`#error-${key}`).textContent = message;
-    }
-    if (Object.keys(errors).length) { form.querySelector('[aria-invalid=true]').focus(); return; }
-    const request = {
-      id: `AN-REQ-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-      createdAt: new Date().toISOString(),
-      ...values,
-      quantity: Number(values.quantity),
-      status: 'Draft request'
-    };
-    try { localStorage.setItem(storageKey, JSON.stringify([request, ...readRequests()].slice(0, 50))); }
-    catch { document.querySelector('#submission-error').textContent = 'This browser could not save the request. Please enable local storage and try again.'; return; }
-    renderSuccess(request);
-  });
+function renderSubmission(service, reset = false) {
+  requestPage.activate({ service, reset });
+  navigateToURL('/submit-sample');
+}
+
+function resumeRequest(id) {
+  const request = readRequests().find(entry => entry.id === id);
+  if (requestPage.resume(request)) navigateToURL('/submit-sample');
 }
 
 function renderRecovery() {
@@ -289,6 +260,7 @@ function renderCurrentRoute(focus = false, legacyError = false) {
       document.title = 'COA not found · AssayNova';
     }
   } else document.title = page.title;
+  if (!current.coa && page.path === '/submit-sample') requestPage.activate();
   const activePath = current.coa ? '/verify' : page.path;
   for (const link of document.querySelectorAll('.desktop-nav a,.mobile-nav a')) {
     if (new URL(link.getAttribute('href'), location.href).pathname === activePath) link.setAttribute('aria-current', 'page');
@@ -324,16 +296,25 @@ function navigateToReport(code) { navigateToURL(lookupResultPath(code)); }
 
 function renderPortal() {
   const requests = readRequests();
-  const requestRows = requests.map((request) => `<tr><td><strong>${escape(request.sample)}</strong><small>${escape(request.id)}</small></td><td>${escape(SERVICE_NAMES[request.service])}<small>${escape(request.quantity)} sample${request.quantity === 1 ? '' : 's'}</small></td><td><span class="state-tag state-pending">Draft · Not sent</span></td><td><button class="text-button" data-action="request-detail" data-id="${escape(request.id)}">Details ${icon('arrow-up', true)}</button></td></tr>`).join('');
+  const requestRows = requests.map((request) => {
+    const multiple = request.version === 2;
+    const sample = multiple ? `${request.samples.length} sample entr${request.samples.length === 1 ? 'y' : 'ies'} · ${request.samples[0].name}` : request.sample;
+    const service = multiple && new Set(request.samples.map(entry => entry.service)).size > 1 ? 'Multiple testing services' : SERVICE_NAMES[request.service];
+    return `<tr><td><strong>${escape(sample)}</strong><small>${escape(request.id)}</small></td><td>${escape(service)}<small>${escape(request.quantity)} ${multiple ? (Number(request.quantity) === 1 ? 'planned unit' : 'planned units') : `sample${request.quantity === 1 ? '' : 's'}`}</small></td><td><span class="state-tag state-pending">Draft · Not sent</span></td><td><button class="text-button" data-action="request-detail" data-id="${escape(request.id)}">Details ${icon('arrow-up', true)}</button></td></tr>`;
+  }).join('');
   openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">ON THIS DEVICE</p><h2 class="dialog-title" id="dialog-title">Saved drafts</h2><p class="dialog-description">No account needed. These drafts are stored only in this browser.</p>
     <p class="demo-notice">These are saved drafts, not submitted requests. No email is sent when a draft is saved.</p>
-    <div class="portal-toolbar"><h3 class="drafts-heading" id="saved-drafts-title">${requests.length} saved draft${requests.length === 1 ? '' : 's'}</h3><button class="button button-dark" data-action="submit">${icon('plus', true)} New request</button></div>
-    <section class="portal-panel" id="panel-requests" aria-labelledby="saved-drafts-title" tabindex="0">${requests.length ? `<table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">REQUESTED SERVICE</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead><tbody>${requestRows}</tbody></table><p class="portal-bottom-note">Drafts stay on this device until you clear this site's data. They have not been sent to the laboratory.</p>` : `<div class="empty-state">${icon('flask')}<h3>No saved drafts yet.</h3><p>Save a request draft to keep its details on this device. Nothing is sent.</p><button class="button button-teal" data-action="submit">New request ${icon('arrow', true)}</button></div>`}</section></div>`, true);
+    <div class="portal-toolbar"><h3 class="drafts-heading" id="saved-drafts-title">${requests.length} saved draft${requests.length === 1 ? '' : 's'}</h3><button class="button button-dark" data-action="request-new">${icon('plus', true)} New request</button></div>
+    <section class="portal-panel" id="panel-requests" aria-labelledby="saved-drafts-title" tabindex="0">${requests.length ? `<table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">REQUESTED SERVICE</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead><tbody>${requestRows}</tbody></table><p class="portal-bottom-note">Drafts stay on this device until you clear this site's data. They have not been sent to the laboratory.</p>` : `<div class="empty-state">${icon('flask')}<h3>No saved drafts yet.</h3><p>Save a request draft to keep its details on this device. Nothing is sent.</p><button class="button button-teal" data-action="request-new">New request ${icon('arrow', true)}</button></div>`}</section></div>`, true);
 }
 
 function renderRequestDetail(id) {
   const request = readRequests().find((entry) => entry.id === id);
   if (!request) { renderPortal(); return; }
+  if (request.version === 2) {
+    openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">Your saved request.</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div><div data-request-private><dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Email</dt><dd>${escape(request.email)}</dd></div><div><dt>Company</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Report recipient</dt><dd>${escape(effectiveReportRecipient(request))}</dd></div><div><dt>Context</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl>${request.samples.map((sample, index) => `<section><h3>Sample ${index + 1} · ${escape(sample.name)}</h3><dl class="success-details"><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[sample.service])}</dd></div><div><dt>Planned units</dt><dd>${sample.quantity}</dd></div><div><dt>Batch / lot</dt><dd>${escape(sample.batch || 'Not provided')}</dd></div><div><dt>Form</dt><dd>${escape(SAMPLE_FORMS[sample.form])}</dd></div><div><dt>Stated amount</dt><dd>${escape(sample.amount || 'Not provided')}</dd></div><div><dt>Product image</dt><dd>${escape(IMAGE_CHOICES[sample.image])}${sample.image === 'include' ? ' · ' + escape(IMAGE_STYLES[sample.imageStyle]) : ''}</dd></div></dl></section>`).join('')}</div><p class="demo-notice">Draft · Not sent. Saved on this device; no request or email has been sent. Image files are not retained.</p><div class="dialog-buttons"><button class="button button-teal" data-action="request-resume" data-id="${escape(request.id)}">Resume editing</button><button class="button button-outline" data-action="request-new">New request</button><button class="text-button" data-action="requests">Back to saved drafts</button></div></div>`, true);
+    return;
+  }
   openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">${escape(request.sample)}</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div>
     <dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Contact email</dt><dd>${escape(request.email)}</dd></div><div><dt>Organization</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div><div><dt>Notes</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl><p class="demo-notice">Saved on this device. Not sent to the laboratory. No email is sent when a draft is saved.</p><div class="dialog-buttons"><button class="button button-dark" data-action="requests">Back to saved drafts ${icon('arrow', true)}</button></div></div>`);
 }
@@ -379,6 +360,8 @@ document.addEventListener('click', (event) => {
   closeMobileNavigation();
   const actions = {
     submit: () => renderSubmission(target.dataset.service),
+    'request-new': () => renderSubmission(target.dataset.service, true),
+    'request-resume': () => resumeRequest(target.dataset.id),
     'recover-report': () => renderRecovery(),
     report: () => navigateToReport(target.dataset.lookupCode),
     home: () => navigateToURL('/'),

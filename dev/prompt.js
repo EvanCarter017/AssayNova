@@ -82,11 +82,11 @@ export function sanitizeMarkup(value) {
     const knownPrivate = attributes.some((attribute) => {
       const name = attribute[1].toLowerCase();
       const content = attribute[2] ?? attribute[3] ?? attribute[4] ?? '';
-      return (name === 'id' && content === 'panel-requests') || (name === 'class' && content.split(/\s+/).some((item) => ['success-details', 'reference-box'].includes(item)));
+      return name === 'data-request-private' || (name === 'id' && content === 'panel-requests') || (name === 'class' && content.split(/\s+/).some((item) => ['success-details', 'reference-box'].includes(item)));
     });
     const redact = ['textarea', 'select', 'option'].includes(tag) || editable || knownPrivate;
     if (!blocked) {
-      const safe = attributes.filter((attribute) => safeAttributes.has(attribute[1].toLowerCase())).map((attribute) => {
+      const safe = attributes.filter((attribute) => redact ? ['role', 'type'].includes(attribute[1].toLowerCase()) : safeAttributes.has(attribute[1].toLowerCase())).map((attribute) => {
         const name = attribute[1].toLowerCase();
         let content = boundedText(attribute[2] ?? attribute[3] ?? attribute[4] ?? '', 180);
         if (name === 'href' || name === 'src') content = sanitizeAddress(content);
