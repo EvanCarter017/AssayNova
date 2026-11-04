@@ -525,53 +525,60 @@
 @media(max-width:1100px){#request-view .rq-header-panel{padding:30px}#request-view .rq-main{padding:24px}#request-view .rq-summary{padding:24px}#request-view .rq-totals>div{padding:14px 11px}}
 @media(max-width:600px){#request-view .rq-page-heading{padding:24px 0}#request-view .rq-header-panel{padding:25px 21px;border-radius:12px}#request-view h1{font-size:34px;line-height:1.15;letter-spacing:-.8px}#request-view .rq-header-intro{font-size:16px;margin-top:14px}#request-view .rq-header-meta{gap:14px;margin-top:18px}#request-view .rq-header-art{right:-110px;top:15px;opacity:.12}#request-view .rq-progress ol{gap:8px;margin-bottom:20px}#request-view .rq-progress ol:before{left:24px;right:24px;top:30px}#request-view .rq-progress button{padding:12px 9px;min-height:106px;border-radius:8px}#request-view .rq-main,#request-view .rq-summary{padding:20px 16px}#request-view .rq-sample,#request-view .rq-photo{padding:18px 14px}#request-view .rq-sample+ .rq-sample,#request-view .rq-photo+ .rq-photo{padding-top:18px}#request-view .rq-sample legend,#request-view .rq-photo legend{font-size:18px;padding-inline:6px;margin-left:-6px}#request-view .rq-totals>div{padding:16px 14px}#request-view .rq-totals dd{font-size:34px}}
 
-/* Contact service desk: page-local layout and interactions. */
-#contact-view .contact-intro{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:clamp(32px,6vw,80px);align-items:center;padding:56px 0 40px}
-#contact-view .contact-intro-copy,#contact-view .contact-availability,#contact-view .contact-channels article,#contact-view .contact-report-link>div{min-width:0}
-#contact-view .contact-kicker{font-size:14px;line-height:1.6;font-weight:600;letter-spacing:1.6px;color:#006f69}
-#contact-view h1{margin:20px 0 0;font-size:64px;line-height:1.08;font-weight:500;letter-spacing:-1.8px;white-space:normal;max-width:700px;color:#092d42}
-#contact-view .contact-description{font-size:17px;line-height:1.8;color:#536b72;max-width:600px;margin-top:22px}
-#contact-view .contact-availability{border-left:1px solid #d6e2dc;padding-left:32px}
-#contact-view .contact-availability h2{display:flex;gap:12px;align-items:center;font-size:18px;line-height:1.4;letter-spacing:-.2px;font-weight:600;color:#092d42}
-#contact-view .contact-availability .icon{width:24px;height:24px;color:#006f69;flex-shrink:0}
-#contact-view .contact-availability dl{display:grid;gap:22px;margin:24px 0 0}
-#contact-view .contact-availability dt{font-size:14px;line-height:1.6;color:#536b72}
-#contact-view .contact-availability dd{margin:6px 0 0;font-size:16px;line-height:1.7;color:#092d42}
-#contact-view .contact-channels{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);gap:24px;align-items:stretch}
-#contact-view .contact-channels article{padding:40px;border-radius:18px}
-#contact-view .contact-client{display:flex;flex-direction:column;background:#092d42;color:#fff}
-#contact-view .contact-support{background:#eef5f1;border:1px solid #d5e3dc;color:#092d42}
-#contact-view .contact-channel-label{display:flex;gap:12px;align-items:center;font-size:14px;line-height:1.6;letter-spacing:1px;font-weight:600;color:#006f69}
-#contact-view .contact-channel-label .icon{width:24px;height:24px;flex-shrink:0}
-#contact-view .contact-client .contact-channel-label{color:#a5e1d2}
-#contact-view .contact-channels h2{font-size:clamp(28px,2.7vw,34px);line-height:1.18;font-weight:500;letter-spacing:-.6px;margin-top:24px;max-width:470px}
-#contact-view .contact-client h2{color:#fff}
-#contact-view .contact-channel-description{font-size:16px;line-height:1.8;margin-top:20px;color:#536b72}
-#contact-view .contact-client .contact-channel-description{color:#d2e3e5}
-#contact-view .contact-email{display:inline-flex;align-items:center;align-self:flex-start;gap:12px;min-height:44px;max-width:100%;margin-top:22px;font-size:18px;line-height:1.6;font-weight:500;color:#00615c}
-#contact-view .contact-email span{min-width:0;overflow-wrap:anywhere}
-#contact-view .contact-email .icon{flex-shrink:0}
-#contact-view .contact-client .contact-email{color:#fff}
-#contact-view .contact-email:hover span{text-decoration:underline;text-underline-offset:4px}
-#contact-view .contact-client-actions{display:flex;flex-direction:column;align-items:flex-start;gap:12px;margin-top:auto;padding-top:36px}
-#contact-view .contact-channels .button{min-height:48px;max-width:100%;white-space:normal;font-size:15px;line-height:1.5;gap:12px;padding:13px 18px}
-#contact-view .contact-channels .button .icon{flex-shrink:0}
-#contact-view .contact-request{background:#d0ede2;color:#092d42}
-#contact-view .contact-request:hover{background:#bfe5d6}
-#contact-view .contact-inline-link{display:inline-flex;align-items:center;gap:12px;min-height:44px;max-width:100%;font-size:14px;line-height:1.6;font-weight:600;color:#00615c}
-#contact-view .contact-inline-link .icon{flex-shrink:0}
-#contact-view .contact-client .contact-inline-link{color:#d0ede2}
-#contact-view .contact-inline-link:hover{text-decoration:underline;text-underline-offset:4px}
-#contact-view .contact-recovery{border-top:1px solid #cbded3;margin-top:24px;padding-top:24px}
-#contact-view .contact-recovery h3{font-size:20px;line-height:1.35;letter-spacing:-.3px;font-weight:600;color:#092d42}
-#contact-view .contact-recovery p{font-size:16px;line-height:1.75;color:#536b72;margin-top:10px}
-#contact-view .contact-recover{margin-top:18px;border-color:#a8c9bb;color:#00615c;background:transparent}
-#contact-view .contact-recover:hover{background:#e2eee7}
-#contact-view .contact-report-link{display:flex;justify-content:space-between;align-items:center;gap:28px;border-top:1px solid #d6e2dc;margin-top:36px;padding:28px 0 56px}
-#contact-view .contact-report-link h2{font-size:24px;line-height:1.3;letter-spacing:-.4px;font-weight:500;color:#092d42}
-#contact-view .contact-report-link p{font-size:16px;line-height:1.75;color:#536b72;margin-top:10px}
-#contact-view :is(a,button):focus-visible,#contact-view #contact-title:focus-visible{outline:3px solid #007a74;outline-offset:5px}
-#contact-view .contact-client :is(a,button):focus-visible{outline-color:#a5e1d2}
-@media(max-width:1000px){#contact-view .contact-intro{gap:32px}#contact-view h1{font-size:54px}#contact-view .contact-channels article{padding:30px 28px}}
-@media(max-width:900px){#contact-view .contact-intro{grid-template-columns:minmax(0,1fr);gap:32px}#contact-view h1{font-size:50px}#contact-view .contact-availability{border-left:0;border-top:1px solid #d6e2dc;padding:26px 0 0}#contact-view .contact-availability dl{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}#contact-view .contact-channels{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:600px){#contact-view .contact-intro{padding:36px 0 28px;gap:28px}#contact-view h1{font-size:40px;line-height:1.12;letter-spacing:-1.2px}#contact-view .contact-description{font-size:16px;margin-top:18px}#contact-view .contact-availability dl{grid-template-columns:minmax(0,1fr);gap:18px;margin-top:20px}#contact-view .contact-channels{gap:18px}#contact-view .contact-channels article{padding:24px 22px;border-radius:14px}#contact-view .contact-channels h2{font-size:28px;line-height:1.2;margin-top:20px}#contact-view .contact-channel-label{letter-spacing:.6px}#contact-view .contact-email{font-size:16px;gap:10px}#contact-view .contact-client-actions{padding-top:28px}#contact-view .contact-client-actions .button{width:100%}#contact-view .contact-report-link{flex-direction:column;align-items:flex-start;gap:16px;margin-top:28px;padding:24px 0 40px}#contact-view .contact-report-link h2{font-size:22px}}
+/* Contact enquiry form and local draft controls. */
+#contact-view .contact-intro{padding:48px 0 30px;max-width:none}
+#contact-view .contact-kicker{font-size:14px;line-height:1.6;font-weight:600;letter-spacing:1.5px;color:#006f69}
+#contact-view h1{margin:18px 0 0;font-size:58px;line-height:1.08;letter-spacing:-1.6px;font-weight:500;color:#092d42;white-space:normal}
+#contact-view .contact-description{font-size:17px;line-height:1.8;color:#536b72;max-width:660px;margin-top:18px}
+#contact-view .contact-workspace{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,.85fr);gap:32px;align-items:start}
+#contact-view .contact-form-panel,#contact-view .contact-sidebar{min-width:0;border-radius:18px;padding:32px}
+#contact-view .contact-form-panel{border:1px solid #d5e3dc;border-top:3px solid #007a74;background:#fff}
+#contact-view .contact-form-panel h2{font-size:28px;line-height:1.25;letter-spacing:-.5px;font-weight:500;color:#092d42}
+#contact-view .contact-form-intro{font-size:14px;line-height:1.7;color:#536b72;margin-top:10px}
+#contact-view #contact-form{margin-top:26px;min-width:0}
+#contact-view .contact-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 20px}
+#contact-view .contact-field{display:flex;flex-direction:column;gap:8px;min-width:0}
+#contact-view .contact-field-full{grid-column:1/-1}
+#contact-view label{font-size:14px;line-height:1.6;font-weight:600;color:#193c4b}
+#contact-view input,#contact-view select,#contact-view textarea{width:100%;min-width:0;max-width:100%;min-height:48px;border:1px solid #b7cdc2;border-radius:8px;padding:12px 14px;font:inherit;font-size:16px;line-height:1.5;background:#fff;color:#193c4b}
+#contact-view textarea{min-height:160px;resize:vertical}
+#contact-view input::placeholder,#contact-view textarea::placeholder{color:#536b72}
+#contact-view .contact-helper,#contact-view .contact-field-error{font-size:14px;line-height:1.7;color:#536b72}
+#contact-view .contact-field-error,#contact-view .contact-overall-error{color:#963e34}
+#contact-view .contact-field-error:empty,#contact-view .contact-feedback:empty{display:none}
+#contact-view [aria-invalid="true"]{border-color:#963e34}
+#contact-view .contact-local-note{font-size:14px;line-height:1.75;color:#36594f;background:#eff6f2;border:1px solid #d7e6dd;border-radius:8px;padding:14px 16px;margin-top:24px}
+#contact-view .contact-feedback{font-size:14px;line-height:1.75;color:#00615c;margin-top:16px;overflow-wrap:anywhere}
+#contact-view .contact-overall-error{color:#963e34}
+#contact-view .contact-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}
+#contact-view .button{min-height:48px;max-width:100%;font-size:15px;line-height:1.5;padding:13px 18px;gap:12px;white-space:normal}
+#contact-view .button .icon{flex-shrink:0}
+#contact-view .button-outline{border-color:#a9c8b8;color:#00615c;background:#fff}
+#contact-view .button-outline:hover{background:#eff6f2}
+#contact-view .contact-draft-actions{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:12px}
+#contact-view .text-button{min-height:44px;font-size:14px;line-height:1.6;color:#00615c}
+#contact-view button:disabled{opacity:.55;cursor:not-allowed}
+#contact-view .contact-copy-fallback{padding:20px;background:#f3f7f4;border:1px solid #d5e3dc;border-radius:10px;margin-top:22px;min-width:0}
+#contact-view .contact-copy-fallback h3{font-size:20px;line-height:1.3;letter-spacing:-.3px;color:#092d42}
+#contact-view .contact-copy-fallback p{font-size:14px;line-height:1.7;color:#536b72;margin-top:10px}
+#contact-view .contact-copy-fallback label{display:block;margin-top:16px}
+#contact-view .contact-copy-fallback textarea{margin-top:8px}
+#contact-view .contact-copy-fallback .text-button{margin-top:10px}
+#contact-view .contact-sidebar{background:#092d42;color:#e1edef}
+#contact-view .contact-sidebar h2{font-size:28px;line-height:1.22;font-weight:500;letter-spacing:-.5px;color:#fff}
+#contact-view .contact-sidebar dl{display:grid;gap:24px;margin:28px 0 0}
+#contact-view .contact-sidebar dt{font-size:14px;line-height:1.6;color:#b4dfd1}
+#contact-view .contact-sidebar dd{margin:6px 0 0;font-size:16px;line-height:1.75;color:#e1edef}
+#contact-view .contact-mail{display:inline-flex;gap:10px;align-items:center;min-height:44px;max-width:100%;font-size:17px;line-height:1.65;color:#fff}
+#contact-view .contact-mail span{min-width:0;overflow-wrap:anywhere}
+#contact-view .contact-mail .icon{flex-shrink:0}
+#contact-view .contact-mail:hover span{text-decoration:underline;text-underline-offset:4px}
+#contact-view .contact-testing-link{display:flex;align-items:center;gap:12px;min-height:44px;color:#b4dfd1;font-size:14px;line-height:1.6;font-weight:600;margin-top:26px;border-top:1px solid #ffffff30;padding-top:18px}
+#contact-view .contact-shortcuts{border-top:1px solid #d5e3dc;margin-top:32px;padding:26px 0 56px}
+#contact-view .contact-shortcuts h2{font-size:22px;line-height:1.35;letter-spacing:-.3px;font-weight:500;color:#092d42}
+#contact-view .contact-shortcuts>div{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}
+#contact-view :is(input,select,textarea,a,button):focus-visible,#contact-view #contact-title:focus-visible{outline:3px solid #007a74;outline-offset:4px}
+#contact-view .contact-sidebar a:focus-visible{outline-color:#b4dfd1}
+@media(max-width:1100px){#contact-view .contact-workspace{gap:24px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}#contact-view .contact-form-panel,#contact-view .contact-sidebar{padding:28px}}
+@media(max-width:900px){#contact-view .contact-workspace{grid-template-columns:minmax(0,1fr)}#contact-view h1{font-size:52px}#contact-view .contact-sidebar dl{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}#contact-view .contact-sidebar dl>div{min-width:0}}
+@media(max-width:600px){#contact-view .contact-intro{padding:32px 0 24px}#contact-view h1{font-size:40px;line-height:1.12;letter-spacing:-1.2px}#contact-view .contact-description{font-size:16px;margin-top:16px}#contact-view .contact-form-panel,#contact-view .contact-sidebar{padding:24px 20px;border-radius:14px}#contact-view .contact-form-panel h2,#contact-view .contact-sidebar h2{font-size:26px}#contact-view .contact-fields{grid-template-columns:minmax(0,1fr);gap:20px}#contact-view .contact-sidebar dl{grid-template-columns:minmax(0,1fr);gap:22px}#contact-view .contact-mail{font-size:16px}#contact-view .contact-actions .button{flex:1 1 140px}#contact-view .contact-copy-fallback{padding:16px}#contact-view .contact-shortcuts{padding:24px 0 40px;margin-top:26px}#contact-view .contact-shortcuts>div{flex-direction:column;align-items:flex-start}#contact-view .contact-shortcuts .button{width:100%}}

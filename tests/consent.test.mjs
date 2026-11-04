@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { POLICY, DRAFT_KEY, SUPPORT_DRAFT_KEY, CATALOG, validateCatalog, catalogSignature, deniedChoices, createReceipt, readReceipt, readPreferenceCookie, effectivePermissions, createServiceGate, createPreferenceSyncGuard, createConsentActionAdapter } from '../dist/privacy/policy.js';
+import { POLICY, DRAFT_KEY, SUPPORT_DRAFT_KEY, CONTACT_DRAFT_KEY, CATALOG, validateCatalog, catalogSignature, deniedChoices, createReceipt, readReceipt, readPreferenceCookie, effectivePermissions, createServiceGate, createPreferenceSyncGuard, createConsentActionAdapter } from '../dist/privacy/policy.js';
 
 const project = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const originalHTML = await readFile(path.join(project, 'dist/index.html'), 'utf8');
@@ -98,6 +98,8 @@ test('catalog rejects undeclared purposes, missing lifecycle hooks, broad cleanu
     (value) => { value.services[0].storage = [{ type: 'localStorage', key: DRAFT_KEY }]; },
     (value) => { value.services[0].storage = [{ type: 'localStorage', key: SUPPORT_DRAFT_KEY }]; },
     (value) => { value.services[0].storage = [{ type: 'sessionStorage', key: SUPPORT_DRAFT_KEY }]; },
+    (value) => { value.services[0].storage = [{ type: 'localStorage', key: CONTACT_DRAFT_KEY }]; },
+    (value) => { value.services[0].storage = [{ type: 'sessionStorage', key: CONTACT_DRAFT_KEY }]; },
     (value) => { value.services[0].storage = [{ type: 'localStorage', key: POLICY.cookie }]; },
     (value) => { value.services[1].storage = value.services[0].storage; },
     (value) => { value.purposes.push({ id: 'invented', kind: 'analytics', label: 'Invented', description: 'No service.' }); },
@@ -108,7 +110,7 @@ test('catalog rejects undeclared purposes, missing lifecycle hooks, broad cleanu
 test('service gate starts only after permission, deduplicates, stops/cleans withdrawal, and preserves necessary data', async () => {
   const events = [];
   const catalog = fixtureCatalog(events);
-  const storage = new Map([[DRAFT_KEY, 'untouched sentinel'], [SUPPORT_DRAFT_KEY, 'recovery sentinel'], [POLICY.cookie, 'necessary sentinel'], ['optional.measurement', 'inert']]);
+  const storage = new Map([[DRAFT_KEY, 'untouched sentinel'], [SUPPORT_DRAFT_KEY, 'recovery sentinel'], [CONTACT_DRAFT_KEY, 'contact sentinel'], [POLICY.cookie, 'necessary sentinel'], ['optional.measurement', 'inert']]);
   const removedCookies = [];
   const gate = createServiceGate(catalog, {
     removeCookie: (item) => removedCookies.push(item.name), removeStorage: ({ key }) => storage.delete(key)
@@ -125,6 +127,7 @@ test('service gate starts only after permission, deduplicates, stops/cleans with
   assert.ok(removedCookies.includes('measurement_test'));
   assert.equal(storage.get(DRAFT_KEY), 'untouched sentinel');
   assert.equal(storage.get(SUPPORT_DRAFT_KEY), 'recovery sentinel');
+  assert.equal(storage.get(CONTACT_DRAFT_KEY), 'contact sentinel');
   assert.equal(storage.get(POLICY.cookie), 'necessary sentinel');
   assert.equal(storage.has('optional.measurement'), false);
 });
