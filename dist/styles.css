@@ -71,11 +71,11 @@
 @media(max-width:760px){#home-view .home-intents-bridge .home-intent{gap:10px}#home-view .home-intents-bridge .home-intent>.icon:first-child{padding:6px}#home-view .home-intents-bridge .home-intent .home-intent-description{font-size:15px}}
 
 /* Report-to-process transition within the existing section padding. */
-#home-view #home-reports{position:relative;--home-report-fade-space:24px}#home-view #home-reports::after{content:"";position:absolute;inset-inline:0;bottom:calc(-1 * var(--home-report-fade-space));height:calc(2 * var(--home-report-fade-space));background:linear-gradient(180deg,var(--navy-deep) 0%,#092838 5%,#0d2c3c 10%,#1f3c4a 20%,#3a5460 30%,#5d727c 40%,#83939b 50%,#a9b4ba 60%,#ccd2d6 70%,#e7eaec 80%,#f9fafa 90%,#fdfefe 95%,#fff 100%);pointer-events:none}
-@media(max-width:1100px){#home-view #home-reports{--home-report-fade-space:20px}}
-@media(max-width:760px){#home-view #home-reports{--home-report-fade-space:16px}}
+#home-view #home-reports{position:relative;--home-report-fade-space:32px}#home-view #home-reports::after{content:"";position:absolute;inset-inline:0;bottom:calc(-1 * var(--home-report-fade-space));height:calc(2 * var(--home-report-fade-space));background:linear-gradient(180deg,var(--navy-deep) 0%,#123b4c 15%,#315f70 30%,#618c98 47%,#a0bfc4 65%,#d5e6e4 82%,#f4f8f6 94%,#fff 100%);pointer-events:none}
+@media(max-width:1100px){#home-view #home-reports{--home-report-fade-space:28px}}
+@media(max-width:760px){#home-view #home-reports{--home-report-fade-space:24px}}
 
 /* FAQ transitions remain within its existing top and bottom padding. */
-#home-view .home-faq{--home-faq-fade-space:92px;background:linear-gradient(180deg,#fff,#ffffff00) top/100% var(--home-faq-fade-space) no-repeat,linear-gradient(0deg,var(--paper),#fbfcfa00) bottom/100% var(--home-faq-fade-space) no-repeat,#f2f6f3}
-@media(max-width:1100px){#home-view .home-faq{--home-faq-fade-space:72px}}
-@media(max-width:760px){#home-view .home-faq{--home-faq-fade-space:56px}}
+#home-view .home-faq{--home-faq-fade-space:32px;background:linear-gradient(180deg,#fff,#ffffff00) top/100% var(--home-faq-fade-space) no-repeat,linear-gradient(0deg,var(--paper),#fbfcfa00) bottom/100% var(--home-faq-fade-space) no-repeat,#f2f6f3}
+@media(max-width:1100px){#home-view .home-faq{--home-faq-fade-space:28px}}
+@media(max-width:760px){#home-view .home-faq{--home-faq-fade-space:24px}}
