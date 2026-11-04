@@ -228,6 +228,7 @@
 #about-view .about-sample-button{margin-top:20px;border:1px solid #8faea8;background:transparent;color:#00615c}
 #about-view .about-sample-button:hover{background:#edf7f3}
 #about-view .about-leadership{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr);align-items:center;gap:110px;padding-block:94px}
+#about-view .about-approach + .about-leadership{padding-top:0}
 #about-view .about-leadership>div{min-width:0}
 #about-view .about-leadership>div>p:not(.about-kicker){max-width:520px;margin-top:22px;font-size:16px;line-height:1.85;color:#536b72}
 #about-view .about-chemist{display:flex;align-items:center;gap:24px;padding-block:30px;border-top:1px solid #cadfd5;border-bottom:1px solid #cadfd5}
