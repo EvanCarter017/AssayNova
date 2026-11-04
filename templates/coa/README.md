@@ -126,17 +126,18 @@ supplies both formats, with the unchanged self-contained Vera glyph encoder.
 PDFs retain embedded text; SVGs require no external fonts or network resources.
 Distribute the unchanged `bitstream-vera-license.txt` with the reports.
 
-Both reports use the same user-supplied blue-cap vial, edited with built-in
-imagegen to remove the label trademark. `assets/vial-unbranded.png` preserves the
-brand-only edit and original L-Carnitine product text. The active
-`assets/sample-vial-product.png` additionally uses KLOW / 80 mg to match the
-existing report records; the user explicitly confirmed this KLOW 80mg
-report-label variant. Selected tool outputs are copied unchanged,
-fit proportionally and embedded in full without additional image processing.
-`assets/sample-vials-sources.json` records the source hash and both edit hashes;
-it does not assert copyright ownership or an untouched photograph. The prior
-Thirdman/Pexels JPEGs and all source/license records are retained as archived
-material. Optional `--product-image` PNG/JPEG replacement remains available.
+Both reports use the supplied blue-cap vial with the final user-requested
+label redesign: KLOW / 80 mg, real blend names and research-use text in a navy
+and teal label. The trademark, QUALITY TESTED / COA available sticker, and old
+Sterile / Multi-dose badges are removed. The selected built-in imagegen output
+is copied unchanged to ssets/sample-vial-product.png and embedded in full.
+The user confirmed the KLOW 80mg label choice and subsequent complete redesign.
+ssets/vial-unbranded.png is an archived intermediate brand-only edit, not the
+current deliverable. ssets/sample-vials-sources.json records the supplied
+source hash, edit hashes and final active selection without asserting copyright
+ownership or untouched photographic pixels. Prior Thirdman/Pexels JPEGs and
+source/license records remain archived unchanged. Optional --product-image
+PNG/JPEG replacement remains available.
 Images, logo and the original authorized Dylan Greene signature design are
 embedded for offline use. No private source report/client data or scientific
 trace pixels are read by this public builder; no digital issuance is performed.

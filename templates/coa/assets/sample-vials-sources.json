@@ -18,9 +18,22 @@
         877,
         1794
       ],
-      "changes": "Remove VialCove trademark, wave, PEPTIDES and underline; preserve L-Carnitine product text and remaining presentation."
+      "changes": "Remove VialCove trademark, wave, PEPTIDES and underline; preserve L-Carnitine product text and remaining presentation.",
+      "status": "Archived intermediate, superseded by final user-requested label redesign; not a current deliverable."
     },
     "reportVariant": {
+      "file": "sample-vial-product.png",
+      "sha256": "344D12BB53AAF97091F823C0A122847C935434962F1DD2030B5A504E946069FF",
+      "size": [
+        877,
+        1793
+      ],
+      "changes": "Final complete label redesign: PEPTIDE BLEND / KLOW / 80 mg / GHK-Cu and KPV / BPC-157 and Thymosin Beta-4 / RESEARCH USE ONLY, navy and teal on off-white. Remove VialCove trademark, QUALITY TESTED/checkmark/COA available sticker, Sterile and Multi-dose badges.",
+      "labelDecision": "User explicitly confirmed KLOW 80mg and requested all label styling/content redesigned and the QUALITY TESTED badge removed.",
+      "status": "Final active report image"
+    },
+    "processing": "Selected tool outputs copied unchanged. No subsequent image processing.",
+    "supersededReportVariant": {
       "file": "sample-vial-product.png",
       "sha256": "5E0C405C1581A490F44CC6D2B334765ED1A289BB2822E42E9CF8A01776E75F74",
       "size": [
@@ -28,15 +41,15 @@
         1793
       ],
       "changes": "Use the unbranded vial; change L-Carnitine to KLOW and LC400 / 10 mL to 80 mg for the existing KLOW reports.",
-      "labelDecision": "User explicitly confirmed the KLOW 80mg report-label variant."
-    },
-    "processing": "Selected tool outputs copied unchanged. No subsequent image processing."
+      "labelDecision": "User explicitly confirmed the KLOW 80mg report-label variant.",
+      "status": "Superseded intermediate with old badges; not a current deliverable."
+    }
   },
   "files": [
     {
       "file": "sample-vial-product.png",
       "format": "PNG",
-      "assetSha256": "5E0C405C1581A490F44CC6D2B334765ED1A289BB2822E42E9CF8A01776E75F74",
+      "assetSha256": "344D12BB53AAF97091F823C0A122847C935434962F1DD2030B5A504E946069FF",
       "size": [
         877,
         1793
@@ -52,7 +65,7 @@
         877,
         1793
       ],
-      "usedRGBPixelSha256": "9862686D8A642D109F8BEAF59077E73DB2E8B268A6A2BC5416DBBE80A7E0E039",
+      "usedRGBPixelSha256": "5ECC5F3A734D3B435C210C2801082E85C3E0BA4F8FA4D516217059ABDC33A3D9",
       "processing": "Full supplied edited image; no crop or resampling."
     }
   ],
