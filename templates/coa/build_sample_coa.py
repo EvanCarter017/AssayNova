@@ -103,13 +103,13 @@ def load_records():
     if not isinstance(records, dict) or set(records) != set(STEMS):
         raise ValueError("Public catalog must contain exactly both sample lookup codes")
     sources = json.loads((ROOT / "assets" / "sample-vials-sources.json").read_text(encoding="utf-8"))
-    if {item["file"] for item in sources["files"]} != {"sample-vial-a.jpg", "sample-vial-c.jpg"}: raise ValueError("Expected both approved product photographs")
+    if {item["file"] for item in sources["files"]} != {"sample-vial-product.png"}: raise ValueError("Expected the approved shared product image")
     for source in sources["files"]:
         file = ROOT / "assets" / source["file"]
-        if hashlib.sha256(file.read_bytes()).hexdigest().upper() != source["originalSha256"]: raise ValueError("Original product photograph changed")
+        if hashlib.sha256(file.read_bytes()).hexdigest().upper() != source["assetSha256"]: raise ValueError("Approved product image changed")
         with PILImage.open(file) as image:
             crop=source["crop"]
-            if image.format != "JPEG" or len(crop)!=4 or any(type(v) is not int for v in crop) or not (0<=crop[0]<crop[2]<=image.width and 0<=crop[1]<crop[3]<=image.height): raise ValueError("Invalid product photograph/crop")
+            if image.format != "PNG" or len(crop)!=4 or any(type(v) is not int for v in crop) or not (0<=crop[0]<crop[2]<=image.width and 0<=crop[1]<crop[3]<=image.height): raise ValueError("Invalid product photograph/crop")
             if hashlib.sha256(image.crop(crop).convert("RGB").tobytes()).hexdigest().upper()!=source["usedRGBPixelSha256"]: raise ValueError("Product crop does not match provenance")
     register_fonts()
     keys = {"label", "product", "appearance", "client", "reportId", "accession", "lot", "received", "reported", "purity", "identity", "retentionTime", "composition", "screenings", "method", "spectra", "chromatogram", "signoffTitle", "plotSeed"}
@@ -498,7 +498,7 @@ def build(lookup_code, output_dir, product_image=None):
     if output_dir.exists() and not output_dir.is_dir():
         raise ValueError("Output directory must be a directory")
     records = load_records()
-    image_path = product_image or ROOT / "assets" / ("sample-vial-a.jpg" if code == "AN-7K9Q-2M4X" else "sample-vial-c.jpg")
+    image_path = product_image or ROOT / "assets" / "sample-vial-product.png"
     image = None
     if image_path:
         with PILImage.open(image_path) as candidate:

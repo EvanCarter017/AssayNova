@@ -1,52 +1,111 @@
 {
-  "creator": "Thirdman",
-  "license": "Pexels License",
-  "licenseUrl": "https://www.pexels.com/license/",
-  "use": "Generic unbranded vial photographs; no endorsement or assertion that they depict the sample contents.",
+  "sourceType": "user-supplied edited image",
+  "source": {
+    "basename": "codex-clipboard-a71465ed-c2de-450a-b1a1-9c351e95504c.png",
+    "sha256": "239B8D5522058B7DDF906239035010ADCB1A3EFA1B9B6CF24DA77334B4EF9D9D",
+    "size": [
+      275,
+      563
+    ],
+    "alpha": "Original fully opaque."
+  },
+  "editing": {
+    "mode": "Built-in imagegen edit",
+    "brandOnly": {
+      "file": "vial-unbranded.png",
+      "sha256": "6D3E9B5DADBAA9EF3F7D81F03AD607E3ED31E95EF57F20CBA13BB37503DA6BF6",
+      "size": [
+        877,
+        1794
+      ],
+      "changes": "Remove VialCove trademark, wave, PEPTIDES and underline; preserve L-Carnitine product text and remaining presentation."
+    },
+    "reportVariant": {
+      "file": "sample-vial-product.png",
+      "sha256": "5E0C405C1581A490F44CC6D2B334765ED1A289BB2822E42E9CF8A01776E75F74",
+      "size": [
+        877,
+        1793
+      ],
+      "changes": "Use the unbranded vial; change L-Carnitine to KLOW and LC400 / 10 mL to 80 mg for the existing KLOW reports.",
+      "labelDecision": "User explicitly confirmed the KLOW 80mg report-label variant."
+    },
+    "processing": "Selected tool outputs copied unchanged. No subsequent image processing."
+  },
   "files": [
     {
-      "file": "sample-vial-a.jpg",
-      "sourcePage": "https://www.pexels.com/photo/covid19-vaccine-vial-5922087/",
-      "sourceUrl": "https://images.pexels.com/photos/5922087/pexels-photo-5922087.jpeg",
-      "originalSize": [
-        4203,
-        6304
+      "file": "sample-vial-product.png",
+      "format": "PNG",
+      "assetSha256": "5E0C405C1581A490F44CC6D2B334765ED1A289BB2822E42E9CF8A01776E75F74",
+      "size": [
+        877,
+        1793
       ],
-      "originalSha256": "A6803DF0693486B389A7011036162E72C9402133C2EEDA1A831E681E5BD151D4",
+      "mode": "RGB",
       "crop": [
-        950,
-        3550,
-        2250,
-        5550
+        0,
+        0,
+        877,
+        1793
       ],
       "usedSize": [
-        1300,
-        2000
+        877,
+        1793
       ],
-      "usedRGBPixelSha256": "AE005903ADA132545EDF028270FFFDEF574CD9A92A549E26B3F6E47AAB8BE9D9",
-      "processing": "Geometric crop only; no resampling, retouching or generated content."
-    },
-    {
-      "file": "sample-vial-c.jpg",
-      "sourcePage": "https://www.pexels.com/photo/covid-vaccine-5922101/",
-      "sourceUrl": "https://images.pexels.com/photos/5922101/pexels-photo-5922101.jpeg",
-      "originalSize": [
-        6465,
-        4310
-      ],
-      "originalSha256": "3A351FE95826F059A9996E55D2236B9B09062DEF9FA463E8010DB0E3BF3AD4F6",
-      "crop": [
-        700,
-        1650,
-        2450,
-        4050
-      ],
-      "usedSize": [
-        1750,
-        2400
-      ],
-      "usedRGBPixelSha256": "D121C21BCE0E14D29003142FDB6C1582667D48D2C06851D9B8341756588EE5B4",
-      "processing": "Geometric crop only; no resampling, retouching or generated content."
+      "usedRGBPixelSha256": "9862686D8A642D109F8BEAF59077E73DB2E8B268A6A2BC5416DBBE80A7E0E039",
+      "processing": "Full supplied edited image; no crop or resampling."
     }
-  ]
+  ],
+  "archivedSources": {
+    "creator": "Thirdman",
+    "license": "Pexels License",
+    "licenseUrl": "https://www.pexels.com/license/",
+    "use": "Generic unbranded vial photographs; no endorsement or assertion that they depict the sample contents.",
+    "files": [
+      {
+        "file": "sample-vial-a.jpg",
+        "sourcePage": "https://www.pexels.com/photo/covid19-vaccine-vial-5922087/",
+        "sourceUrl": "https://images.pexels.com/photos/5922087/pexels-photo-5922087.jpeg",
+        "originalSize": [
+          4203,
+          6304
+        ],
+        "originalSha256": "A6803DF0693486B389A7011036162E72C9402133C2EEDA1A831E681E5BD151D4",
+        "crop": [
+          950,
+          3550,
+          2250,
+          5550
+        ],
+        "usedSize": [
+          1300,
+          2000
+        ],
+        "usedRGBPixelSha256": "AE005903ADA132545EDF028270FFFDEF574CD9A92A549E26B3F6E47AAB8BE9D9",
+        "processing": "Geometric crop only; no resampling, retouching or generated content."
+      },
+      {
+        "file": "sample-vial-c.jpg",
+        "sourcePage": "https://www.pexels.com/photo/covid-vaccine-5922101/",
+        "sourceUrl": "https://images.pexels.com/photos/5922101/pexels-photo-5922101.jpeg",
+        "originalSize": [
+          6465,
+          4310
+        ],
+        "originalSha256": "3A351FE95826F059A9996E55D2236B9B09062DEF9FA463E8010DB0E3BF3AD4F6",
+        "crop": [
+          700,
+          1650,
+          2450,
+          4050
+        ],
+        "usedSize": [
+          1750,
+          2400
+        ],
+        "usedRGBPixelSha256": "D121C21BCE0E14D29003142FDB6C1582667D48D2C06851D9B8341756588EE5B4",
+        "processing": "Geometric crop only; no resampling, retouching or generated content."
+      }
+    ]
+  }
 }

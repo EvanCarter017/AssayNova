@@ -126,11 +126,17 @@ supplies both formats, with the unchanged self-contained Vera glyph encoder.
 PDFs retain embedded text; SVGs require no external fonts or network resources.
 Distribute the unchanged `bitstream-vera-license.txt` with the reports.
 
-The real unbranded vial photographs are by Thirdman under the Pexels License.
-`assets/sample-vials-sources.json` records source pages, original file hashes and
-geometric crop bounds/pixel hashes. Originals are kept as JPEGs; cropping does
-not resample, retouch or invent labels. They do not assert actual sample contents
-or endorsement. Optional `--product-image` PNG/JPEG replacement remains available.
+Both reports use the same user-supplied blue-cap vial, edited with built-in
+imagegen to remove the label trademark. `assets/vial-unbranded.png` preserves the
+brand-only edit and original L-Carnitine product text. The active
+`assets/sample-vial-product.png` additionally uses KLOW / 80 mg to match the
+existing report records; the user explicitly confirmed this KLOW 80mg
+report-label variant. Selected tool outputs are copied unchanged,
+fit proportionally and embedded in full without additional image processing.
+`assets/sample-vials-sources.json` records the source hash and both edit hashes;
+it does not assert copyright ownership or an untouched photograph. The prior
+Thirdman/Pexels JPEGs and all source/license records are retained as archived
+material. Optional `--product-image` PNG/JPEG replacement remains available.
 Images, logo and the original authorized Dylan Greene signature design are
 embedded for offline use. No private source report/client data or scientific
 trace pixels are read by this public builder; no digital issuance is performed.

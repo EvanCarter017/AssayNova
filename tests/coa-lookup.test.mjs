@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
 import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1039,12 +1040,22 @@ test('public report module matches its authoritative fictional catalog and publi
 test('sample ion envelopes use primary neutral masses, charge spacing and purity-compatible fitted areas', async () => {
   const refs = JSON.parse(await readFile(new URL('../templates/coa/analytical-references.json', import.meta.url), 'utf8'));
   const photos = JSON.parse(await readFile(new URL('../templates/coa/assets/sample-vials-sources.json', import.meta.url), 'utf8'));
-  assert.equal(photos.creator, 'Thirdman');
-  for (const photo of photos.files) {
-    assert.match(photo.sourceUrl, /^https:\/\/images\.pexels\.com\/photos\//);
-    const bytes = await readFile(new URL('../templates/coa/assets/' + photo.file, import.meta.url));
-    assert.equal(bytes[0], 0xff); assert.equal(bytes[1], 0xd8);
-    assert.ok(photo.crop[2] > photo.crop[0] && photo.crop[3] > photo.crop[1]);
+  assert.equal(photos.sourceType, 'user-supplied edited image');
+  assert.equal(photos.editing.mode, 'Built-in imagegen edit');
+  assert.equal(photos.files.length, 1);
+  const active = photos.files[0];
+  assert.equal(active.file, 'sample-vial-product.png');
+  const bytes = await readFile(new URL('../templates/coa/assets/' + active.file, import.meta.url));
+  assert.deepEqual([...bytes.subarray(0, 8)], [137,80,78,71,13,10,26,10]);
+  assert.equal(createHash('sha256').update(bytes).digest('hex').toUpperCase(), active.assetSha256);
+  const brandOnly = await readFile(new URL('../templates/coa/assets/vial-unbranded.png', import.meta.url));
+  assert.equal(createHash('sha256').update(brandOnly).digest('hex').toUpperCase(), photos.editing.brandOnly.sha256);
+  assert.equal(photos.editing.reportVariant.sha256, active.assetSha256);
+  assert.deepEqual(active.crop, [0, 0, ...active.size]);
+  assert.equal(photos.archivedSources.creator, 'Thirdman');
+  for (const photo of photos.archivedSources.files) {
+    const original = await readFile(new URL('../templates/coa/assets/' + photo.file, import.meta.url));
+    assert.equal(createHash('sha256').update(original).digest('hex').toUpperCase(), photo.originalSha256);
   }
   for (const [code, record] of Object.entries(SAMPLE_REPORT_DATA)) {
     assert.deepEqual(record.composition.map(row => row.analyte), refs.analytes.map(row => row.tableName));
