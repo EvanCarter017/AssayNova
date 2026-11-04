@@ -92,3 +92,29 @@ does not add information to the original analytical rasters or change PDF text.
 Do not invent methods, numerical limits, overall pass results, signatures,
 accreditation, contacts or verification claims. Omit unavailable fields instead
 of adding placeholders.
+
+## Public placeholder sample masters
+
+`build_sample_coa.py` is separate from both strict private-data builders above.
+It creates a single portrait A4 PDF and matching vector SVG for each public sample:
+
+```powershell
+python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../dist/reports
+python build_sample_coa.py --lookup-code AN-8P6R-3N5Y --output-dir ../../dist/reports
+```
+
+Only those exact code-to-filename mappings are accepted. Every analytical value,
+client/product field, date, plot and signoff is a placeholder. No private JSON,
+scientific raster or signature is read. The default product slot contains a
+code-native generic vial. Add `--product-image /path/to/image.png` (or a JPEG)
+to replace it. The image is validated, fitted proportionally and embedded without
+publishing its filesystem path. Rendering is buffered before replacing outputs.
+
+One ReportLab Drawing supplies both formats. PDFs retain embedded Vera text;
+SVG text uses self-contained Vera glyph outlines, with no external font fetch or
+CSP relaxation. The outlined-font implementation supports printable ASCII/simple
+Vera glyphs only and rejects unsupported text. The unchanged logo is embedded;
+its alpha channel is preserved. Distribute `bitstream-vera-license.txt` from
+`fonts/` with generated reports. The public page shows its fictional sample
+disclosure outside the paper. These files are placeholder layouts, not issued
+certificates. Rebuild both files after changing the shared geometry.

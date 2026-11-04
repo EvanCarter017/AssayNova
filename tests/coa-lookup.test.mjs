@@ -240,22 +240,32 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
 }
 
 test('actual public form handlers clear A on failure, survive refresh/history and then select C exactly', () => {
+  const master = (html, code, stem) => {
+    const other = stem === 'sample-a' ? 'sample-c' : 'sample-a';
+    assert.ok(html.includes(`src="/reports/${stem}.svg"`));
+    assert.ok(html.includes(`href="/reports/${stem}.pdf" download`));
+    assert.ok(html.includes(code));
+    assert.ok(!html.includes(`/reports/${other}.`));
+    assert.ok(!/AN-2026-004[23]|99\.32%|97\.84%|Consistent|Partial match|identity-matched|identity-neutral|Chromatogram schematic/.test(html));
+    assert.ok(html.includes('Report fields'));
+    assert.ok(html.includes('[Product name]') && html.includes('[Authorized signature]'));
+    assert.equal((html.match(/<dd>--\.--%<\/dd>/g) || []).length, 3);
+  };
   const app = bootApp('/coa/AN-7K9Q-2M4X');
   const view = app.nodes.get('#coa-view');
-  assert.ok(view.innerHTML.includes('AN-2026-0042'));
-  assert.ok(view.innerHTML.includes('identity-matched'));
-  assert.ok(view.innerHTML.includes('href="#i-check"'));
+  master(view.innerHTML, 'AN-7K9Q-2M4X', 'sample-a');
+  assert.equal(app.document.title, 'Sample report · AN-7K9Q-2M4X · AssayNova');
   app.submitLookup('AN-0000-0000');
   assert.equal(app.location.pathname, '/coa/AN-0000-0000');
   assert.ok(view.innerHTML.includes('No COA found.'));
-  assert.ok(!view.innerHTML.includes('AN-2026-0042'));
+  assert.ok(!/\/reports\/sample-[ac]\.(?:svg|pdf)|coa-master-paper/.test(view.innerHTML));
   assert.ok(!/data-action="(?:print|copy-code|copy-link)"/.test(view.innerHTML));
   app.click('copy-code'); app.click('print');
   assert.equal(app.copied.length, 0);
   assert.equal(app.printed(), 0);
   assert.ok(bootApp(app.location.pathname).nodes.get('#coa-view').innerHTML.includes('No COA found.'));
   app.travel(-1);
-  assert.ok(view.innerHTML.includes('AN-2026-0042'));
+  master(view.innerHTML, 'AN-7K9Q-2M4X', 'sample-a');
   app.travel(1);
   assert.ok(view.innerHTML.includes('No COA found.'));
   app.submitLookup('<script>private</script>');
@@ -263,17 +273,13 @@ test('actual public form handlers clear A on failure, survive refresh/history an
   assert.ok(bootApp(app.location.pathname).nodes.get('#coa-view').innerHTML.includes('No COA found.'));
   app.submitLookup('an-8p6r-3n5y ');
   assert.equal(app.location.pathname, '/coa/AN-8P6R-3N5Y');
-  assert.ok(view.innerHTML.includes('AN-2026-0043'));
+  master(view.innerHTML, 'AN-8P6R-3N5Y', 'sample-c');
   assert.ok(view.innerHTML.includes('Reference sample C'));
-  assert.ok(view.innerHTML.includes('97.84%'));
-  assert.ok(view.innerHTML.includes('Partial match'));
-  assert.ok(view.innerHTML.includes('identity-neutral'));
-  assert.ok(!view.innerHTML.includes('href="#i-check"'));
-  assert.ok(!view.innerHTML.includes('AN-2026-0042'));
+  assert.equal(app.document.title, 'Sample report · AN-8P6R-3N5Y · AssayNova');
   app.click('copy-code'); app.click('copy-link');
   assert.deepEqual(app.copied, ['AN-8P6R-3N5Y', 'http://127.0.0.1:4999/coa/AN-8P6R-3N5Y']);
   app.travel(-1); assert.ok(view.innerHTML.includes('No COA found.'));
-  app.travel(1); assert.ok(view.innerHTML.includes('AN-2026-0043'));
+  app.travel(1); master(view.innerHTML, 'AN-8P6R-3N5Y', 'sample-c');
   app.click('home');
   assert.equal(view.innerHTML, '');
   app.click('copy-code');
@@ -461,7 +467,7 @@ test('actual anchor interception preserves modified, nonprimary, external, targe
   const before = app.entryCount();
   app.clickLink('/coa/AN-8P6R-3N5Y', { dataAction: 'report' });
   assert.equal(app.entryCount(), before + 1, 'A report anchor with a legacy data action navigates only once');
-  assert.match(app.nodes.get('#coa-view').innerHTML, /97\.84%/);
+  assert.match(app.nodes.get('#coa-view').innerHTML, /src="\/reports\/sample-c\.svg"/);
   assert.deepEqual(app.navLinks.filter((link) => link.getAttribute('aria-current') === 'page').map((link) => link.getAttribute('href')), ['/verify', '/verify']);
 });
 
@@ -599,7 +605,9 @@ test('page navigation closes stale dialogs, mobile request/drafts return to menu
   const verify = bootApp('/verify');
   verify.nodes.get('#demo-lookup').events.get('click')();
   assert.equal(verify.location.pathname, '/coa/AN-7K9Q-2M4X');
-  assert.match(verify.nodes.get('#coa-view').innerHTML, /99\.32%/);
+  assert.match(verify.nodes.get('#coa-view').innerHTML, /src="\/reports\/sample-a\.svg"/);
+  assert.match(verify.nodes.get('#coa-view').innerHTML, /href="\/reports\/sample-a\.pdf" download/);
+  assert.ok(!/99\.32%|AN-2026-0042/.test(verify.nodes.get('#coa-view').innerHTML));
 });
 
 async function availablePort() {
@@ -681,6 +689,31 @@ for (const mode of ['default', 'production', 'watch']) {
         assert.equal((await fetch(base + route.toLowerCase())).status, 200);
         assert.equal((await fetch(base + route + '/')).status, 200);
       }
+      const reportDownloads = [];
+      for (const [stem, code, otherCode] of [['sample-a', 'AN-7K9Q-2M4X', 'AN-8P6R-3N5Y'], ['sample-c', 'AN-8P6R-3N5Y', 'AN-7K9Q-2M4X']]) {
+        for (const extension of ['svg', 'pdf']) {
+          const url = `/reports/${stem}.${extension}`;
+          const response = await fetch(base + url);
+          assert.equal(response.status, 200, url);
+          const bytes = Buffer.from(await response.arrayBuffer());
+          assert.deepEqual(bytes, await readFile(path.join(project, 'dist', url)));
+          const head = await fetch(base + url, { method: 'HEAD' });
+          assert.equal(head.status, 200, url);
+          assert.equal((await head.arrayBuffer()).byteLength, 0);
+          assert.equal(head.headers.get('content-type'), response.headers.get('content-type'));
+          if (extension === 'svg') {
+            const svg = bytes.toString('utf8');
+            assert.match(response.headers.get('content-type'), /image\/svg\+xml/);
+            assert.ok(svg.includes(code) && !svg.includes(otherCode));
+            assert.ok(svg.includes('width="210mm"') && svg.includes('height="297mm"'));
+            assert.ok(!/<(?:script|text)\b|onload=|href="https?:/i.test(svg));
+          } else {
+            assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
+            reportDownloads.push(url);
+          }
+        }
+      }
+      assert.equal(new Set(reportDownloads).size, 2);
       for (const route of ['/coa/AN-0000-0000', '/coa/AN-2026-0042', '/coa/unknown', '/coa/not-found']) {
         const response = await fetch(base + route);
         assert.equal(response.status, 404);

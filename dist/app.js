@@ -116,25 +116,27 @@ function renderSuccess(request) {
     <div class="dialog-buttons"><button class="button button-teal" data-action="requests">View saved drafts ${icon('arrow', true)}</button><button class="text-button" data-action="close">Back to website</button></div></div>`);
 }
 
-function reportChart() {
-  return `<svg viewBox="0 0 520 160" role="img" aria-label="Shared chromatogram schematic, not report-specific measurements"><g class="chart-grid"><path d="M20 25H500M20 70H500M20 115H500"/></g><path class="chart-line" fill="none" stroke-width="2" d="M20 122H100Q108 120 112 100Q116 78 120 100Q124 122 134 122H250Q265 120 276 52Q286 10 296 52Q308 122 326 122H500"/><text x="20" y="150" class="chart-labels">SCHEMATIC ONLY · NO MEASURED RETENTION-TIME AXIS</text></svg>`;
-}
+const SAMPLE_REPORT_ASSETS = Object.freeze({
+  'AN-7K9Q-2M4X': Object.freeze({ label: 'Reference sample A', svg: '/reports/sample-a.svg', pdf: '/reports/sample-a.pdf' }),
+  'AN-8P6R-3N5Y': Object.freeze({ label: 'Reference sample C', svg: '/reports/sample-c.svg', pdf: '/reports/sample-c.pdf' })
+});
 
 function lookupForm() {
   return `<form id="coa-lookup-form" class="coa-search" novalidate><label for="coa-lookup-code">Find another COA · COA Lookup Code</label><div class="coa-search-controls"><input id="coa-lookup-code" name="lookupCode" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. AN-8P6R-3N5Y" aria-describedby="coa-lookup-error" required><button class="button button-dark" type="submit">Find report</button></div><p id="coa-lookup-error" class="inline-error" role="status"></p><p class="coa-help">Use a COA Lookup Code, not a report or submission number.</p></form>`;
 }
 
 function renderReport(report) {
-  const identityMatched = report.identityOutcome === 'matched';
-  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card" aria-labelledby="report-title"><div class="report-heading"><div class="brand"><img src="/assets/assaynova-logo.png" alt="AssayNova" width="2172" height="724"></div>
-    <div class="report-header-row"><div><p class="dialog-eyebrow">REPORT DETAILS</p><h1 id="report-title" tabindex="-1">Certificate of analysis</h1><p>${escape(report.id)} · Report date ${escape(report.issued)}</p></div><span class="report-demo-label">Sample report</span></div><p class="coa-code">COA Lookup Code <strong>${escape(report.lookupCode)}</strong></p></div>
-    <div class="report-body"><dl class="report-meta"><div><dt>Sample name</dt><dd>${escape(report.sample)}</dd></div><div><dt>Batch reference</dt><dd>${escape(report.batch)}</dd></div><div><dt>Sample received</dt><dd>${escape(report.received)}</dd></div><div><dt>Analysis method</dt><dd>${escape(report.method)}</dd></div><div><dt>Report number</dt><dd>${escape(report.id)}</dd></div><div><dt>Publication</dt><dd>${escape(report.publication)}</dd></div><div><dt>Version</dt><dd>${escape(report.version)}</dd></div><div><dt>Retention time</dt><dd>${escape(report.retentionTime)}</dd></div></dl>
-      <div class="report-results"><div><span>Chromatographic purity</span><strong>${escape(report.purity)}</strong></div><div><span>Identity check</span><strong class="identity-result ${identityMatched ? 'identity-matched' : 'identity-neutral'}">${identityMatched ? icon('check') : ''}${escape(report.identity)}</strong></div></div>
-      <div class="report-chart"><h3>Chromatogram schematic</h3>${reportChart()}<p class="coa-help">Shared schematic, not report-specific analytical data.</p></div>
-      <p class="report-disclaimer"><strong>Sample report.</strong> ${escape(report.disclaimer)}</p>
-      <div class="report-actions"><button class="button button-dark" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
-      <div id="report-copy-fallback" class="copy-fallback" role="region" aria-label="Manual copy" hidden><p>Automatic copy was unavailable. Select and copy the complete value below.</p><label for="report-copy-value">Value to copy</label><textarea id="report-copy-value" readonly></textarea><div class="dialog-buttons"><button class="text-button" data-action="copy-select">Select all</button><button class="text-button" data-action="copy-retry">Try copying again</button></div></div>
-    </div></article>${lookupForm()}`;
+  const sample = Object.hasOwn(SAMPLE_REPORT_ASSETS, report.lookupCode) ? SAMPLE_REPORT_ASSETS[report.lookupCode] : null;
+  if (!sample) { renderReportNotFound(); return; }
+  const fields = [['Product name', '[Product name]'], ['Appearance', '[Appearance]'], ['Client', '[Client name]'], ['Lot', '[Lot number]'], ['Accession no.', '[Accession no.]'], ['COA Lookup Code', report.lookupCode], ['Received', '[YYYY-MM-DD]'], ['Reported', '[YYYY-MM-DD]']];
+  const screenings = ['Identity (LC-MS)', 'Elemental impurities (ICP-MS)', 'Endotoxin (LAL)', 'Microbial analysis (PCR)', 'Fentanyl'];
+  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading"><div><p class="report-demo-label">Sample report</p><h1 id="report-title" tabindex="-1">${escape(sample.label)}</h1></div><p class="coa-code">COA Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
+    <figure class="coa-master-paper"><img src="${sample.svg}" width="595" height="842" alt="Placeholder certificate of analysis for ${escape(sample.label)}. COA Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
+    <p class="report-disclaimer coa-master-disclosure"><strong>Sample report.</strong> ${escape(report.disclaimer)}</p>
+    <div class="report-actions coa-master-tools"><a class="button button-dark" href="${sample.pdf}" download>Download PDF</a><a class="button button-outline" href="${sample.svg}" target="_blank" rel="noopener">View full size</a><button class="button button-outline" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
+    <details class="coa-master-transcript"><summary>Report fields</summary><div class="coa-master-transcript-body"><section><h2>Sample information</h2><dl class="coa-master-field-list">${fields.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl></section><section><h2>Analytical results</h2><p>Purity / HPLC-UV</p><dl class="coa-master-field-list">${['Sample 1', 'Sample 2', 'Reported summary'].map((label) => `<div><dt>${label}</dt><dd>--.--%</dd></div>`).join('')}</dl><table><caption>Composition · Net content (mg)</caption><thead><tr><th scope="col">Analyte</th><th scope="col">Sample 1</th><th scope="col">Sample 2</th><th scope="col">Reported summary</th></tr></thead><tbody>${Array.from({ length: 4 }, (_, i) => `<tr><th scope="row">[Analyte ${i + 1}]</th><td>--.--</td><td>--.--</td><td>--.--</td></tr>`).join('')}</tbody></table></section><section><h2>Analytical figures</h2><p>HPLC-UV chromatogram: [Chromatogram]</p><ul>${Array.from({ length: 4 }, (_, i) => `<li>[Analyte ${i + 1}]: [Spectrum]</li>`).join('')}</ul></section><section><h2>Screening outcomes</h2><dl class="coa-master-field-list">${screenings.map((label) => `<div><dt>${label}</dt><dd>[Result] · [Result details]</dd></div>`).join('')}</dl><h2>Method</h2><p>[Analytical method]</p></section><section><h2>Signoff</h2><p>[Authorized signature]</p><p>[Title]</p></section></div></details>
+    <div id="report-copy-fallback" class="copy-fallback" role="region" aria-label="Manual copy" hidden><p>Automatic copy was unavailable. Select and copy the complete value below.</p><label for="report-copy-value">Value to copy</label><textarea id="report-copy-value" readonly></textarea><div class="dialog-buttons"><button class="text-button" data-action="copy-select">Select all</button><button class="text-button" data-action="copy-retry">Try copying again</button></div></div>
+    </article>${lookupForm()}`;
 }
 
 function renderReportNotFound() {
@@ -182,7 +184,7 @@ function renderCurrentRoute(focus = false, legacyError = false) {
     activeReport = current.coa.report;
     if (activeReport) {
       renderReport(activeReport);
-      document.title = `${activeReport.id} · ${activeReport.lookupCode} · AssayNova`;
+      document.title = `Sample report · ${activeReport.lookupCode} · AssayNova`;
     } else {
       renderReportNotFound();
       document.title = 'COA not found · AssayNova';
