@@ -130,6 +130,21 @@ test('missing observers fail safe to usable manual controls, destroy cleans ever
   assert.equal(f.button('next').listeners.get('click').size, 0); const before = f.controller.getState().index; f.advance(30000); assert.equal(f.controller.getState().index, before);
 });
 
+test('queued old observers and media callbacks cannot overwrite a rebound controller', () => {
+  const f = fixture(); f.visible();
+  const oldObservers = { ...f.observation }, oldMotion = [...f.media.listeners.get('change')][0];
+  f.controller.destroy();
+  const rebound = createMethodCharts(f.root, { seed: 752 });
+  f.button('play').focus();
+  assert.equal(f.button('play').textContent, 'Start rotation');
+  const plot = f.figures[0].nodes['.methods-chart'].innerHTML;
+  oldObservers.intersection.emit([{ target: f.figures[0], isIntersecting: true }]); oldObservers.mutation.emit([]); oldObservers.resize.emit([]);
+  assert.equal(f.button('play').textContent, 'Start rotation'); assert.equal(f.figures[0].nodes['.methods-chart'].innerHTML, plot); assert.equal(f.tasks.size, 0);
+  f.visible(); f.button('play').fire('click'); assert.equal(f.tasks.size, 1); assert.equal(rebound.getState().wanted, true);
+  oldMotion({ matches: true }); oldObservers.mutation.emit([]);
+  assert.equal(f.button('play').textContent, 'Pause rotation'); assert.equal(f.tasks.size, 1); assert.equal(rebound.getState().wanted, true);
+});
+
 test('pure import performs no DOM, timers, storage, network or clipboard work', () => {
   const source = readFileSync(new URL('../dist/method-charts.js', import.meta.url), 'utf8').replace(/\bexport\s+/g, '');
   const context = {};

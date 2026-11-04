@@ -98,6 +98,7 @@ export function createMethodCharts(root, options = {}) {
     }
   }
   function schedule() {
+    if (destroyed) return;
     if (timer !== null) { scheduler.clearTimeout(timer); timer = null; }
     for (const node of nodes) { node.play.textContent = wanted ? 'Pause rotation' : 'Start rotation'; node.frame.setAttribute('aria-live', 'off'); }
     if (eligible()) timer = scheduler.setTimeout(() => { timer = null; if (eligible()) { index = (index + 1) % samples.length; paint(); } schedule(); }, ROTATION_MS);
