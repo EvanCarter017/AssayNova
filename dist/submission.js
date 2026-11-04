@@ -85,7 +85,7 @@ export function duplicateSubmissionSample(state, id, newId) {
 }
 
 export function effectiveReportRecipient(state) {
-  return clean(state.reportRecipient) || clean(state.company) || clean(state.name);
+  return clean(state.reportRecipient) || clean(state.name);
 }
 
 export function createRequestRecord(state, { id, createdAt }) {

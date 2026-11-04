@@ -108,7 +108,7 @@ test('request presets respect edited state while explicit fresh and generic re-e
   const h = harness().start('purity'); const id = h.sampleIds()[0]; h.input(`sample:${id}:name`, 'Keep me');
   h.api.activate(); assert.equal(h.field(`sample:${id}:service`).value, 'purity'); assert.equal(h.query('#rq-notice').textContent, '');
   h.api.activate({ service: 'identity' }); assert.equal(h.field(`sample:${id}:service`).value, 'purity'); assert.match(h.query('#rq-notice').textContent, /not applied/);
-  h.input(`sample:${id}:batch`, 'Edited batch'); assert.equal(h.query('#rq-notice').textContent, ''); assert.equal(h.root.querySelector('.rq-fresh'), null);
+  h.input(`sample:${id}:quantity`, '2'); assert.equal(h.query('#rq-notice').textContent, ''); assert.equal(h.root.querySelector('.rq-fresh'), null);
   h.api.activate({ service: 'identity' }); h.action('fresh'); const fresh = h.sampleIds()[0]; assert.equal(h.field(`sample:${fresh}:service`).value, 'identity'); assert.equal(h.field(`sample:${fresh}:name`).value, '');
   h.api.activate({ reset: true, service: 'custom' }); assert.equal(h.field(`sample:${h.sampleIds()[0]}:service`).value, 'custom');
   for (const handlers of h.events.values()) assert.equal(handlers.length, 1);
@@ -157,4 +157,36 @@ test('a throwing localStorage getter is accessed lazily inside Save, not control
   Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { reads++; throw Error('Synthetic SecurityError'); } });
   try { const h = harness({ lazyStorage: true }).validReview(); assert.equal(reads, 0); h.submit(); assert.equal(reads, 1); assert.match(h.root.innerHTML, /could not save/); }
   finally { if (original) Object.defineProperty(globalThis, 'localStorage', original); else delete globalThis.localStorage; }
+});
+
+test('trimmed request UI hides historical fields but Resume and Save preserve their canonical values', () => {
+  for (const recipient of ['', 'Retained recipient']) {
+    const state = newSubmission('historical');
+    Object.assign(state, { name: 'Original contact', email: 'qa@example.invalid', company: ' Historical Lab ', reportRecipient: recipient });
+    Object.assign(state.samples[0], { name: 'Historical sample', batch: ' LOT-42 ', amount: ' 80 mg ' });
+    const record = createRequestRecord(state, { id: 'AN-REQ-HISTORICAL', createdAt: '2026-11-05T00:00:00.000Z' });
+    const h = harness({ initial: JSON.stringify([record]) });
+    assert.equal(h.api.resume(record), true);
+    assert.equal(h.root.querySelector('[data-rq-field="sample:historical:batch"]'), null);
+    assert.equal(h.root.querySelector('[data-rq-field="sample:historical:amount"]'), null);
+    assert.ok(!/Batch or lot|Stated amount/.test(h.root.innerHTML));
+    h.input('sample:historical:name', 'Updated visible sample');
+    h.submit();
+    assert.equal(h.root.querySelector('[data-rq-field="company"]'), null);
+    assert.equal(h.field('reportRecipient').value, recipient);
+    assert.match(h.root.innerHTML, /Report recipient name/);
+    assert.match(h.root.innerHTML, /If left blank, your contact name will be used/);
+    h.input('name', 'Updated contact');
+    h.submit();
+    assert.ok(!/<dt>Company<|<dt>Batch \/ lot<|<dt>Stated amount</.test(h.root.innerHTML));
+    assert.ok(!/Historical Lab|LOT-42|80 mg/.test(h.root.innerHTML));
+    assert.ok(h.root.innerHTML.includes(recipient || 'Updated contact'));
+    h.submit();
+    const saved = JSON.parse(h.values.get(REQUEST_DRAFT_KEY));
+    assert.equal(saved.length, 1); assert.equal(saved[0].id, record.id); assert.equal(saved[0].createdAt, record.createdAt);
+    assert.equal(saved[0].company, record.company); assert.equal(saved[0].samples[0].batch, record.samples[0].batch); assert.equal(saved[0].samples[0].amount, record.samples[0].amount);
+    assert.equal(saved[0].reportRecipient, recipient); assert.equal(saved[0].name, 'Updated contact'); assert.equal(saved[0].sample, 'Updated visible sample');
+  }
+  const fresh = harness().validReview(); fresh.submit(); const value = JSON.parse(fresh.values.get(REQUEST_DRAFT_KEY))[0];
+  assert.equal(value.company, ''); assert.equal(value.samples[0].batch, ''); assert.equal(value.samples[0].amount, '');
 });

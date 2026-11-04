@@ -44,7 +44,7 @@ test('version2 records normalize safely and reject conflicting projections, unkn
   for (const patch of [{ version: 3 }, { sample: 'Conflict' }, { service: 'identity' }, { quantity: 2 }, { filename: 'unsafe.png' }, { createdAt: 'not-a-date' }]) assert.equal(parseRequestRecord({ ...record, ...patch }), null);
   assert.equal(parseRequestRecord({ ...record, samples: [{ ...record.samples[0], quantity: '1' }] }), null);
   assert.equal(parseRequestRecord({ ...record, samples: [{ ...record.samples[0], blobURL: 'blob:private' }] }), null);
-  assert.equal(effectiveReportRecipient(state), 'Lab Alpha'); state.reportRecipient = ' Research Team '; assert.equal(effectiveReportRecipient(state), 'Research Team'); state.reportRecipient = state.company = ''; assert.equal(effectiveReportRecipient(state), 'Synthetic Contact');
+  assert.equal(effectiveReportRecipient(state), 'Synthetic Contact'); assert.equal(state.company, 'Lab Alpha'); state.reportRecipient = ' Research Team '; assert.equal(effectiveReportRecipient(state), 'Research Team'); state.reportRecipient = state.company = ''; assert.equal(effectiveReportRecipient(state), 'Synthetic Contact');
 });
 
 test('maximum escaped fields survive exact serialized roundtrip within the derived bound', () => {

@@ -295,7 +295,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     enterRequestContact(values = {}) { return enterRequestContact(values); },
     saveRequest(values) {
       if (!enterRequestContact(values)) return;
-      for (const key of ['name', 'email', 'company', 'notes']) setRequestField(key, values[key] ?? '');
+      for (const key of ['name', 'email', 'notes']) setRequestField(key, values[key] ?? '');
       submitRequestStep();
       const flow = node('#request-flow');
       if (flow.querySelector('[data-rq-step="3"]')?.getAttribute('aria-current') === 'step') submitRequestStep();
@@ -975,4 +975,24 @@ test('independent request keeps presets, native sample groups and browser Back/F
   assert.match(html, /href="\/testing-methods">Back to Our Testing/);
   app.travel(-1); app.flushFrames(); assert.equal(app.location.pathname, '/testing-methods'); assert.equal(app.focused(), '#testing-page-title');
   app.travel(1); app.flushFrames(); assert.equal(app.location.pathname, '/submit-sample'); assert.equal(app.focused(), '#request-page-title'); assert.equal(app.networkCalls.length, 0);
+});
+
+test('v2 saved details omit retired fields without changing storage and Resume preserves their values', () => {
+  const state = submissionData.newSubmission('history');
+  Object.assign(state, { name: 'Historical contact', email: 'qa@example.invalid', company: 'Historical company', reportRecipient: '' });
+  Object.assign(state.samples[0], { name: 'Historical sample', batch: 'HIST-LOT', amount: '75 mg' });
+  const record = submissionData.createRequestRecord(state, { id: 'AN-REQ-HISTORY', createdAt: '2026-11-05T00:00:00.000Z' });
+  const app = bootApp('/', [record]);
+  app.click('request-detail', { id: record.id });
+  const html = app.nodes.get('#dialog-content').innerHTML;
+  assert.ok(!/<dt>Company<|<dt>Batch \/ lot<|<dt>Stated amount</.test(html));
+  assert.ok(!/Historical company|HIST-LOT|75 mg/.test(html));
+  assert.match(html, /<dt>Report recipient<\/dt><dd>Historical contact<\/dd>/);
+  assert.deepEqual(app.requests(), [record]);
+  app.click('request-resume', { id: record.id });
+  app.saveRequest({ name: 'Edited contact', email: record.email, sample: 'Edited sample', service: 'purity', quantity: '2', notes: '' });
+  const updated = app.requests();
+  assert.equal(updated.length, 1); assert.equal(updated[0].id, record.id);
+  assert.equal(updated[0].company, record.company); assert.equal(updated[0].samples[0].batch, record.samples[0].batch); assert.equal(updated[0].samples[0].amount, record.samples[0].amount);
+  assert.equal(app.networkCalls.length, 0);
 });
