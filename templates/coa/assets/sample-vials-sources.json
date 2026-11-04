@@ -1,23 +1,52 @@
 {
-  "primaryPage": "https://bioart.niaid.nih.gov/bioart/535",
-  "creator": "Ryan Kissinger",
-  "credit": "Courtesy of NIAID",
-  "license": "Public Domain",
-  "use": "Generic illustrative vial images; not photographs of the fictional samples.",
+  "creator": "Thirdman",
+  "license": "Pexels License",
+  "licenseUrl": "https://www.pexels.com/license/",
+  "use": "Generic unbranded vial photographs; no endorsement or assertion that they depict the sample contents.",
   "files": [
     {
-      "file": "sample-vial-a.png",
-      "sourceUrl": "https://bioart.niaid.nih.gov/api/bioarts/535/files/636843",
-      "width": 569,
-      "height": 1498,
-      "sha256": "23EF219348D892E7829E1A3C0576FFC030644F56583ED984C3D678BA7E8990E2"
+      "file": "sample-vial-a.jpg",
+      "sourcePage": "https://www.pexels.com/photo/covid19-vaccine-vial-5922087/",
+      "sourceUrl": "https://images.pexels.com/photos/5922087/pexels-photo-5922087.jpeg",
+      "originalSize": [
+        4203,
+        6304
+      ],
+      "originalSha256": "A6803DF0693486B389A7011036162E72C9402133C2EEDA1A831E681E5BD151D4",
+      "crop": [
+        950,
+        3550,
+        2250,
+        5550
+      ],
+      "usedSize": [
+        1300,
+        2000
+      ],
+      "usedRGBPixelSha256": "AE005903ADA132545EDF028270FFFDEF574CD9A92A549E26B3F6E47AAB8BE9D9",
+      "processing": "Geometric crop only; no resampling, retouching or generated content."
     },
     {
-      "file": "sample-vial-c.png",
-      "sourceUrl": "https://bioart.niaid.nih.gov/api/bioarts/535/files/636840",
-      "width": 569,
-      "height": 1498,
-      "sha256": "BF1E48F02CA285A60D47CA81427C0DCDBBB52660441E6BAB45FD661502B97C26"
+      "file": "sample-vial-c.jpg",
+      "sourcePage": "https://www.pexels.com/photo/covid-vaccine-5922101/",
+      "sourceUrl": "https://images.pexels.com/photos/5922101/pexels-photo-5922101.jpeg",
+      "originalSize": [
+        6465,
+        4310
+      ],
+      "originalSha256": "3A351FE95826F059A9996E55D2236B9B09062DEF9FA463E8010DB0E3BF3AD4F6",
+      "crop": [
+        700,
+        1650,
+        2450,
+        4050
+      ],
+      "usedSize": [
+        1750,
+        2400
+      ],
+      "usedRGBPixelSha256": "D121C21BCE0E14D29003142FDB6C1582667D48D2C06851D9B8341756588EE5B4",
+      "processing": "Geometric crop only; no resampling, retouching or generated content."
     }
   ]
 }

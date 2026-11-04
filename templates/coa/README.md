@@ -93,40 +93,44 @@ Do not invent methods, numerical limits, overall pass results, signatures,
 accreditation, contacts or verification claims. Omit unavailable fields instead
 of adding placeholders.
 
-## Public fictional sample reports
+## Public specimen reports
 
-`build_sample_coa.py` is separate from both strict private-data builders above.
-`sample_reports.json` is the single authoritative public fictional catalog. It
-contains two distinct, fixed sample records and illustrative chromatogram/mass
-peak arrays. The published summary purity, identity, retention time, dates and
-lookup codes agree with the immutable website fixtures. Replicate means, required
-fields, supported glyphs, bounded peaks and fixed layout slots are validated for
-BOTH records before any output is replaced.
+`build_sample_coa.py` remains separate from both strict private-data builders.
+The authoritative `sample_reports.json` supplies real peptide names and fixed
+synthetic sample fields, measurements and instrument-style traces. Lookup codes,
+summary results and dates stay aligned with the published sample fixtures.
 
 ```powershell
 python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../dist/reports
 python build_sample_coa.py --lookup-code AN-8P6R-3N5Y --output-dir ../../dist/reports
 ```
 
-These commands deterministically generate one portrait A4 PDF and vector SVG per
-code, plus `sample-data.js` exporting BOTH records for the accessible website
-transcript even when only one report is built. Rebuild both pairs after editing
-the catalog. Output staging begins only after validation and rendering complete.
-No private JSON, real analytical trace, or filesystem path is published.
+Both records are validated before any output is replaced. Each command writes its
+portrait A4 PDF/SVG pair and the shared `sample-data.js` module containing both
+records. The existing fictional/not-valid disclosure stays outside the paper.
+These are complete specimen reports, not evidence of an actual analytical run.
 
-The default product illustrations are unmodified NIH BioArt public-domain PNGs,
-created by Ryan Kissinger (Courtesy of NIAID). See
-`assets/sample-vials-sources.json` for the primary source, direct URLs and hashes.
-They illustrate generic vials, not the fictional products. Add
-`--product-image /path/to/image.png` (or JPEG) to override a product image; it is
-validated, fitted proportionally and embedded. The original lower-left Dylan
-Greene signature design and Chief Chemist title are retained. This design does
-not digitally sign, approve or issue a report.
+`analytical-references.json` documents public PubChem monoisotopic masses and NIST
+constants. Ion m/z values use neutral mass/charge plus proton mass, with fixed
+small ppm offsets and carbon-13 spacing/charge. The GHK-Cu panel explicitly shows
+GHK ligand ions; these do not establish intact copper-complex identity. Full
+N-acetyl 43-aa thymosin beta-4 is used, never the TB-500 fragment. Sample C keeps
+its unresolved thymosin signal and Partial match outcome. Composition summaries
+are rounded replicate means. Fitted HPLC target areas sum to reported purity;
+baseline texture is excluded from component integration.
 
-One ReportLab Drawing supplies both formats. PDFs retain embedded Vera text;
-SVG text uses self-contained Vera glyph outlines, with no external font fetch or
-CSP relaxation. Only supported printable ASCII/simple glyphs are accepted. The
-logo, product image and signature preserve alpha and are embedded for offline
-use. Distribute `bitstream-vera-license.txt` from `fonts/` with generated reports.
-All plots are vector illustrations based on the fixed fictional peak arrays.
-The website retains its fictional/not-valid disclosure outside the paper.
+Monochrome vector traces retain a broad mass scan, sparse peak/charge labels and
+supplemental isotope detail. Instrument annotations alone may use 6.5-8 pt inside
+bounded chart frames; body typography stays at least 8 pt. One ReportLab Drawing
+supplies both formats, with the unchanged self-contained Vera glyph encoder.
+PDFs retain embedded text; SVGs require no external fonts or network resources.
+Distribute the unchanged `bitstream-vera-license.txt` with the reports.
+
+The real unbranded vial photographs are by Thirdman under the Pexels License.
+`assets/sample-vials-sources.json` records source pages, original file hashes and
+geometric crop bounds/pixel hashes. Originals are kept as JPEGs; cropping does
+not resample, retouch or invent labels. They do not assert actual sample contents
+or endorsement. Optional `--product-image` PNG/JPEG replacement remains available.
+Images, logo and the original authorized Dylan Greene signature design are
+embedded for offline use. No private source report/client data or scientific
+trace pixels are read by this public builder; no digital issuance is performed.

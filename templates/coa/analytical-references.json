@@ -1,0 +1,99 @@
+{
+  "provenance": "Public chemistry references and calculation conventions; sample values and traces are synthetic.",
+  "style": "Thin monochrome axes, narrow asymmetric chromatographic peaks, broad-scan charge-state spectra and isotope envelopes. No source trace pixels or client data are included.",
+  "protonMassU": 1.0072764665789,
+  "carbon13SpacingU": 1.00335483507,
+  "constantsSources": [
+    "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+    "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=C"
+  ],
+  "analytes": [
+    {
+      "tableName": "GHK-Cu",
+      "species": "GHK (apo ligand)",
+      "cid": 73587,
+      "formula": "C14H24N6O4",
+      "neutralMonoisotopicMass": 340.18590327,
+      "source": "https://pubchem.ncbi.nlm.nih.gov/compound/73587",
+      "charges": [
+        2,
+        1
+      ]
+    },
+    {
+      "tableName": "KPV",
+      "species": "KPV free acid",
+      "cid": 125672,
+      "formula": "C16H30N4O4",
+      "neutralMonoisotopicMass": 342.22670545,
+      "source": "https://pubchem.ncbi.nlm.nih.gov/compound/125672",
+      "charges": [
+        2,
+        1
+      ]
+    },
+    {
+      "tableName": "BPC-157",
+      "species": "BPC-157 free acid",
+      "cid": 9941957,
+      "formula": "C62H98N16O22",
+      "neutralMonoisotopicMass": 1418.70415882,
+      "source": "https://pubchem.ncbi.nlm.nih.gov/compound/9941957",
+      "charges": [
+        2,
+        3,
+        1
+      ]
+    },
+    {
+      "tableName": "Thymosin Beta-4",
+      "species": "N-acetyl thymosin beta-4 (43 aa)",
+      "cid": 16132341,
+      "formula": "C212H350N56O78S",
+      "neutralMonoisotopicMass": 4960.4863169,
+      "source": "https://pubchem.ncbi.nlm.nih.gov/compound/16132341",
+      "charges": [
+        6,
+        5,
+        4
+      ]
+    }
+  ],
+  "calculation": "m/z = neutral monoisotopic mass / charge + proton mass; carbon-13 isotope spacing = 1.00335483507 / charge. GHK ligand ions are not intact copper-complex ions.",
+  "purityConvention": "Target fitted peak areas sum to reported purity; impurity areas complete 100%. Baseline drift/noise are not integrated component area.",
+  "isotopeEnvelopes": {
+    "73587": [
+      100,
+      17.762,
+      2.314
+    ],
+    "125672": [
+      100,
+      19.264,
+      2.581
+    ],
+    "9941957": [
+      100,
+      74.868,
+      32.174,
+      10.1,
+      2.553
+    ],
+    "16132341": [
+      28.502,
+      73.404,
+      100,
+      95.243,
+      70.885,
+      43.753
+    ]
+  },
+  "isotopeEnvelopeConvention": "Formula-derived natural-abundance nominal isotope bins, normalized to maximum 100; carbon, hydrogen, nitrogen, oxygen and sulfur contributions included.",
+  "isotopeAbundanceSources": [
+    "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=C",
+    "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=H",
+    "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=N",
+    "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=O",
+    "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=S"
+  ]
+}

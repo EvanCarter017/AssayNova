@@ -322,12 +322,15 @@ test('actual public form handlers clear A on failure, survive refresh/history an
     const record = SAMPLE_REPORT_DATA[code];
     const otherRecord = SAMPLE_REPORT_DATA[code === 'AN-7K9Q-2M4X' ? 'AN-8P6R-3N5Y' : 'AN-7K9Q-2M4X'];
     for (const value of [record.product, record.client, record.reportId, record.received, record.reported, record.identity, ...record.purity.map(value => value + '%')]) assert.ok(html.includes(value), value);
-    for (const value of [otherRecord.product, otherRecord.client, otherRecord.reportId, otherRecord.purity[2] + '%', otherRecord.identity]) assert.ok(!html.includes(value), value);
+    for (const value of [otherRecord.client, otherRecord.reportId, otherRecord.purity[2] + '%', otherRecord.identity]) assert.ok(!html.includes(value), value);
     assert.ok(!/\[(?:Product name|Client name|YYYY-MM-DD|Analyte|Result|Spectrum|Title)|--\.--|identity-matched|identity-neutral|Chromatogram schematic/.test(html));
     assert.ok(html.includes('Report fields') && html.includes('Dylan Greene') && html.includes('Chief Chemist'));
     assert.ok(html.includes('Fictional data for illustration. Not a valid certificate of analysis.'));
     assert.ok(html.includes('Lookup Code') && !html.includes('COA Lookup Code'));
-    assert.ok(html.includes('Illustrative HPLC-UV chromatogram') && html.includes(record.retentionTime + ' min'));
+    assert.ok(html.includes('HPLC-UV chromatogram') && html.includes(record.retentionTime + ' min'));
+    for (const analyte of ['GHK-Cu', 'KPV', 'BPC-157', 'Thymosin Beta-4']) assert.ok(html.includes(analyte));
+    assert.ok(!/Aster-[1-4]|Cedar-[1-4]/.test(html));
+    assert.ok(html.includes('GHK (apo ligand)') && html.includes('[M+2H]2+'));
     for (const row of record.composition) assert.ok(html.includes(row.analyte) && html.includes(row.summary));
   };
   const app = bootApp('/coa/AN-7K9Q-2M4X');
@@ -1030,5 +1033,34 @@ test('public report module matches its authoritative fictional catalog and publi
     assert.equal(record.screenings[0].result, record.identity);
     for (const row of record.composition) assert.equal(((Number(row.sample1) + Number(row.sample2)) / 2).toFixed(2), row.summary);
     assert.equal(Math.max(...record.chromatogram.map(peak => peak.response)), record.chromatogram.find(peak => peak.time === Number(record.retentionTime)).response);
+  }
+});
+
+test('sample ion envelopes use primary neutral masses, charge spacing and purity-compatible fitted areas', async () => {
+  const refs = JSON.parse(await readFile(new URL('../templates/coa/analytical-references.json', import.meta.url), 'utf8'));
+  const photos = JSON.parse(await readFile(new URL('../templates/coa/assets/sample-vials-sources.json', import.meta.url), 'utf8'));
+  assert.equal(photos.creator, 'Thirdman');
+  for (const photo of photos.files) {
+    assert.match(photo.sourceUrl, /^https:\/\/images\.pexels\.com\/photos\//);
+    const bytes = await readFile(new URL('../templates/coa/assets/' + photo.file, import.meta.url));
+    assert.equal(bytes[0], 0xff); assert.equal(bytes[1], 0xd8);
+    assert.ok(photo.crop[2] > photo.crop[0] && photo.crop[3] > photo.crop[1]);
+  }
+  for (const [code, record] of Object.entries(SAMPLE_REPORT_DATA)) {
+    assert.deepEqual(record.composition.map(row => row.analyte), refs.analytes.map(row => row.tableName));
+    assert.ok(Math.abs(record.chromatogram.filter(peak => peak.kind === 'target').reduce((sum,peak) => sum + peak.area, 0) - Number(record.purity[2])) < 1e-5);
+    for (const [index, spectrum] of record.spectra.entries()) {
+      assert.equal(spectrum.neutralMass, refs.analytes[index].neutralMonoisotopicMass);
+      for (const ion of spectrum.ions) {
+        const envelope = refs.isotopeEnvelopes[String(spectrum.cid)];
+        for (const [n, isotope] of ion.isotopes.entries()) assert.ok(Math.abs(isotope.response - ion.intensity * envelope[n] / 100) < .00051);
+        if (spectrum.cid === 9941957) assert.equal(Math.max(...ion.isotopes.map(peak => peak.response)), ion.isotopes[0].response);
+        if (spectrum.cid === 16132341) assert.equal(Math.max(...ion.isotopes.map(peak => peak.response)), ion.isotopes[2].response);
+        const expected = (spectrum.neutralMass / ion.charge + refs.protonMassU) * (1 + ion.ppm / 1e6);
+        assert.ok(Math.abs(ion.mz - expected) < 1e-6);
+        for (const [n, isotope] of ion.isotopes.entries()) assert.ok(Math.abs(isotope.mz - ion.mz - n * refs.carbon13SpacingU / ion.charge) < 1e-6);
+      }
+    }
+    assert.equal(record.spectra[3].status, code === 'AN-8P6R-3N5Y' ? 'Low signal' : 'Observed');
   }
 });

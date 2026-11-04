@@ -10,6 +10,8 @@ import argparse
 import copy
 import json
 import math
+import random
+import hashlib
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 import os
@@ -100,8 +102,17 @@ def load_records():
     records = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     if not isinstance(records, dict) or set(records) != set(STEMS):
         raise ValueError("Public catalog must contain exactly both sample lookup codes")
+    sources = json.loads((ROOT / "assets" / "sample-vials-sources.json").read_text(encoding="utf-8"))
+    if {item["file"] for item in sources["files"]} != {"sample-vial-a.jpg", "sample-vial-c.jpg"}: raise ValueError("Expected both approved product photographs")
+    for source in sources["files"]:
+        file = ROOT / "assets" / source["file"]
+        if hashlib.sha256(file.read_bytes()).hexdigest().upper() != source["originalSha256"]: raise ValueError("Original product photograph changed")
+        with PILImage.open(file) as image:
+            crop=source["crop"]
+            if image.format != "JPEG" or len(crop)!=4 or any(type(v) is not int for v in crop) or not (0<=crop[0]<crop[2]<=image.width and 0<=crop[1]<crop[3]<=image.height): raise ValueError("Invalid product photograph/crop")
+            if hashlib.sha256(image.crop(crop).convert("RGB").tobytes()).hexdigest().upper()!=source["usedRGBPixelSha256"]: raise ValueError("Product crop does not match provenance")
     register_fonts()
-    keys = {"label", "product", "appearance", "client", "reportId", "accession", "lot", "received", "reported", "purity", "identity", "retentionTime", "composition", "screenings", "method", "spectra", "chromatogram", "signoffTitle"}
+    keys = {"label", "product", "appearance", "client", "reportId", "accession", "lot", "received", "reported", "purity", "identity", "retentionTime", "composition", "screenings", "method", "spectra", "chromatogram", "signoffTitle", "plotSeed"}
     def printable(value):
         if isinstance(value, str):
             if not value or len(value) > 160 or any(not 32 <= ord(c) <= 126 for c in value):
@@ -148,57 +159,131 @@ def load_records():
         if record["screenings"][0]["result"] != record["identity"]: raise ValueError("Identity outcomes disagree")
         fits(record["method"], 244, 9)
         if record["signoffTitle"] != "Chief Chemist": raise ValueError("Unexpected signoff title")
-        if not isinstance(record["spectra"], list) or len(record["spectra"]) != 4: raise ValueError("Expected four mass spectra")
-        for index, spectrum in enumerate(record["spectra"]):
-            if not isinstance(spectrum, dict) or set(spectrum) != {"analyte", "peaks"} or spectrum["analyte"] != record["composition"][index]["analyte"]: raise ValueError("Spectrum labels must match composition")
-            peaks = spectrum["peaks"]
-            if not isinstance(peaks, list) or not 1 <= len(peaks) <= 12: raise ValueError("Invalid spectrum peaks")
-            for peak in peaks:
-                if not isinstance(peak, list) or len(peak) != 2 or any(type(v) not in (int,float) or not math.isfinite(v) for v in peak) or not 0 < peak[0] <= 1200 or not 0 < peak[1] <= 100: raise ValueError("Invalid mass peak")
-        peaks = record["chromatogram"]
-        if not isinstance(peaks, list) or not 1 <= len(peaks) <= 12: raise ValueError("Invalid chromatographic peaks")
+        references = json.loads((ROOT / "analytical-references.json").read_text(encoding="utf-8"))
+        if references["protonMassU"] != 1.0072764665789 or references["carbon13SpacingU"] != 1.00335483507:
+            raise ValueError("Unrecognized reference constants")
+        if [(r["cid"],r["neutralMonoisotopicMass"]) for r in references["analytes"]] != [(73587,340.18590327),(125672,342.22670545),(9941957,1418.70415882),(16132341,4960.4863169)]: raise ValueError("Unrecognized chemical references")
+        chemical_names = ["GHK-Cu", "KPV", "BPC-157", "Thymosin Beta-4"]
+        if [r["analyte"] for r in record["composition"]] != chemical_names: raise ValueError("Real analyte order required")
+        spectra = record["spectra"]
+        if not isinstance(spectra, list) or len(spectra) != 4: raise ValueError("Expected four mass spectra")
+        for index, spectrum in enumerate(spectra):
+            reference = references["analytes"][index]
+            if set(spectrum) != {"analyte", "species", "cid", "neutralMass", "ions", "noise", "scan", "status"}: raise ValueError("Invalid spectrum schema")
+            if spectrum["analyte"] != chemical_names[index] or spectrum["species"] != reference["species"] or spectrum["cid"] != reference["cid"] or spectrum["neutralMass"] != reference["neutralMonoisotopicMass"] or spectrum["scan"] != [100,1600]: raise ValueError("Spectrum species differs from chemistry references")
+            if [ion["charge"] for ion in spectrum["ions"]] != reference["charges"]: raise ValueError("Unexpected charge states")
+            for ion in spectrum["ions"]:
+                if set(ion) != {"charge", "label", "mz", "ppm", "intensity", "isotopes"}: raise ValueError("Invalid ion schema")
+                z=ion["charge"]
+                expected_label=f"[M+{z}H]{z}+" if z>1 else "[M+H]+"
+                if ion["label"] != expected_label or type(ion["ppm"]) not in (float,int) or abs(ion["ppm"]) > 5: raise ValueError("Invalid ion annotation")
+                mz=(spectrum["neutralMass"]/z+references["protonMassU"])*(1+ion["ppm"]/1e6)
+                if abs(ion["mz"]-mz)>1e-6 or not 0 < ion["intensity"] <= 100: raise ValueError("Inconsistent ion mass or response")
+                if not 3 <= len(ion["isotopes"]) <= 8: raise ValueError("Invalid isotope envelope")
+                for n, isotope in enumerate(ion["isotopes"]):
+                    if set(isotope)!={"mz","response"} or abs(isotope["mz"]-(ion["mz"]+n*references["carbon13SpacingU"]/z))>1e-6 or not 0 < isotope["response"] <= ion["intensity"]: raise ValueError("Inconsistent isotope spacing/response")
+                    envelope=references["isotopeEnvelopes"][str(spectrum["cid"])]
+                    if len(ion["isotopes"]) != len(envelope) or abs(isotope["response"]-ion["intensity"]*envelope[n]/100)>.00051: raise ValueError("Isotope response conflicts with natural-abundance reference")
+                if spectrum["cid"] == 9941957 and not .70 <= ion["isotopes"][1]["response"]/ion["isotopes"][0]["response"] <= .80: raise ValueError("BPC-157 isotope ratio conflicts with its unlabeled formula")
+            for peak in spectrum["noise"]:
+                if set(peak)!={"mz","response"} or not 100 <= peak["mz"] <= 1600 or not 0 <= peak["response"] <= 3: raise ValueError("Invalid minor mass peak")
+            unresolved=code=="AN-8P6R-3N5Y" and index==3
+            if spectrum["status"] != ("Low signal" if unresolved else "Observed") or unresolved and max(i["intensity"] for i in spectrum["ions"])>10: raise ValueError("Spectrum contradicts the identity outcome")
+        peaks=record["chromatogram"]
+        if not isinstance(peaks,list) or len(peaks)!=7 or type(record["plotSeed"]) is not int: raise ValueError("Expected four target peaks and three impurity peaks")
         for peak in peaks:
-            if not isinstance(peak, dict) or set(peak) != {"time", "response", "width"}: raise ValueError("Invalid chromatographic peak")
-            if any(type(v) not in (int,float) or not math.isfinite(v) for v in peak.values()) or not 0 < peak["time"] < 15 or not 0 < peak["response"] <= 100 or not .03 <= peak["width"] <= .5: raise ValueError("Chromatographic peak outside supported axes")
-        if max(peaks, key=lambda p:p["response"])["time"] != float(record["retentionTime"]): raise ValueError("Principal peak must match published retention time")
+            if set(peak)!={"analyte","kind","time","area","width","tail","response"}: raise ValueError("Invalid chromatographic peak")
+            if peak["kind"] not in ("target","impurity") or any(type(peak[k]) not in (int,float) or not math.isfinite(peak[k]) for k in ["time","area","width","tail","response"]): raise ValueError("Invalid chromatographic values")
+            if not 0 < peak["time"] < 15 or not 0 < peak["area"] < 100 or not .02 <= peak["width"] <= .15 or not 1 <= peak["tail"] <= 3 or not 0 < peak["response"] <= 100: raise ValueError("Chromatographic peak outside axes")
+        targets=[p for p in peaks if p["kind"]=="target"]
+        if sorted(p["analyte"] for p in targets)!=sorted(chemical_names) or abs(sum(p["area"] for p in targets)-float(record["purity"][2]))>1e-5 or abs(sum(p["area"] for p in peaks)-100)>1e-5: raise ValueError("Fitted peak areas disagree with purity")
+        if max(targets,key=lambda p:p["response"])["time"] != float(record["retentionTime"]): raise ValueError("Principal peak differs from published retention time")
+        heights=[p["area"]/(p["width"]*(1+p["tail"])) for p in peaks]
+        if any(abs(p["response"]-h/max(heights)*100)>1e-5 for p,h in zip(peaks,heights)): raise ValueError("Peak heights must derive from area and width")
     return records
 
 
-def chromatogram(drawing, peaks):
-    # All chart elements stay inside the accepted 265 x 96 pt frame.
-    x, y, w, h = MARGIN, 368, 265, 96
-    drawing.add(Rect(x, y, w, h, fillColor=colors.HexColor("#FAFCFC"), strokeColor=RULE, strokeWidth=.6))
-    left, bottom, width, height = x + 29, y + 28, w - 40, h - 40
-    rule(drawing, left, bottom, width, MUTED, .5)
-    drawing.add(Line(left, bottom, left, bottom + height, strokeColor=MUTED, strokeWidth=.5))
-    for tick in (0, 5, 10, 15):
-        tx = left + tick / 15 * width
-        drawing.add(Line(tx, bottom, tx, bottom - 3, strokeColor=MUTED, strokeWidth=.5))
-        text(drawing, str(tick), tx, bottom - 13, 8, color=MUTED, anchor="middle")
-    text(drawing, "0", left - 7, bottom - 2, 8, color=MUTED, anchor="end")
-    text(drawing, "100", left - 7, bottom + height - 3, 8, color=MUTED, anchor="end")
-    text(drawing, "Time (min)", left + width / 2, y + 3, 8, color=MUTED, anchor="middle")
-    curve = VectorPath(strokeColor=TEAL, strokeWidth=.9, fillColor=None)
-    for index in range(601):
-        t = index / 40
-        response = sum(p["response"] * math.exp(-.5 * ((t-p["time"])/p["width"])**2) for p in peaks)
-        px, py = left + t / 15 * width, bottom + response / 100 * height
-        (curve.moveTo if index == 0 else curve.lineTo)(px, py)
+def chart_text(drawing,value,x,y,frame,size=6.5,anchor="start",rotate=False):
+    """Small instrument annotations are permitted only within measured chart bounds."""
+    if not value or any(not 32 <= ord(c) <= 126 for c in value) or not 6.5 <= size <= 8: raise ValueError("Unsupported chart annotation")
+    font="SampleVera"; width=pdfmetrics.stringWidth(value,font,size); ascent,descent=pdfmetrics.getAscentDescent(font,size)
+    left=x-(width if anchor=="end" else width/2 if anchor=="middle" else 0)
+    box=(x-ascent,y,x-descent,y+width) if rotate else (left,y+descent,left+width,y+ascent)
+    fx,fy,fw,fh=frame
+    if box[0]<fx-.01 or box[1]<fy-.01 or box[2]>fx+fw+.01 or box[3]>fy+fh+.01: raise ValueError("Chart annotation exceeds its frame: "+value)
+    node=String(0 if rotate else x,0 if rotate else y,value,fontName=font,fontSize=size,fillColor=colors.black,textAnchor=anchor)
+    if rotate:
+        group=Group(node);group.transform=(0,1,-1,0,x,y);drawing.add(group)
+    else:drawing.add(node)
+
+
+def chromatogram(drawing,record):
+    frame=(MARGIN,368,265,96); x,y,w,h=frame
+    drawing.add(Rect(x,y,w,h,fillColor=WHITE,strokeColor=colors.HexColor("#B8B8B8"),strokeWidth=.35))
+    left,bottom,width,height=x+27,y+18,w-35,65
+    rule(drawing,left,bottom,width,colors.black,.35)
+    drawing.add(Line(left,bottom,left,bottom+height,strokeColor=colors.black,strokeWidth=.35))
+    for tick in range(31):
+        tx=left+tick/2/15*width
+        drawing.add(Line(tx,bottom,tx,bottom-(3 if tick%10==0 else 1.5),strokeColor=colors.black,strokeWidth=.3))
+        if tick%10==0:chart_text(drawing,str(tick//2),tx,bottom-10,frame,anchor="middle")
+    for tick in range(11):
+        ty=bottom+tick/10*height
+        drawing.add(Line(left-2,ty,left,ty,strokeColor=colors.black,strokeWidth=.3))
+        if tick%5==0:chart_text(drawing,str(tick*10),left-5,ty-2,frame,anchor="end")
+    chart_text(drawing,"Rel. UV (%)",x+3,y+h-7,frame)
+    chart_text(drawing,"UV trace",x+w-3,y+h-7,frame,anchor="end")
+    chart_text(drawing,"min",x+w-3,y+3,frame,anchor="end")
+    noise=random.Random(record["plotSeed"]);curve=VectorPath(strokeColor=colors.HexColor("#242424"),strokeWidth=.42,fillColor=None)
+    for index in range(1501):
+        t=index/100;response=.35+.35*t/15+.08*math.sin(t*3.1)+noise.uniform(-.06,.06)
+        for peak in record["chromatogram"]:
+            sigma=peak["width"]*(peak["tail"] if t>peak["time"] else 1)
+            response+=.985*peak["response"]*math.exp(-.5*((t-peak["time"])/sigma)**2)
+        px,py=left+t/15*width,bottom+response/100*height
+        (curve.moveTo if index==0 else curve.lineTo)(px,py)
     drawing.add(curve)
+    for peak in record["chromatogram"]:
+        if peak["kind"]=="target":chart_text(drawing,peak["analyte"],left+peak["time"]/15*width+6,bottom+7,frame,rotate=True)
 
 
-def spectrum_plot(drawing, peaks, x, y, width):
-    drawing.add(Rect(x, y, width, 76, fillColor=colors.HexColor("#FAFCFC"), strokeColor=RULE, strokeWidth=.6))
-    left, bottom, plot_width, height = x + 16, y + 26, width - 28, 40
-    rule(drawing, left, bottom, plot_width, MUTED, .5)
-    drawing.add(Line(left, bottom, left, bottom + height, strokeColor=MUTED, strokeWidth=.5))
-    for tick in (0, 600, 1200):
-        tx = left + tick / 1200 * plot_width
-        text(drawing, str(tick), tx, bottom - 12, 8, color=MUTED, anchor="middle")
-    text(drawing, "m/z", left + plot_width/2, y + 3, 8, color=MUTED, anchor="middle")
-    for mz, response in peaks:
-        px = left + mz / 1200 * plot_width
-        drawing.add(Line(px, bottom, px, bottom + response / 100 * height, strokeColor=TEAL, strokeWidth=.8))
+def spectrum_plot(drawing,spectrum,x,y,width):
+    frame=(x,y,width,76)
+    drawing.add(Rect(x,y,width,76,fillColor=WHITE,strokeColor=colors.HexColor("#C8C8C8"),strokeWidth=.3))
+    left,bottom,plot_width,height=x+13,y+14,width-18,40
+    mx=lambda mz:left+(mz-100)/1500*plot_width
+    rule(drawing,left,bottom,plot_width,colors.black,.3)
+    drawing.add(Line(left,bottom,left,bottom+height,strokeColor=colors.black,strokeWidth=.3))
+    for tick in range(100,1601,100):
+        tx=mx(tick);drawing.add(Line(tx,bottom,tx,bottom-1.5,strokeColor=colors.black,strokeWidth=.25))
+        if tick%500==0:chart_text(drawing,str(tick),tx,bottom-9,frame,anchor="middle")
+    chart_text(drawing,"m/z",x+width-2,y+18,frame,anchor="end")
+    for peak in spectrum["noise"]:
+        drawing.add(Line(mx(peak["mz"]),bottom,mx(peak["mz"]),bottom+peak["response"]/100*height,strokeColor=colors.HexColor("#777777"),strokeWidth=.22))
+    for ion in spectrum["ions"]:
+        for isotope in ion["isotopes"]:
+            drawing.add(Line(mx(isotope["mz"]),bottom,mx(isotope["mz"]),bottom+isotope["response"]/100*height,strokeColor=colors.HexColor("#333333"),strokeWidth=.28))
+    primary=spectrum["ions"][0]
+    chart_text(drawing,f'{primary["mz"]:.3f}',x+3,y+66,frame)
+    chart_text(drawing,primary["label"] if spectrum["status"]=="Observed" else "Low signal",x+3,y+57,frame)
+    drawing.add(Line(x+21,y+55,mx(primary["mz"]),bottom+primary["isotopes"][0]["response"]/100*height,strokeColor=colors.HexColor("#777777"),strokeWidth=.25))
+    for index,ion in enumerate(spectrum["ions"][1:]):
+        lx,ly=(x+4,y+35) if index==0 else (x+52,y+23)
+        chart_text(drawing,f'{ion["mz"]:.3f}',lx,ly,frame)
+        drawing.add(Line(lx+10,ly-2,mx(ion["mz"]),bottom+ion["isotopes"][0]["response"]/100*height,strokeColor=colors.HexColor("#777777"),strokeWidth=.25))
+    # Supplemental isotope detail; the full 100-1600 m/z scan remains underneath.
+    ix,iy,iw,ih=x+width-47,y+44,44,23
+    drawing.add(Rect(ix,iy,iw,ih,fillColor=WHITE,strokeColor=colors.HexColor("#AAAAAA"),strokeWidth=.25))
+    chart_text(drawing,primary["label"],ix+1,y+69,frame)
+    cluster=primary["isotopes"];span=cluster[-1]["mz"]-cluster[0]["mz"]
+    rule(drawing,ix+3,iy+10,iw-6,colors.black,.25)
+    for peak in cluster:
+        px=ix+3+(peak["mz"]-cluster[0]["mz"])/span*(iw-6)
+        drawing.add(Line(px,iy+10,px,iy+10+peak["response"]/100*(ih-13),strokeColor=colors.black,strokeWidth=.35))
+    inset_frame=(ix,iy,iw,ih)
+    chart_text(drawing,f'{cluster[0]["mz"]:.1f}',ix+1,iy+2.5,inset_frame)
+    chart_text(drawing,f'{cluster[-1]["mz"]:.1f}',ix+iw-1,iy+2.5,inset_frame,anchor="end")
+    for tx in (ix+3,ix+iw-3):drawing.add(Line(tx,iy+10,tx,iy+8,strokeColor=colors.black,strokeWidth=.25))
 
 
 def make_drawing(code, record, product_image=None):
@@ -253,14 +338,14 @@ def make_drawing(code, record, product_image=None):
         raise ValueError("Composition table crosses the upper layout zone")
     figure_width, ledger_x = 265, 315
     title(drawing, "HPLC-UV chromatogram", MARGIN, 480, figure_width)
-    chromatogram(drawing, record["chromatogram"])
+    chromatogram(drawing, record)
     title(drawing, "Mass confirmation", MARGIN, 339, figure_width)
     pw = (figure_width - 12) / 2
     for index in range(4):
         px = MARGIN + (index % 2) * (pw + 12)
         label_y = 313 - (index // 2) * 118
-        text(drawing, record["spectra"][index]["analyte"], px, label_y, 8.5, True, NAVY)
-        spectrum_plot(drawing, record["spectra"][index]["peaks"], px, label_y - 92, pw)
+        text(drawing, record["spectra"][index]["analyte"] + (" / GHK ligand" if index == 0 else ""), px, label_y, 8.5, True, NAVY)
+        spectrum_plot(drawing, record["spectra"][index], px, label_y - 92, pw)
     title(drawing, "Screening outcomes", ledger_x, 480, PAGE_W - MARGIN - ledger_x)
     screenings = ("Identity (LC-MS)", "Elemental impurities (ICP-MS)", "Endotoxin (LAL)", "Microbial analysis (PCR)", "Fentanyl")
     for index, label in enumerate(screenings):
@@ -413,7 +498,7 @@ def build(lookup_code, output_dir, product_image=None):
     if output_dir.exists() and not output_dir.is_dir():
         raise ValueError("Output directory must be a directory")
     records = load_records()
-    image_path = product_image or ROOT / "assets" / ("sample-vial-a.png" if code == "AN-7K9Q-2M4X" else "sample-vial-c.png")
+    image_path = product_image or ROOT / "assets" / ("sample-vial-a.jpg" if code == "AN-7K9Q-2M4X" else "sample-vial-c.jpg")
     image = None
     if image_path:
         with PILImage.open(image_path) as candidate:
@@ -421,6 +506,12 @@ def build(lookup_code, output_dir, product_image=None):
                 raise ValueError("Product image must be PNG or JPEG")
             candidate.load()
             image = candidate.copy()
+            if not product_image:
+                sources = json.loads((ROOT / "assets" / "sample-vials-sources.json").read_text(encoding="utf-8"))
+                source = next(item for item in sources["files"] if item["file"] == image_path.name)
+                crop = source["crop"]
+                if len(crop) != 4 or any(type(v) is not int for v in crop) or not (0 <= crop[0] < crop[2] <= image.width and 0 <= crop[1] < crop[3] <= image.height): raise ValueError("Invalid product crop")
+                image = image.crop(crop)
     drawing = make_drawing(code, records[code], image)
     pdf, svg = render(drawing, code)
     module = ("// Generated from templates/coa/sample_reports.json; fixed fictional sample data.\nexport const SAMPLE_REPORT_DATA = " + json.dumps(records, ensure_ascii=True, indent=2) + ";\n").encode("utf-8")

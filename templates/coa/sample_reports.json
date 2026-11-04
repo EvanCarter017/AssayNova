@@ -1,8 +1,8 @@
 {
   "AN-7K9Q-2M4X": {
     "label": "Reference sample A",
-    "product": "Aster 40mg",
-    "appearance": "White lyophilized solid",
+    "product": "KLOW 80mg",
+    "appearance": "Blue lyophilized powder",
     "client": "Aster Research",
     "reportId": "AN-2026-0042",
     "accession": "2601042",
@@ -18,35 +18,35 @@
     "retentionTime": "8.42",
     "composition": [
       {
-        "analyte": "Aster-1",
-        "sample1": "16.12",
-        "sample2": "16.08",
-        "summary": "16.10"
+        "analyte": "GHK-Cu",
+        "sample1": "48.26",
+        "sample2": "48.04",
+        "summary": "48.15"
       },
       {
-        "analyte": "Aster-2",
-        "sample1": "10.21",
-        "sample2": "10.19",
-        "summary": "10.20"
+        "analyte": "KPV",
+        "sample1": "12.18",
+        "sample2": "11.94",
+        "summary": "12.06"
       },
       {
-        "analyte": "Aster-3",
-        "sample1": "8.06",
-        "sample2": "8.04",
-        "summary": "8.05"
+        "analyte": "BPC-157",
+        "sample1": "10.86",
+        "sample2": "10.74",
+        "summary": "10.80"
       },
       {
-        "analyte": "Aster-4",
-        "sample1": "5.72",
-        "sample2": "5.68",
-        "summary": "5.70"
+        "analyte": "Thymosin Beta-4",
+        "sample1": "9.96",
+        "sample2": "9.84",
+        "summary": "9.90"
       }
     ],
     "screenings": [
       {
         "test": "Identity (LC-MS)",
         "result": "Consistent",
-        "details": "Four expected analyte signals observed."
+        "details": "GHK ligand and three peptide patterns."
       },
       {
         "test": "Elemental impurities (ICP-MS)",
@@ -72,102 +72,696 @@
     "method": "HPLC-UV with LC-MS identity assessment.",
     "spectra": [
       {
-        "analyte": "Aster-1",
-        "peaks": [
-          [
-            245,
-            100
-          ],
-          [
-            491,
-            36
-          ],
-          [
-            736,
-            12
-          ]
-        ]
+        "analyte": "GHK-Cu",
+        "species": "GHK (apo ligand)",
+        "cid": 73587,
+        "neutralMass": 340.18590327,
+        "ions": [
+          {
+            "charge": 2,
+            "label": "[M+2H]2+",
+            "mz": 171.1003479,
+            "ppm": 0.7,
+            "intensity": 100,
+            "isotopes": [
+              {
+                "mz": 171.1003479,
+                "response": 100.0
+              },
+              {
+                "mz": 171.6020253,
+                "response": 17.762
+              },
+              {
+                "mz": 172.1037027,
+                "response": 2.314
+              }
+            ]
+          },
+          {
+            "charge": 1,
+            "label": "[M+H]+",
+            "mz": 341.1928897,
+            "ppm": -0.85,
+            "intensity": 42,
+            "isotopes": [
+              {
+                "mz": 341.1928897,
+                "response": 42.0
+              },
+              {
+                "mz": 342.1962445,
+                "response": 7.46
+              },
+              {
+                "mz": 343.1995994,
+                "response": 0.972
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 108.0,
+            "response": 0.2
+          },
+          {
+            "mz": 191.7,
+            "response": 1.9
+          },
+          {
+            "mz": 275.4,
+            "response": 1.3
+          },
+          {
+            "mz": 359.1,
+            "response": 0.7
+          },
+          {
+            "mz": 442.8,
+            "response": 2.4
+          },
+          {
+            "mz": 495.5,
+            "response": 1.8
+          },
+          {
+            "mz": 579.2,
+            "response": 1.2
+          },
+          {
+            "mz": 662.9,
+            "response": 0.6
+          },
+          {
+            "mz": 746.6,
+            "response": 2.3
+          },
+          {
+            "mz": 799.3,
+            "response": 1.7
+          },
+          {
+            "mz": 883.0,
+            "response": 1.1
+          },
+          {
+            "mz": 966.7,
+            "response": 0.5
+          },
+          {
+            "mz": 1050.4,
+            "response": 2.2
+          },
+          {
+            "mz": 1134.1,
+            "response": 1.6
+          },
+          {
+            "mz": 1186.8,
+            "response": 1.0
+          },
+          {
+            "mz": 1270.5,
+            "response": 0.4
+          },
+          {
+            "mz": 1354.2,
+            "response": 2.1
+          },
+          {
+            "mz": 1437.9,
+            "response": 1.5
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Observed"
       },
       {
-        "analyte": "Aster-2",
-        "peaks": [
-          [
-            312,
-            42
-          ],
-          [
-            624,
-            100
-          ],
-          [
-            936,
-            18
-          ]
-        ]
+        "analyte": "KPV",
+        "species": "KPV free acid",
+        "cid": 125672,
+        "neutralMass": 342.22670545,
+        "ions": [
+          {
+            "charge": 2,
+            "label": "[M+2H]2+",
+            "mz": 172.1204571,
+            "ppm": -1.0,
+            "intensity": 100,
+            "isotopes": [
+              {
+                "mz": 172.1204571,
+                "response": 100.0
+              },
+              {
+                "mz": 172.6221345,
+                "response": 19.264
+              },
+              {
+                "mz": 173.1238119,
+                "response": 2.581
+              }
+            ]
+          },
+          {
+            "charge": 1,
+            "label": "[M+H]+",
+            "mz": 343.2343766,
+            "ppm": 1.15,
+            "intensity": 42,
+            "isotopes": [
+              {
+                "mz": 343.2343766,
+                "response": 42.0
+              },
+              {
+                "mz": 344.2377314,
+                "response": 8.091
+              },
+              {
+                "mz": 345.2410863,
+                "response": 1.084
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 127.0,
+            "response": 0.9
+          },
+          {
+            "mz": 210.7,
+            "response": 0.3
+          },
+          {
+            "mz": 263.4,
+            "response": 2.0
+          },
+          {
+            "mz": 347.1,
+            "response": 1.4
+          },
+          {
+            "mz": 430.8,
+            "response": 0.8
+          },
+          {
+            "mz": 514.5,
+            "response": 0.2
+          },
+          {
+            "mz": 598.2,
+            "response": 1.9
+          },
+          {
+            "mz": 650.9,
+            "response": 1.3
+          },
+          {
+            "mz": 734.6,
+            "response": 0.7
+          },
+          {
+            "mz": 818.3,
+            "response": 2.4
+          },
+          {
+            "mz": 902.0,
+            "response": 1.8
+          },
+          {
+            "mz": 954.7,
+            "response": 1.2
+          },
+          {
+            "mz": 1038.4,
+            "response": 0.6
+          },
+          {
+            "mz": 1122.1,
+            "response": 2.3
+          },
+          {
+            "mz": 1205.8,
+            "response": 1.7
+          },
+          {
+            "mz": 1258.5,
+            "response": 1.1
+          },
+          {
+            "mz": 1342.2,
+            "response": 0.5
+          },
+          {
+            "mz": 1425.9,
+            "response": 2.2
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Observed"
       },
       {
-        "analyte": "Aster-3",
-        "peaks": [
-          [
-            418,
-            100
-          ],
-          [
-            627,
-            23
-          ],
-          [
-            836,
-            47
-          ]
-        ]
+        "analyte": "BPC-157",
+        "species": "BPC-157 free acid",
+        "cid": 9941957,
+        "neutralMass": 1418.70415882,
+        "ions": [
+          {
+            "charge": 2,
+            "label": "[M+2H]2+",
+            "mz": 710.3602793,
+            "ppm": 1.3,
+            "intensity": 100,
+            "isotopes": [
+              {
+                "mz": 710.3602793,
+                "response": 100.0
+              },
+              {
+                "mz": 710.8619567,
+                "response": 74.868
+              },
+              {
+                "mz": 711.3636341,
+                "response": 32.174
+              },
+              {
+                "mz": 711.8653116,
+                "response": 10.1
+              },
+              {
+                "mz": 712.366989,
+                "response": 2.553
+              }
+            ]
+          },
+          {
+            "charge": 3,
+            "label": "[M+3H]3+",
+            "mz": 473.9079756,
+            "ppm": -1.45,
+            "intensity": 42,
+            "isotopes": [
+              {
+                "mz": 473.9079756,
+                "response": 42.0
+              },
+              {
+                "mz": 474.2424272,
+                "response": 31.445
+              },
+              {
+                "mz": 474.5768788,
+                "response": 13.513
+              },
+              {
+                "mz": 474.9113304,
+                "response": 4.242
+              },
+              {
+                "mz": 475.245782,
+                "response": 1.072
+              }
+            ]
+          },
+          {
+            "charge": 1,
+            "label": "[M+H]+",
+            "mz": 1419.7137068,
+            "ppm": 1.6,
+            "intensity": 16,
+            "isotopes": [
+              {
+                "mz": 1419.7137068,
+                "response": 16.0
+              },
+              {
+                "mz": 1420.7170616,
+                "response": 11.979
+              },
+              {
+                "mz": 1421.7204165,
+                "response": 5.148
+              },
+              {
+                "mz": 1422.7237713,
+                "response": 1.616
+              },
+              {
+                "mz": 1423.7271261,
+                "response": 0.408
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 115.0,
+            "response": 1.6
+          },
+          {
+            "mz": 198.7,
+            "response": 1.0
+          },
+          {
+            "mz": 282.4,
+            "response": 0.4
+          },
+          {
+            "mz": 366.1,
+            "response": 2.1
+          },
+          {
+            "mz": 418.8,
+            "response": 1.5
+          },
+          {
+            "mz": 502.5,
+            "response": 0.9
+          },
+          {
+            "mz": 586.2,
+            "response": 0.3
+          },
+          {
+            "mz": 669.9,
+            "response": 2.0
+          },
+          {
+            "mz": 722.6,
+            "response": 1.4
+          },
+          {
+            "mz": 806.3,
+            "response": 0.8
+          },
+          {
+            "mz": 890.0,
+            "response": 0.2
+          },
+          {
+            "mz": 973.7,
+            "response": 1.9
+          },
+          {
+            "mz": 1057.4,
+            "response": 1.3
+          },
+          {
+            "mz": 1110.1,
+            "response": 0.7
+          },
+          {
+            "mz": 1193.8,
+            "response": 2.4
+          },
+          {
+            "mz": 1277.5,
+            "response": 1.8
+          },
+          {
+            "mz": 1361.2,
+            "response": 1.2
+          },
+          {
+            "mz": 1413.9,
+            "response": 0.6
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Observed"
       },
       {
-        "analyte": "Aster-4",
-        "peaks": [
-          [
-            287,
-            26
-          ],
-          [
-            574,
-            100
-          ],
-          [
-            861,
-            31
-          ]
-        ]
+        "analyte": "Thymosin Beta-4",
+        "species": "N-acetyl thymosin beta-4 (43 aa)",
+        "cid": 16132341,
+        "neutralMass": 4960.4863169,
+        "ions": [
+          {
+            "charge": 6,
+            "label": "[M+6H]6+",
+            "mz": 827.7536715,
+            "ppm": -1.6,
+            "intensity": 100,
+            "isotopes": [
+              {
+                "mz": 827.7536715,
+                "response": 28.502
+              },
+              {
+                "mz": 827.9208973,
+                "response": 73.404
+              },
+              {
+                "mz": 828.0881231,
+                "response": 100.0
+              },
+              {
+                "mz": 828.2553489,
+                "response": 95.243
+              },
+              {
+                "mz": 828.4225747,
+                "response": 70.885
+              },
+              {
+                "mz": 828.5898005,
+                "response": 43.753
+              }
+            ]
+          },
+          {
+            "charge": 5,
+            "label": "[M+5H]5+",
+            "mz": 993.1062778,
+            "ppm": 1.75,
+            "intensity": 68,
+            "isotopes": [
+              {
+                "mz": 993.1062778,
+                "response": 19.381
+              },
+              {
+                "mz": 993.3069488,
+                "response": 49.915
+              },
+              {
+                "mz": 993.5076197,
+                "response": 68.0
+              },
+              {
+                "mz": 993.7082907,
+                "response": 64.765
+              },
+              {
+                "mz": 993.9089617,
+                "response": 48.202
+              },
+              {
+                "mz": 994.1096326,
+                "response": 29.752
+              }
+            ]
+          },
+          {
+            "charge": 4,
+            "label": "[M+4H]4+",
+            "mz": 1241.1264975,
+            "ppm": -1.9,
+            "intensity": 31,
+            "isotopes": [
+              {
+                "mz": 1241.1264975,
+                "response": 8.836
+              },
+              {
+                "mz": 1241.3773362,
+                "response": 22.755
+              },
+              {
+                "mz": 1241.6281749,
+                "response": 31.0
+              },
+              {
+                "mz": 1241.8790136,
+                "response": 29.525
+              },
+              {
+                "mz": 1242.1298523,
+                "response": 21.974
+              },
+              {
+                "mz": 1242.380691,
+                "response": 13.563
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 134.0,
+            "response": 2.3
+          },
+          {
+            "mz": 186.7,
+            "response": 1.7
+          },
+          {
+            "mz": 270.4,
+            "response": 1.1
+          },
+          {
+            "mz": 354.1,
+            "response": 0.5
+          },
+          {
+            "mz": 437.8,
+            "response": 2.2
+          },
+          {
+            "mz": 521.5,
+            "response": 1.6
+          },
+          {
+            "mz": 574.2,
+            "response": 1.0
+          },
+          {
+            "mz": 657.9,
+            "response": 0.4
+          },
+          {
+            "mz": 741.6,
+            "response": 2.1
+          },
+          {
+            "mz": 825.3,
+            "response": 1.5
+          },
+          {
+            "mz": 878.0,
+            "response": 0.9
+          },
+          {
+            "mz": 961.7,
+            "response": 0.3
+          },
+          {
+            "mz": 1045.4,
+            "response": 2.0
+          },
+          {
+            "mz": 1129.1,
+            "response": 1.4
+          },
+          {
+            "mz": 1181.8,
+            "response": 0.8
+          },
+          {
+            "mz": 1265.5,
+            "response": 0.2
+          },
+          {
+            "mz": 1349.2,
+            "response": 1.9
+          },
+          {
+            "mz": 1432.9,
+            "response": 1.3
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Observed"
       }
     ],
     "chromatogram": [
       {
-        "time": 2.15,
-        "response": 3,
-        "width": 0.1
+        "analyte": "KPV",
+        "kind": "target",
+        "time": 2.26,
+        "area": 15.3946,
+        "width": 0.046,
+        "tail": 1.5,
+        "response": 47.699337
       },
       {
-        "time": 5.63,
-        "response": 4,
-        "width": 0.12
+        "analyte": "Impurity 2",
+        "kind": "impurity",
+        "time": 3.71,
+        "area": 0.2856,
+        "width": 0.038,
+        "tail": 1.4,
+        "response": 1.115848
       },
       {
+        "analyte": "BPC-157",
+        "kind": "target",
+        "time": 5.74,
+        "area": 13.4082,
+        "width": 0.057,
+        "tail": 1.7,
+        "response": 31.043711
+      },
+      {
+        "analyte": "Impurity 4",
+        "kind": "impurity",
+        "time": 6.88,
+        "area": 0.2244,
+        "width": 0.038,
+        "tail": 1.4,
+        "response": 0.876738
+      },
+      {
+        "analyte": "GHK-Cu",
+        "kind": "target",
         "time": 8.42,
-        "response": 100,
-        "width": 0.14
+        "area": 58.5988,
+        "width": 0.072,
+        "tail": 1.9,
+        "response": 100.0
       },
       {
-        "time": 11.72,
-        "response": 2,
-        "width": 0.11
+        "analyte": "Thymosin Beta-4",
+        "kind": "target",
+        "time": 11.38,
+        "area": 11.9184,
+        "width": 0.061,
+        "tail": 2.1,
+        "response": 22.457851
+      },
+      {
+        "analyte": "Impurity 7",
+        "kind": "impurity",
+        "time": 13.26,
+        "area": 0.17,
+        "width": 0.038,
+        "tail": 1.4,
+        "response": 0.664195
       }
     ],
-    "signoffTitle": "Chief Chemist"
+    "signoffTitle": "Chief Chemist",
+    "plotSeed": 419
   },
   "AN-8P6R-3N5Y": {
     "label": "Reference sample C",
-    "product": "Cedar 30mg",
-    "appearance": "Pale blue solution",
+    "product": "KLOW 80mg",
+    "appearance": "Blue lyophilized powder",
     "client": "Cedar BioWorks",
     "reportId": "AN-2026-0043",
     "accession": "2601043",
@@ -183,35 +777,35 @@
     "retentionTime": "9.16",
     "composition": [
       {
-        "analyte": "Cedar-1",
-        "sample1": "9.41",
-        "sample2": "9.39",
-        "summary": "9.40"
+        "analyte": "GHK-Cu",
+        "sample1": "47.34",
+        "sample2": "47.10",
+        "summary": "47.22"
       },
       {
-        "analyte": "Cedar-2",
-        "sample1": "8.62",
-        "sample2": "8.58",
-        "summary": "8.60"
+        "analyte": "KPV",
+        "sample1": "11.62",
+        "sample2": "11.40",
+        "summary": "11.51"
       },
       {
-        "analyte": "Cedar-3",
-        "sample1": "6.13",
-        "sample2": "6.07",
-        "summary": "6.10"
+        "analyte": "BPC-157",
+        "sample1": "10.28",
+        "sample2": "10.18",
+        "summary": "10.23"
       },
       {
-        "analyte": "Cedar-4",
-        "sample1": "5.33",
-        "sample2": "5.27",
-        "summary": "5.30"
+        "analyte": "Thymosin Beta-4",
+        "sample1": "9.48",
+        "sample2": "9.30",
+        "summary": "9.39"
       }
     ],
     "screenings": [
       {
         "test": "Identity (LC-MS)",
         "result": "Partial match",
-        "details": "Three of four expected signals observed."
+        "details": "Thymosin Beta-4 signal remains unresolved."
       },
       {
         "test": "Elemental impurities (ICP-MS)",
@@ -237,96 +831,690 @@
     "method": "HPLC-UV with LC-MS identity assessment.",
     "spectra": [
       {
-        "analyte": "Cedar-1",
-        "peaks": [
-          [
-            271,
-            100
-          ],
-          [
-            542,
-            48
-          ],
-          [
-            813,
-            16
-          ]
-        ]
+        "analyte": "GHK-Cu",
+        "species": "GHK (apo ligand)",
+        "cid": 73587,
+        "neutralMass": 340.18590327,
+        "ions": [
+          {
+            "charge": 2,
+            "label": "[M+2H]2+",
+            "mz": 171.1000399,
+            "ppm": -1.1,
+            "intensity": 100,
+            "isotopes": [
+              {
+                "mz": 171.1000399,
+                "response": 100.0
+              },
+              {
+                "mz": 171.6017173,
+                "response": 17.762
+              },
+              {
+                "mz": 172.1033947,
+                "response": 2.314
+              }
+            ]
+          },
+          {
+            "charge": 1,
+            "label": "[M+H]+",
+            "mz": 341.1936062,
+            "ppm": 1.25,
+            "intensity": 42,
+            "isotopes": [
+              {
+                "mz": 341.1936062,
+                "response": 42.0
+              },
+              {
+                "mz": 342.196961,
+                "response": 7.46
+              },
+              {
+                "mz": 343.2003159,
+                "response": 0.972
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 121.0,
+            "response": 1.3
+          },
+          {
+            "mz": 204.7,
+            "response": 0.7
+          },
+          {
+            "mz": 288.4,
+            "response": 2.4
+          },
+          {
+            "mz": 341.1,
+            "response": 1.8
+          },
+          {
+            "mz": 424.8,
+            "response": 1.2
+          },
+          {
+            "mz": 508.5,
+            "response": 0.6
+          },
+          {
+            "mz": 592.2,
+            "response": 2.3
+          },
+          {
+            "mz": 644.9,
+            "response": 1.7
+          },
+          {
+            "mz": 728.6,
+            "response": 1.1
+          },
+          {
+            "mz": 812.3,
+            "response": 0.5
+          },
+          {
+            "mz": 896.0,
+            "response": 2.2
+          },
+          {
+            "mz": 979.7,
+            "response": 1.6
+          },
+          {
+            "mz": 1032.4,
+            "response": 1.0
+          },
+          {
+            "mz": 1116.1,
+            "response": 0.4
+          },
+          {
+            "mz": 1199.8,
+            "response": 2.1
+          },
+          {
+            "mz": 1283.5,
+            "response": 1.5
+          },
+          {
+            "mz": 1336.2,
+            "response": 0.9
+          },
+          {
+            "mz": 1419.9,
+            "response": 0.3
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Observed"
       },
       {
-        "analyte": "Cedar-2",
-        "peaks": [
-          [
-            356,
-            39
-          ],
-          [
-            712,
-            100
-          ],
-          [
-            1068,
-            21
-          ]
-        ]
+        "analyte": "KPV",
+        "species": "KPV free acid",
+        "cid": 125672,
+        "neutralMass": 342.22670545,
+        "ions": [
+          {
+            "charge": 2,
+            "label": "[M+2H]2+",
+            "mz": 172.1208702,
+            "ppm": 1.4,
+            "intensity": 100,
+            "isotopes": [
+              {
+                "mz": 172.1208702,
+                "response": 100.0
+              },
+              {
+                "mz": 172.6225476,
+                "response": 19.264
+              },
+              {
+                "mz": 173.124225,
+                "response": 2.581
+              }
+            ]
+          },
+          {
+            "charge": 1,
+            "label": "[M+H]+",
+            "mz": 343.2334499,
+            "ppm": -1.55,
+            "intensity": 42,
+            "isotopes": [
+              {
+                "mz": 343.2334499,
+                "response": 42.0
+              },
+              {
+                "mz": 344.2368047,
+                "response": 8.091
+              },
+              {
+                "mz": 345.2401596,
+                "response": 1.084
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 109.0,
+            "response": 2.0
+          },
+          {
+            "mz": 192.7,
+            "response": 1.4
+          },
+          {
+            "mz": 276.4,
+            "response": 0.8
+          },
+          {
+            "mz": 360.1,
+            "response": 0.2
+          },
+          {
+            "mz": 443.8,
+            "response": 1.9
+          },
+          {
+            "mz": 496.5,
+            "response": 1.3
+          },
+          {
+            "mz": 580.2,
+            "response": 0.7
+          },
+          {
+            "mz": 663.9,
+            "response": 2.4
+          },
+          {
+            "mz": 747.6,
+            "response": 1.8
+          },
+          {
+            "mz": 800.3,
+            "response": 1.2
+          },
+          {
+            "mz": 884.0,
+            "response": 0.6
+          },
+          {
+            "mz": 967.7,
+            "response": 2.3
+          },
+          {
+            "mz": 1051.4,
+            "response": 1.7
+          },
+          {
+            "mz": 1135.1,
+            "response": 1.1
+          },
+          {
+            "mz": 1187.8,
+            "response": 0.5
+          },
+          {
+            "mz": 1271.5,
+            "response": 2.2
+          },
+          {
+            "mz": 1355.2,
+            "response": 1.6
+          },
+          {
+            "mz": 1438.9,
+            "response": 1.0
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Observed"
       },
       {
-        "analyte": "Cedar-3",
-        "peaks": [
-          [
-            463,
-            100
-          ],
-          [
-            694,
-            30
-          ],
-          [
-            926,
-            52
-          ]
-        ]
+        "analyte": "BPC-157",
+        "species": "BPC-157 free acid",
+        "cid": 9941957,
+        "neutralMass": 1418.70415882,
+        "ions": [
+          {
+            "charge": 2,
+            "label": "[M+2H]2+",
+            "mz": 710.3581483,
+            "ppm": -1.7,
+            "intensity": 100,
+            "isotopes": [
+              {
+                "mz": 710.3581483,
+                "response": 100.0
+              },
+              {
+                "mz": 710.8598257,
+                "response": 74.868
+              },
+              {
+                "mz": 711.3615031,
+                "response": 32.174
+              },
+              {
+                "mz": 711.8631806,
+                "response": 10.1
+              },
+              {
+                "mz": 712.364858,
+                "response": 2.553
+              }
+            ]
+          },
+          {
+            "charge": 3,
+            "label": "[M+3H]3+",
+            "mz": 473.9095395,
+            "ppm": 1.85,
+            "intensity": 42,
+            "isotopes": [
+              {
+                "mz": 473.9095395,
+                "response": 42.0
+              },
+              {
+                "mz": 474.2439911,
+                "response": 31.445
+              },
+              {
+                "mz": 474.5784427,
+                "response": 13.513
+              },
+              {
+                "mz": 474.9128943,
+                "response": 4.242
+              },
+              {
+                "mz": 475.2473459,
+                "response": 1.072
+              }
+            ]
+          },
+          {
+            "charge": 1,
+            "label": "[M+H]+",
+            "mz": 1419.7085959,
+            "ppm": -2.0,
+            "intensity": 16,
+            "isotopes": [
+              {
+                "mz": 1419.7085959,
+                "response": 16.0
+              },
+              {
+                "mz": 1420.7119507,
+                "response": 11.979
+              },
+              {
+                "mz": 1421.7153056,
+                "response": 5.148
+              },
+              {
+                "mz": 1422.7186604,
+                "response": 1.616
+              },
+              {
+                "mz": 1423.7220152,
+                "response": 0.408
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 128.0,
+            "response": 0.4
+          },
+          {
+            "mz": 211.7,
+            "response": 2.1
+          },
+          {
+            "mz": 264.4,
+            "response": 1.5
+          },
+          {
+            "mz": 348.1,
+            "response": 0.9
+          },
+          {
+            "mz": 431.8,
+            "response": 0.3
+          },
+          {
+            "mz": 515.5,
+            "response": 2.0
+          },
+          {
+            "mz": 568.2,
+            "response": 1.4
+          },
+          {
+            "mz": 651.9,
+            "response": 0.8
+          },
+          {
+            "mz": 735.6,
+            "response": 0.2
+          },
+          {
+            "mz": 819.3,
+            "response": 1.9
+          },
+          {
+            "mz": 903.0,
+            "response": 1.3
+          },
+          {
+            "mz": 955.7,
+            "response": 0.7
+          },
+          {
+            "mz": 1039.4,
+            "response": 2.4
+          },
+          {
+            "mz": 1123.1,
+            "response": 1.8
+          },
+          {
+            "mz": 1206.8,
+            "response": 1.2
+          },
+          {
+            "mz": 1259.5,
+            "response": 0.6
+          },
+          {
+            "mz": 1343.2,
+            "response": 2.3
+          },
+          {
+            "mz": 1426.9,
+            "response": 1.7
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Observed"
       },
       {
-        "analyte": "Cedar-4",
-        "peaks": [
-          [
-            329,
-            78
-          ],
-          [
-            658,
-            100
-          ],
-          [
-            987,
-            44
-          ]
-        ]
+        "analyte": "Thymosin Beta-4",
+        "species": "N-acetyl thymosin beta-4 (43 aa)",
+        "cid": 16132341,
+        "neutralMass": 4960.4863169,
+        "ions": [
+          {
+            "charge": 6,
+            "label": "[M+6H]6+",
+            "mz": 827.7566515,
+            "ppm": 2.0,
+            "intensity": 8,
+            "isotopes": [
+              {
+                "mz": 827.7566515,
+                "response": 2.28
+              },
+              {
+                "mz": 827.9238773,
+                "response": 5.872
+              },
+              {
+                "mz": 828.0911031,
+                "response": 8.0
+              },
+              {
+                "mz": 828.2583289,
+                "response": 7.619
+              },
+              {
+                "mz": 828.4255547,
+                "response": 5.671
+              },
+              {
+                "mz": 828.5927805,
+                "response": 3.5
+              }
+            ]
+          },
+          {
+            "charge": 5,
+            "label": "[M+5H]5+",
+            "mz": 993.1024047,
+            "ppm": -2.15,
+            "intensity": 5,
+            "isotopes": [
+              {
+                "mz": 993.1024047,
+                "response": 1.425
+              },
+              {
+                "mz": 993.3030757,
+                "response": 3.67
+              },
+              {
+                "mz": 993.5037466,
+                "response": 5.0
+              },
+              {
+                "mz": 993.7044176,
+                "response": 4.762
+              },
+              {
+                "mz": 993.9050886,
+                "response": 3.544
+              },
+              {
+                "mz": 994.1057595,
+                "response": 2.188
+              }
+            ]
+          },
+          {
+            "charge": 4,
+            "label": "[M+4H]4+",
+            "mz": 1241.1317103,
+            "ppm": 2.3,
+            "intensity": 2,
+            "isotopes": [
+              {
+                "mz": 1241.1317103,
+                "response": 0.57
+              },
+              {
+                "mz": 1241.382549,
+                "response": 1.468
+              },
+              {
+                "mz": 1241.6333877,
+                "response": 2.0
+              },
+              {
+                "mz": 1241.8842264,
+                "response": 1.905
+              },
+              {
+                "mz": 1242.1350651,
+                "response": 1.418
+              },
+              {
+                "mz": 1242.3859038,
+                "response": 0.875
+              }
+            ]
+          }
+        ],
+        "noise": [
+          {
+            "mz": 116.0,
+            "response": 1.1
+          },
+          {
+            "mz": 199.7,
+            "response": 0.5
+          },
+          {
+            "mz": 283.4,
+            "response": 2.2
+          },
+          {
+            "mz": 367.1,
+            "response": 1.6
+          },
+          {
+            "mz": 419.8,
+            "response": 1.0
+          },
+          {
+            "mz": 503.5,
+            "response": 0.4
+          },
+          {
+            "mz": 587.2,
+            "response": 2.1
+          },
+          {
+            "mz": 670.9,
+            "response": 1.5
+          },
+          {
+            "mz": 723.6,
+            "response": 0.9
+          },
+          {
+            "mz": 807.3,
+            "response": 0.3
+          },
+          {
+            "mz": 891.0,
+            "response": 2.0
+          },
+          {
+            "mz": 974.7,
+            "response": 1.4
+          },
+          {
+            "mz": 1058.4,
+            "response": 0.8
+          },
+          {
+            "mz": 1111.1,
+            "response": 0.2
+          },
+          {
+            "mz": 1194.8,
+            "response": 1.9
+          },
+          {
+            "mz": 1278.5,
+            "response": 1.3
+          },
+          {
+            "mz": 1362.2,
+            "response": 0.7
+          },
+          {
+            "mz": 1414.9,
+            "response": 2.4
+          }
+        ],
+        "scan": [
+          100,
+          1600
+        ],
+        "status": "Low signal"
       }
     ],
     "chromatogram": [
       {
-        "time": 2.86,
-        "response": 7,
-        "width": 0.11
+        "analyte": "KPV",
+        "kind": "target",
+        "time": 2.51,
+        "area": 15.1652,
+        "width": 0.046,
+        "tail": 1.5,
+        "response": 47.699337
       },
       {
-        "time": 6.34,
-        "response": 10,
-        "width": 0.13
+        "analyte": "Impurity 2",
+        "kind": "impurity",
+        "time": 3.9,
+        "area": 0.9072,
+        "width": 0.038,
+        "tail": 1.4,
+        "response": 3.598075
       },
       {
+        "analyte": "BPC-157",
+        "kind": "target",
+        "time": 6.05,
+        "area": 13.2084,
+        "width": 0.057,
+        "tail": 1.7,
+        "response": 31.043711
+      },
+      {
+        "analyte": "Impurity 4",
+        "kind": "impurity",
+        "time": 7.07,
+        "area": 0.7128,
+        "width": 0.038,
+        "tail": 1.4,
+        "response": 2.827059
+      },
+      {
+        "analyte": "GHK-Cu",
+        "kind": "target",
         "time": 9.16,
-        "response": 100,
-        "width": 0.17
+        "area": 57.7256,
+        "width": 0.072,
+        "tail": 1.9,
+        "response": 100.0
       },
       {
-        "time": 12.48,
-        "response": 5,
-        "width": 0.12
+        "analyte": "Thymosin Beta-4",
+        "kind": "target",
+        "time": 11.7,
+        "area": 11.7408,
+        "width": 0.061,
+        "tail": 2.1,
+        "response": 22.457851
+      },
+      {
+        "analyte": "Impurity 7",
+        "kind": "impurity",
+        "time": 13.45,
+        "area": 0.54,
+        "width": 0.038,
+        "tail": 1.4,
+        "response": 2.141711
       }
     ],
-    "signoffTitle": "Chief Chemist"
+    "signoffTitle": "Chief Chemist",
+    "plotSeed": 546
   }
 }
