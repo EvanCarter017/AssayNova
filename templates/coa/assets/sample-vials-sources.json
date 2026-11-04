@@ -1,0 +1,23 @@
+{
+  "primaryPage": "https://bioart.niaid.nih.gov/bioart/535",
+  "creator": "Ryan Kissinger",
+  "credit": "Courtesy of NIAID",
+  "license": "Public Domain",
+  "use": "Generic illustrative vial images; not photographs of the fictional samples.",
+  "files": [
+    {
+      "file": "sample-vial-a.png",
+      "sourceUrl": "https://bioart.niaid.nih.gov/api/bioarts/535/files/636843",
+      "width": 569,
+      "height": 1498,
+      "sha256": "23EF219348D892E7829E1A3C0576FFC030644F56583ED984C3D678BA7E8990E2"
+    },
+    {
+      "file": "sample-vial-c.png",
+      "sourceUrl": "https://bioart.niaid.nih.gov/api/bioarts/535/files/636840",
+      "width": 569,
+      "height": 1498,
+      "sha256": "BF1E48F02CA285A60D47CA81427C0DCDBBB52660441E6BAB45FD661502B97C26"
+    }
+  ]
+}

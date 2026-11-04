@@ -3,6 +3,7 @@ import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
 import { SUPPORT_DRAFT_KEY, normalizeSupport, validateSupport, parseSupportDraft, formatSupportRequest } from './support.js';
 import { REQUEST_DRAFT_KEY, readableRequests, effectiveReportRecipient, SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES } from './submission.js';
 import { createRequestPage } from './request-page.js';
+import { SAMPLE_REPORT_DATA } from './reports/sample-data.js';
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
@@ -192,25 +193,25 @@ const SAMPLE_REPORT_ASSETS = Object.freeze({
 });
 
 function lookupForm() {
-  return `<form id="coa-lookup-form" class="coa-search" novalidate><label for="coa-lookup-code">Find another COA · COA Lookup Code</label><div class="coa-search-controls"><input id="coa-lookup-code" name="lookupCode" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. AN-8P6R-3N5Y" aria-describedby="coa-lookup-error" required><button class="button button-dark" type="submit">Find report</button></div><p id="coa-lookup-error" class="inline-error" role="status"></p><p class="coa-help">Use a COA Lookup Code, not a report or submission number.</p></form>`;
+  return `<form id="coa-lookup-form" class="coa-search" novalidate><label for="coa-lookup-code">Find another COA · Lookup Code</label><div class="coa-search-controls"><input id="coa-lookup-code" name="lookupCode" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. AN-8P6R-3N5Y" aria-describedby="coa-lookup-error" required><button class="button button-dark" type="submit">Find report</button></div><p id="coa-lookup-error" class="inline-error" role="status"></p><p class="coa-help">Use a Lookup Code, not a report or submission number.</p></form>`;
 }
 
 function renderReport(report) {
   const sample = Object.hasOwn(SAMPLE_REPORT_ASSETS, report.lookupCode) ? SAMPLE_REPORT_ASSETS[report.lookupCode] : null;
-  if (!sample) { renderReportNotFound(); return; }
-  const fields = [['Product name', '[Product name]'], ['Appearance', '[Appearance]'], ['Client', '[Client name]'], ['Lot', '[Lot number]'], ['Accession no.', '[Accession no.]'], ['COA Lookup Code', report.lookupCode], ['Received', '[YYYY-MM-DD]'], ['Reported', '[YYYY-MM-DD]']];
-  const screenings = ['Identity (LC-MS)', 'Elemental impurities (ICP-MS)', 'Endotoxin (LAL)', 'Microbial analysis (PCR)', 'Fentanyl'];
-  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading"><div><p class="report-demo-label">Sample report</p><h1 id="report-title" tabindex="-1">${escape(sample.label)}</h1></div><p class="coa-code">COA Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
-    <figure class="coa-master-paper"><img src="${sample.svg}" width="595" height="842" alt="Placeholder certificate of analysis for ${escape(sample.label)}. COA Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
+  const record = Object.hasOwn(SAMPLE_REPORT_DATA, report.lookupCode) ? SAMPLE_REPORT_DATA[report.lookupCode] : null;
+  if (!sample || !record) { renderReportNotFound(); return; }
+  const fields = [['Product name', record.product], ['Appearance', record.appearance], ['Client', record.client], ['Report no.', record.reportId], ['Lot', record.lot], ['Accession no.', record.accession], ['Lookup Code', report.lookupCode], ['Received', record.received], ['Reported', record.reported]];
+  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading"><div><p class="report-demo-label">Sample report</p><h1 id="report-title" tabindex="-1">${escape(sample.label)}</h1></div><p class="coa-code">Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
+    <figure class="coa-master-paper"><img src="${sample.svg}" width="595" height="842" alt="Illustrative certificate of analysis for ${escape(sample.label)}. Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
     <p class="report-disclaimer coa-master-disclosure"><strong>Sample report.</strong> ${escape(report.disclaimer)}</p>
     <div class="report-actions coa-master-tools"><a class="button button-dark" href="${sample.pdf}" download>Download PDF</a><a class="button button-outline" href="${sample.svg}" target="_blank" rel="noopener">View full size</a><button class="button button-outline" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
-    <details class="coa-master-transcript"><summary>Report fields</summary><div class="coa-master-transcript-body"><section><h2>Sample information</h2><dl class="coa-master-field-list">${fields.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl></section><section><h2>Analytical results</h2><p>Purity / HPLC-UV</p><dl class="coa-master-field-list">${['Sample 1', 'Sample 2', 'Reported summary'].map((label) => `<div><dt>${label}</dt><dd>--.--%</dd></div>`).join('')}</dl><table><caption>Composition · Net content (mg)</caption><thead><tr><th scope="col">Analyte</th><th scope="col">Sample 1</th><th scope="col">Sample 2</th><th scope="col">Reported summary</th></tr></thead><tbody>${Array.from({ length: 4 }, (_, i) => `<tr><th scope="row">[Analyte ${i + 1}]</th><td>--.--</td><td>--.--</td><td>--.--</td></tr>`).join('')}</tbody></table></section><section><h2>Analytical figures</h2><p>HPLC-UV chromatogram: [Chromatogram]</p><ul>${Array.from({ length: 4 }, (_, i) => `<li>[Analyte ${i + 1}]: [Spectrum]</li>`).join('')}</ul></section><section><h2>Screening outcomes</h2><dl class="coa-master-field-list">${screenings.map((label) => `<div><dt>${label}</dt><dd>[Result] · [Result details]</dd></div>`).join('')}</dl><h2>Method</h2><p>[Analytical method]</p></section><section><h2>Signoff</h2><p>Dylan Greene</p><p>[Title]</p></section></div></details>
+    <details class="coa-master-transcript"><summary>Report fields</summary><div class="coa-master-transcript-body"><section><h2>Sample information</h2><dl class="coa-master-field-list">${fields.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl></section><section><h2>Analytical results</h2><p>Purity / HPLC-UV</p><dl class="coa-master-field-list">${['Sample 1', 'Sample 2', 'Reported summary'].map((label, index) => `<div><dt>${escape(label)}</dt><dd>${escape(record.purity[index])}%</dd></div>`).join('')}</dl><table><caption>Composition · Net content (mg)</caption><thead><tr><th scope="col">Analyte</th><th scope="col">Sample 1</th><th scope="col">Sample 2</th><th scope="col">Reported summary</th></tr></thead><tbody>${record.composition.map(row => `<tr><th scope="row">${escape(row.analyte)}</th><td>${escape(row.sample1)}</td><td>${escape(row.sample2)}</td><td>${escape(row.summary)}</td></tr>`).join('')}</tbody></table></section><section><h2>Analytical figures</h2><p>Illustrative HPLC-UV chromatogram. Principal retention time: ${escape(record.retentionTime)} min. Peaks (time in min / relative response): ${record.chromatogram.map(peak => `${escape(peak.time)} / ${escape(peak.response)}`).join('; ')}.</p><ul>${record.spectra.map(spectrum => `<li>${escape(spectrum.analyte)}: illustrative mass spectrum. Peaks (m/z / relative response): ${spectrum.peaks.map(([mz, response]) => `${escape(mz)} / ${escape(response)}`).join('; ')}.</li>`).join('')}</ul></section><section><h2>Screening outcomes</h2><dl class="coa-master-field-list">${record.screenings.map(row => `<div><dt>${escape(row.test)}</dt><dd>${escape(row.result)} · ${escape(row.details)}</dd></div>`).join('')}</dl><h2>Method</h2><p>${escape(record.method)}</p></section><section><h2>Signoff</h2><p>Dylan Greene</p><p>${escape(record.signoffTitle)}</p></section></div></details>
     <div id="report-copy-fallback" class="copy-fallback" role="region" aria-label="Manual copy" hidden><p>Automatic copy was unavailable. Select and copy the complete value below.</p><label for="report-copy-value">Value to copy</label><textarea id="report-copy-value" readonly></textarea><div class="dialog-buttons"><button class="text-button" data-action="copy-select">Select all</button><button class="text-button" data-action="copy-retry">Try copying again</button></div></div>
     </article>${lookupForm()}`;
 }
 
 function renderReportNotFound() {
-  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA Lookup</span></div><div class="coa-not-found coa-card"><p class="eyebrow">COA LOOKUP</p><h1 id="report-title" tabindex="-1">No COA found.</h1><p>This code does not identify a published report. Check the COA Lookup Code or search again below.</p><p class="coa-help">Report and submission numbers are separate from COA Lookup Codes.</p></div>${lookupForm()}`;
+  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA Lookup</span></div><div class="coa-not-found coa-card"><p class="eyebrow">COA LOOKUP</p><h1 id="report-title" tabindex="-1">No COA found.</h1><p>This code does not identify a published report. Check the Lookup Code or search again below.</p><p class="coa-help">Report and submission numbers are separate from Lookup Codes.</p></div>${lookupForm()}`;
 }
 
 function routeLocation(address) {
@@ -248,7 +249,7 @@ function renderCurrentRoute(focus = false, legacyError = false) {
   coaView.hidden = !current.coa;
   document.body.classList.toggle('report-page', !!current.coa);
   const error = document.querySelector('#verify-error');
-  error.textContent = legacyError || current.invalidLegacy ? 'No report matches that link. Enter a COA Lookup Code below.' : '';
+  error.textContent = legacyError || current.invalidLegacy ? 'No report matches that link. Enter a Lookup Code below.' : '';
   document.querySelector('#report-id').removeAttribute('aria-invalid');
   if (current.coa) {
     activeReport = current.coa.report;
@@ -326,7 +327,7 @@ async function copyReportValue(kind) {
   pendingCopyKind = kind;
   try {
     await navigator.clipboard.writeText(value);
-    if (activeReport === report) showToast(kind === 'link' ? 'Report link copied.' : 'COA Lookup Code copied: ' + value);
+    if (activeReport === report) showToast(kind === 'link' ? 'Report link copied.' : 'Lookup Code copied: ' + value);
   } catch {
     if (activeReport !== report) return;
     const fallback = document.querySelector('#report-copy-fallback');
@@ -387,7 +388,7 @@ document.addEventListener('submit', (event) => {
   input.setAttribute('aria-invalid', String(!report));
   if (report) { error.textContent = ''; navigateToReport(report.lookupCode); }
   else if (event.target.id === 'coa-lookup-form') { navigateToReport(input.value); }
-  else { error.textContent = 'No COA found. Use a COA Lookup Code, not a report or submission number.'; input.focus(); }
+  else { error.textContent = 'No COA found. Use a Lookup Code, not a report or submission number.'; input.focus(); }
 });
 document.addEventListener('input', (event) => {
   if (!event.target.matches('#report-id,#coa-lookup-code')) return;

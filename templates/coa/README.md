@@ -93,31 +93,40 @@ Do not invent methods, numerical limits, overall pass results, signatures,
 accreditation, contacts or verification claims. Omit unavailable fields instead
 of adding placeholders.
 
-## Public placeholder sample masters
+## Public fictional sample reports
 
 `build_sample_coa.py` is separate from both strict private-data builders above.
-It creates a single portrait A4 PDF and matching vector SVG for each public sample:
+`sample_reports.json` is the single authoritative public fictional catalog. It
+contains two distinct, fixed sample records and illustrative chromatogram/mass
+peak arrays. The published summary purity, identity, retention time, dates and
+lookup codes agree with the immutable website fixtures. Replicate means, required
+fields, supported glyphs, bounded peaks and fixed layout slots are validated for
+BOTH records before any output is replaced.
 
 ```powershell
 python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../dist/reports
 python build_sample_coa.py --lookup-code AN-8P6R-3N5Y --output-dir ../../dist/reports
 ```
 
-Only those exact code-to-filename mappings are accepted. Every analytical value,
-client/product field, date and plot is a placeholder. The lower-left signature is
-the original Dylan Greene design, read from the portable template asset
-`assets/dylan-greene-signature.png`; `[Title]` remains a placeholder. This design
-exception does not digitally sign or approve a report. No private JSON or
-scientific raster is read. The default product slot contains a code-native
-generic vial. Add `--product-image /path/to/image.png` (or a JPEG)
-to replace it. The image is validated, fitted proportionally and embedded without
-publishing its filesystem path. Rendering is buffered before replacing outputs.
+These commands deterministically generate one portrait A4 PDF and vector SVG per
+code, plus `sample-data.js` exporting BOTH records for the accessible website
+transcript even when only one report is built. Rebuild both pairs after editing
+the catalog. Output staging begins only after validation and rendering complete.
+No private JSON, real analytical trace, or filesystem path is published.
+
+The default product illustrations are unmodified NIH BioArt public-domain PNGs,
+created by Ryan Kissinger (Courtesy of NIAID). See
+`assets/sample-vials-sources.json` for the primary source, direct URLs and hashes.
+They illustrate generic vials, not the fictional products. Add
+`--product-image /path/to/image.png` (or JPEG) to override a product image; it is
+validated, fitted proportionally and embedded. The original lower-left Dylan
+Greene signature design and Chief Chemist title are retained. This design does
+not digitally sign, approve or issue a report.
 
 One ReportLab Drawing supplies both formats. PDFs retain embedded Vera text;
 SVG text uses self-contained Vera glyph outlines, with no external font fetch or
-CSP relaxation. The outlined-font implementation supports printable ASCII/simple
-Vera glyphs only and rejects unsupported text. The unchanged logo is embedded;
-its alpha channel is preserved. Distribute `bitstream-vera-license.txt` from
-`fonts/` with generated reports. The public page shows its fictional sample
-disclosure outside the paper. These files are placeholder layouts, not issued
-certificates. Rebuild both files after changing the shared geometry.
+CSP relaxation. Only supported printable ASCII/simple glyphs are accepted. The
+logo, product image and signature preserve alpha and are embedded for offline
+use. Distribute `bitstream-vera-license.txt` from `fonts/` with generated reports.
+All plots are vector illustrations based on the fixed fictional peak arrays.
+The website retains its fictional/not-valid disclosure outside the paper.

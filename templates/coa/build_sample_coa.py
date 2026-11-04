@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Build the two public placeholder COA masters; never reads private report data.
+"""Build the two fixed fictional public sample COAs; never reads private report data.
 
 Usage: python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../dist/reports
-Optional --product-image accepts a PNG/JPEG to replace the generic vector vial.
+Optional --product-image accepts a PNG/JPEG to replace the per-sample illustrative vial.
 """
 from __future__ import annotations
 
 import argparse
 import copy
+import json
+import math
+from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 import os
 from pathlib import Path
@@ -37,6 +40,11 @@ MUTED = colors.HexColor("#526574")
 RULE = colors.HexColor("#D3E0E5")
 PALE = colors.HexColor("#EFF6F7")
 WHITE = colors.white
+DATA_FILE = ROOT / "sample_reports.json"
+EXPECTED = {
+    "AN-7K9Q-2M4X": ("Reference sample A", "AN-2026-0042", "SAMPLE-2401", "2026-10-26", "2026-10-30", "99.32", "Consistent", "8.42"),
+    "AN-8P6R-3N5Y": ("Reference sample C", "AN-2026-0043", "SAMPLE-2402", "2026-10-27", "2026-10-31", "97.84", "Partial match", "9.16")
+}
 
 
 def register_fonts():
@@ -87,7 +95,113 @@ def product(drawing, x, top, image=None):
     drawing.add(Line(center - 10, bottom + 57, center - 10, bottom + 64, strokeColor=colors.HexColor("#DDECEF"), strokeWidth=1.3))
 
 
-def make_drawing(code, product_image=None):
+def load_records():
+    """Validate the entire public catalog before any artifact can be replaced."""
+    records = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    if not isinstance(records, dict) or set(records) != set(STEMS):
+        raise ValueError("Public catalog must contain exactly both sample lookup codes")
+    register_fonts()
+    keys = {"label", "product", "appearance", "client", "reportId", "accession", "lot", "received", "reported", "purity", "identity", "retentionTime", "composition", "screenings", "method", "spectra", "chromatogram", "signoffTitle"}
+    def printable(value):
+        if isinstance(value, str):
+            if not value or len(value) > 160 or any(not 32 <= ord(c) <= 126 for c in value):
+                raise ValueError("Public record text must be nonempty supported ASCII")
+        elif isinstance(value, dict):
+            for key, item in value.items(): printable(key); printable(item)
+        elif isinstance(value, list):
+            for item in value: printable(item)
+        elif type(value) not in (int, float) or not math.isfinite(value):
+            raise ValueError("Public record contains an unsupported value")
+    def decimal(value, maximum):
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9]+\.[0-9]{2}", value):
+            raise ValueError("Result numbers require two decimal places")
+        number = Decimal(value)
+        if not 0 <= number <= maximum: raise ValueError("Result is out of range")
+        return number
+    def mean(values, maximum):
+        numbers = [decimal(v, maximum) for v in values]
+        if ((numbers[0] + numbers[1]) / 2).quantize(Decimal(".01"), rounding=ROUND_HALF_UP) != numbers[2]:
+            raise ValueError("Reported summary must equal the rounded replicate mean")
+    def fits(value, width, size=8.5, bold=False):
+        if pdfmetrics.stringWidth(value, "SampleVeraBold" if bold else "SampleVera", size) > width:
+            raise ValueError("Public record text exceeds its fixed layout slot")
+    tests = ["Identity (LC-MS)", "Elemental impurities (ICP-MS)", "Endotoxin (LAL)", "Microbial analysis (PCR)", "Fentanyl"]
+    for code, record in records.items():
+        if not isinstance(record, dict) or set(record) != keys: raise ValueError("Invalid public record shape")
+        printable(record)
+        if not isinstance(record["purity"], list) or len(record["purity"]) != 3: raise ValueError("Expected three purity results")
+        mean(record["purity"], 100)
+        expected = EXPECTED[code]
+        actual = tuple(record[k] for k in ("label", "reportId", "lot", "received", "reported")) + (record["purity"][2], record["identity"], record["retentionTime"])
+        if actual != expected: raise ValueError("Record conflicts with the immutable published sample summary")
+        fits(record["product"], 130, 13, True)
+        for key in ("appearance", "client", "accession", "lot", "received", "reported"): fits(record[key], 130)
+        if not isinstance(record["composition"], list) or len(record["composition"]) != 4: raise ValueError("Expected four composition rows")
+        for row in record["composition"]:
+            if not isinstance(row, dict) or set(row) != {"analyte", "sample1", "sample2", "summary"}: raise ValueError("Invalid composition row")
+            mean([row[k] for k in ("sample1", "sample2", "summary")], 1000)
+            fits(row["analyte"], 102, 9)
+        if not isinstance(record["screenings"], list) or len(record["screenings"]) != 5: raise ValueError("Expected five screening outcomes")
+        for index, row in enumerate(record["screenings"]):
+            if not isinstance(row, dict) or set(row) != {"test", "result", "details"} or row["test"] != tests[index]: raise ValueError("Invalid screening record")
+            fits(row["result"], 244, 9, True); fits(row["details"], 244)
+        if record["screenings"][0]["result"] != record["identity"]: raise ValueError("Identity outcomes disagree")
+        fits(record["method"], 244, 9)
+        if record["signoffTitle"] != "Chief Chemist": raise ValueError("Unexpected signoff title")
+        if not isinstance(record["spectra"], list) or len(record["spectra"]) != 4: raise ValueError("Expected four mass spectra")
+        for index, spectrum in enumerate(record["spectra"]):
+            if not isinstance(spectrum, dict) or set(spectrum) != {"analyte", "peaks"} or spectrum["analyte"] != record["composition"][index]["analyte"]: raise ValueError("Spectrum labels must match composition")
+            peaks = spectrum["peaks"]
+            if not isinstance(peaks, list) or not 1 <= len(peaks) <= 12: raise ValueError("Invalid spectrum peaks")
+            for peak in peaks:
+                if not isinstance(peak, list) or len(peak) != 2 or any(type(v) not in (int,float) or not math.isfinite(v) for v in peak) or not 0 < peak[0] <= 1200 or not 0 < peak[1] <= 100: raise ValueError("Invalid mass peak")
+        peaks = record["chromatogram"]
+        if not isinstance(peaks, list) or not 1 <= len(peaks) <= 12: raise ValueError("Invalid chromatographic peaks")
+        for peak in peaks:
+            if not isinstance(peak, dict) or set(peak) != {"time", "response", "width"}: raise ValueError("Invalid chromatographic peak")
+            if any(type(v) not in (int,float) or not math.isfinite(v) for v in peak.values()) or not 0 < peak["time"] < 15 or not 0 < peak["response"] <= 100 or not .03 <= peak["width"] <= .5: raise ValueError("Chromatographic peak outside supported axes")
+        if max(peaks, key=lambda p:p["response"])["time"] != float(record["retentionTime"]): raise ValueError("Principal peak must match published retention time")
+    return records
+
+
+def chromatogram(drawing, peaks):
+    # All chart elements stay inside the accepted 265 x 96 pt frame.
+    x, y, w, h = MARGIN, 368, 265, 96
+    drawing.add(Rect(x, y, w, h, fillColor=colors.HexColor("#FAFCFC"), strokeColor=RULE, strokeWidth=.6))
+    left, bottom, width, height = x + 29, y + 28, w - 40, h - 40
+    rule(drawing, left, bottom, width, MUTED, .5)
+    drawing.add(Line(left, bottom, left, bottom + height, strokeColor=MUTED, strokeWidth=.5))
+    for tick in (0, 5, 10, 15):
+        tx = left + tick / 15 * width
+        drawing.add(Line(tx, bottom, tx, bottom - 3, strokeColor=MUTED, strokeWidth=.5))
+        text(drawing, str(tick), tx, bottom - 13, 8, color=MUTED, anchor="middle")
+    text(drawing, "0", left - 7, bottom - 2, 8, color=MUTED, anchor="end")
+    text(drawing, "100", left - 7, bottom + height - 3, 8, color=MUTED, anchor="end")
+    text(drawing, "Time (min)", left + width / 2, y + 3, 8, color=MUTED, anchor="middle")
+    curve = VectorPath(strokeColor=TEAL, strokeWidth=.9, fillColor=None)
+    for index in range(601):
+        t = index / 40
+        response = sum(p["response"] * math.exp(-.5 * ((t-p["time"])/p["width"])**2) for p in peaks)
+        px, py = left + t / 15 * width, bottom + response / 100 * height
+        (curve.moveTo if index == 0 else curve.lineTo)(px, py)
+    drawing.add(curve)
+
+
+def spectrum_plot(drawing, peaks, x, y, width):
+    drawing.add(Rect(x, y, width, 76, fillColor=colors.HexColor("#FAFCFC"), strokeColor=RULE, strokeWidth=.6))
+    left, bottom, plot_width, height = x + 16, y + 26, width - 28, 40
+    rule(drawing, left, bottom, plot_width, MUTED, .5)
+    drawing.add(Line(left, bottom, left, bottom + height, strokeColor=MUTED, strokeWidth=.5))
+    for tick in (0, 600, 1200):
+        tx = left + tick / 1200 * plot_width
+        text(drawing, str(tick), tx, bottom - 12, 8, color=MUTED, anchor="middle")
+    text(drawing, "m/z", left + plot_width/2, y + 3, 8, color=MUTED, anchor="middle")
+    for mz, response in peaks:
+        px = left + mz / 1200 * plot_width
+        drawing.add(Line(px, bottom, px, bottom + response / 100 * height, strokeColor=TEAL, strokeWidth=.8))
+
+
+def make_drawing(code, record, product_image=None):
     register_fonts()
     drawing = Drawing(PAGE_W, PAGE_H)
     drawing.add(Rect(0, 0, PAGE_W, PAGE_H, fillColor=WHITE, strokeColor=None))
@@ -101,9 +215,9 @@ def make_drawing(code, product_image=None):
     drawing.add(Rect(MARGIN, floor, 154, top - floor, fillColor=PALE, strokeColor=None))
     x = MARGIN + 12
     text(drawing, "SAMPLE INFORMATION", x, top - 18, 9, True, TEAL)
-    text(drawing, "[Product name]", x, top - 45, 13, True, NAVY)
-    text(drawing, "[Appearance]", x, top - 62, 8.5, color=MUTED)
-    fields = [("CLIENT", "[Client name]"), ("LOT", "[Lot number]"), ("ACCESSION NO.", "[Accession no.]"), ("COA LOOKUP CODE", code), ("RECEIVED", "[YYYY-MM-DD]"), ("REPORTED", "[YYYY-MM-DD]")]
+    text(drawing, record["product"], x, top - 45, 13, True, NAVY)
+    text(drawing, record["appearance"], x, top - 62, 8.5, color=MUTED)
+    fields = [("CLIENT", record["client"]), ("LOT", record["lot"]), ("ACCESSION NO.", record["accession"]), ("LOOKUP CODE", code), ("RECEIVED", record["received"]), ("REPORTED", record["reported"])]
     for index, (label, value) in enumerate(fields):
         y = top - 82 - index * 28
         text(drawing, label, x, y, 8, True, MUTED)
@@ -115,7 +229,7 @@ def make_drawing(code, product_image=None):
     for index, label in enumerate(("Sample 1", "Sample 2", "Reported summary")):
         mx = profile_x + index * metric_width
         text(drawing, label, mx, top - 49, 8, color=MUTED)
-        text(drawing, "--.--%", mx, top - 72, 17, True, NAVY)
+        text(drawing, record["purity"][index] + "%", mx, top - 72, 17, True, NAVY)
         rule(drawing, mx, top - 83, metric_width - 10, TEAL, .7)
     product(drawing, PAGE_W - MARGIN - 82, top, product_image)
     title(drawing, "Composition", profile_x, top - 115, profile_width, "Net content (mg)")
@@ -131,41 +245,39 @@ def make_drawing(code, product_image=None):
         text(drawing, label, edges[index] + 6 if index == 0 else edges[index + 1] - 6, table_top - 14, 8.2, True, anchor="start" if index == 0 else "end")
     for row in range(4):
         baseline = table_top - row_height * (row + 1) - 14
-        text(drawing, f"[Analyte {row + 1}]", profile_x + 6, baseline, 9)
+        text(drawing, record["composition"][row]["analyte"], profile_x + 6, baseline, 9)
         for col in range(1, 4):
-            text(drawing, "--.--", edges[col + 1] - 6, baseline, 9, anchor="end")
+            text(drawing, record["composition"][row][("sample1", "sample2", "summary")[col - 1]], edges[col + 1] - 6, baseline, 9, anchor="end")
         rule(drawing, profile_x, table_top - row_height * (row + 2), profile_width)
     if table_top - row_height * 5 < floor:
         raise ValueError("Composition table crosses the upper layout zone")
     figure_width, ledger_x = 265, 315
     title(drawing, "HPLC-UV chromatogram", MARGIN, 480, figure_width)
-    drawing.add(Rect(MARGIN, 368, figure_width, 96, fillColor=colors.HexColor("#FAFCFC"), strokeColor=RULE, strokeWidth=.6))
-    text(drawing, "[Chromatogram]", MARGIN + figure_width / 2, 412, 9, color=MUTED, anchor="middle")
+    chromatogram(drawing, record["chromatogram"])
     title(drawing, "Mass confirmation", MARGIN, 339, figure_width)
     pw = (figure_width - 12) / 2
     for index in range(4):
         px = MARGIN + (index % 2) * (pw + 12)
         label_y = 313 - (index // 2) * 118
-        text(drawing, f"[Analyte {index + 1}]", px, label_y, 8.5, True, NAVY)
-        drawing.add(Rect(px, label_y - 92, pw, 76, fillColor=colors.HexColor("#FAFCFC"), strokeColor=RULE, strokeWidth=.6))
-        text(drawing, "[Spectrum]", px + pw / 2, label_y - 58, 8.5, color=MUTED, anchor="middle")
+        text(drawing, record["spectra"][index]["analyte"], px, label_y, 8.5, True, NAVY)
+        spectrum_plot(drawing, record["spectra"][index]["peaks"], px, label_y - 92, pw)
     title(drawing, "Screening outcomes", ledger_x, 480, PAGE_W - MARGIN - ledger_x)
     screenings = ("Identity (LC-MS)", "Elemental impurities (ICP-MS)", "Endotoxin (LAL)", "Microbial analysis (PCR)", "Fentanyl")
     for index, label in enumerate(screenings):
         y = 453 - index * 62
         text(drawing, label, ledger_x, y, 9, True, NAVY)
-        text(drawing, "[Result]", ledger_x, y - 18, 9, True)
-        text(drawing, "[Result details]", ledger_x, y - 34, 8.5)
+        text(drawing, record["screenings"][index]["result"], ledger_x, y - 18, 9, True)
+        text(drawing, record["screenings"][index]["details"], ledger_x, y - 34, 8.5)
         rule(drawing, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
     title(drawing, "Method", ledger_x, 132, PAGE_W - MARGIN - ledger_x)
-    text(drawing, "[Analytical method]", ledger_x, 112, 9, color=MUTED)
+    text(drawing, record["method"], ledger_x, 112, 9, color=MUTED)
     signature = ROOT / "assets" / "dylan-greene-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
         signature_width, signature_height = image.width * scale, image.height * scale
     drawing.add(Image(MARGIN + (168 - signature_width) / 2, 97 - signature_height,
                       signature_width, signature_height, path=str(signature)))
-    text(drawing, "[Title]", MARGIN + 84, 42, 8.5, color=MUTED, anchor="middle")
+    text(drawing, record["signoffTitle"], MARGIN + 84, 42, 8.5, color=MUTED, anchor="middle")
     return drawing
 
 
@@ -262,9 +374,9 @@ def svg_drawing(drawing):
 def render(drawing, code):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, invariant=1, pageCompression=1)
-    pdf.setTitle("Placeholder sample COA - " + code)
+    pdf.setTitle("Fictional sample COA - " + code)
     pdf.setAuthor("AssayNova")
-    pdf.setSubject("Placeholder sample layout; not a valid certificate of analysis")
+    pdf.setSubject("Fictional sample data and illustrative plots; not a valid certificate of analysis")
     class TransparentImageRenderer(renderPDF._PDFRenderer):
         # The stock Drawing renderer uses inline images, losing PNG alpha.
         # This preserves the unchanged logo and any optional product image.
@@ -283,9 +395,9 @@ def render(drawing, code):
     root.set("role", "img")
     root.set("aria-labelledby", "sample-title sample-description")
     heading = ET.Element("{http://www.w3.org/2000/svg}title", {"id": "sample-title"})
-    heading.text = "Placeholder sample COA - " + code
+    heading.text = "Fictional sample COA - " + code
     description = ET.Element("{http://www.w3.org/2000/svg}desc", {"id": "sample-description"})
-    description.text = "Single-page portrait sample report with placeholder fields, results and analytical figures, and the Dylan Greene handwritten signature at the lower left. COA Lookup Code " + code + ". A product image appears beside the analytical result placeholders."
+    description.text = "Single-page portrait report with fixed fictional sample data, illustrative chromatogram and mass spectra, and the Dylan Greene handwritten signature at the lower left. Lookup Code " + code + ". An illustrative vial image appears beside the analytical results."
     metadata = ET.Element("{http://www.w3.org/2000/svg}metadata")
     metadata.text = "Font outlines derived from Bitstream Vera; see bitstream-vera-license.txt."
     root.insert(0, heading); root.insert(1, description)
@@ -300,22 +412,25 @@ def build(lookup_code, output_dir, product_image=None):
     output_dir = Path(output_dir)
     if output_dir.exists() and not output_dir.is_dir():
         raise ValueError("Output directory must be a directory")
+    records = load_records()
+    image_path = product_image or ROOT / "assets" / ("sample-vial-a.png" if code == "AN-7K9Q-2M4X" else "sample-vial-c.png")
     image = None
-    if product_image:
-        with PILImage.open(product_image) as candidate:
+    if image_path:
+        with PILImage.open(image_path) as candidate:
             if candidate.format not in ("PNG", "JPEG"):
                 raise ValueError("Product image must be PNG or JPEG")
             candidate.load()
             image = candidate.copy()
-    drawing = make_drawing(code, image)
+    drawing = make_drawing(code, records[code], image)
     pdf, svg = render(drawing, code)
+    module = ("// Generated from templates/coa/sample_reports.json; fixed fictional sample data.\nexport const SAMPLE_REPORT_DATA = " + json.dumps(records, ensure_ascii=True, indent=2) + ";\n").encode("utf-8")
     output_dir.mkdir(parents=True, exist_ok=True)
     staged = []
     try:
-        for extension, content in (("pdf", pdf), ("svg", svg)):
+        for filename, content in ((STEMS[code] + ".pdf", pdf), (STEMS[code] + ".svg", svg), ("sample-data.js", module)):
             with tempfile.NamedTemporaryFile(dir=output_dir, prefix=".sample-", suffix=".tmp", delete=False) as temporary:
                 temporary.write(content)
-                staged.append((Path(temporary.name), output_dir / (STEMS[code] + "." + extension)))
+                staged.append((Path(temporary.name), output_dir / filename))
         for temporary, final in staged:
             os.replace(temporary, final)
     finally:

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import * as reportData from '../dist/data.js';
+import { SAMPLE_REPORT_DATA } from '../dist/reports/sample-data.js';
 import * as pageData from '../dist/routes.js';
 import * as supportData from '../dist/support.js';
 import * as submissionData from '../dist/submission.js';
@@ -213,7 +214,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   assert.notEqual(runnable, appSource);
   const unexpectedNetwork = (...args) => { networkCalls.push(args); throw new Error('This draft-only workflow must not send network requests'); };
   runInNewContext(runnable, {
-    ...reportData, ...pageData, ...supportData, ...submissionData, createRequestPage, document, window, location, history, URL,
+    ...reportData, ...pageData, ...supportData, ...submissionData, SAMPLE_REPORT_DATA, createRequestPage, document, window, location, history, URL,
     navigator: { clipboard: { writeText(value) { copied.push(value); if (clipboardWrite) return clipboardWrite(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
     fetch: unexpectedNetwork, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
     localStorage: {
@@ -318,10 +319,16 @@ test('actual public form handlers clear A on failure, survive refresh/history an
     assert.ok(html.includes(`href="/reports/${stem}.pdf" download`));
     assert.ok(html.includes(code));
     assert.ok(!html.includes(`/reports/${other}.`));
-    assert.ok(!/AN-2026-004[23]|99\.32%|97\.84%|Consistent|Partial match|identity-matched|identity-neutral|Chromatogram schematic/.test(html));
-    assert.ok(html.includes('Report fields'));
-    assert.ok(html.includes('[Product name]') && html.includes('Dylan Greene'));
-    assert.equal((html.match(/<dd>--\.--%<\/dd>/g) || []).length, 3);
+    const record = SAMPLE_REPORT_DATA[code];
+    const otherRecord = SAMPLE_REPORT_DATA[code === 'AN-7K9Q-2M4X' ? 'AN-8P6R-3N5Y' : 'AN-7K9Q-2M4X'];
+    for (const value of [record.product, record.client, record.reportId, record.received, record.reported, record.identity, ...record.purity.map(value => value + '%')]) assert.ok(html.includes(value), value);
+    for (const value of [otherRecord.product, otherRecord.client, otherRecord.reportId, otherRecord.purity[2] + '%', otherRecord.identity]) assert.ok(!html.includes(value), value);
+    assert.ok(!/\[(?:Product name|Client name|YYYY-MM-DD|Analyte|Result|Spectrum|Title)|--\.--|identity-matched|identity-neutral|Chromatogram schematic/.test(html));
+    assert.ok(html.includes('Report fields') && html.includes('Dylan Greene') && html.includes('Chief Chemist'));
+    assert.ok(html.includes('Fictional data for illustration. Not a valid certificate of analysis.'));
+    assert.ok(html.includes('Lookup Code') && !html.includes('COA Lookup Code'));
+    assert.ok(html.includes('Illustrative HPLC-UV chromatogram') && html.includes(record.retentionTime + ' min'));
+    for (const row of record.composition) assert.ok(html.includes(row.analyte) && html.includes(row.summary));
   };
   const app = bootApp('/coa/AN-7K9Q-2M4X');
   const view = app.nodes.get('#coa-view');
@@ -671,7 +678,8 @@ test('request navigation uses its own page while saved-draft dialogs and mobile 
   assert.equal(verify.location.pathname, '/coa/AN-7K9Q-2M4X');
   assert.match(verify.nodes.get('#coa-view').innerHTML, /src="\/reports\/sample-a\.svg"/);
   assert.match(verify.nodes.get('#coa-view').innerHTML, /href="\/reports\/sample-a\.pdf" download/);
-  assert.ok(!/99\.32%|AN-2026-0042/.test(verify.nodes.get('#coa-view').innerHTML));
+  assert.match(verify.nodes.get('#coa-view').innerHTML, /99\.32%/);
+  assert.ok(verify.nodes.get('#coa-view').innerHTML.includes(SAMPLE_REPORT_DATA['AN-7K9Q-2M4X'].product));
 });
 
 async function availablePort() {
@@ -771,6 +779,9 @@ for (const mode of ['default', 'production', 'watch']) {
             assert.ok(svg.includes(code) && !svg.includes(otherCode));
             assert.ok(svg.includes('width="210mm"') && svg.includes('height="297mm"'));
             assert.ok(!/<(?:script|text)\b|onload=|href="https?:/i.test(svg));
+            assert.equal((svg.match(/<image\b/g) || []).length, 3, 'Logo, product image and original signature are embedded');
+            assert.equal((svg.match(/href="data:image\/png;base64,/g) || []).length, 3);
+            assert.ok(svg.includes('fixed fictional sample data') && !svg.includes('placeholder'));
           } else {
             assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
             reportDownloads.push(url);
@@ -778,6 +789,11 @@ for (const mode of ['default', 'production', 'watch']) {
         }
       }
       assert.equal(new Set(reportDownloads).size, 2);
+      const moduleResponse = await fetch(base + '/reports/sample-data.js');
+      assert.equal(moduleResponse.status, 200);
+      assert.equal(await moduleResponse.text(), await readFile(path.join(project, 'dist/reports/sample-data.js'), 'utf8'));
+      assert.equal((await fetch(base + '/reports/sample-data.js', { method: 'HEAD' })).status, 200);
+      assert.match(await (await fetch(base + '/app.js')).text(), /import \{ SAMPLE_REPORT_DATA \} from '\.\/reports\/sample-data\.js'/);
       for (const route of ['/coa/AN-0000-0000', '/coa/AN-2026-0042', '/coa/unknown', '/coa/not-found']) {
         const response = await fetch(base + route);
         assert.equal(response.status, 404);
@@ -995,4 +1011,24 @@ test('v2 saved details omit retired fields without changing storage and Resume p
   assert.equal(updated.length, 1); assert.equal(updated[0].id, record.id);
   assert.equal(updated[0].company, record.company); assert.equal(updated[0].samples[0].batch, record.samples[0].batch); assert.equal(updated[0].samples[0].amount, record.samples[0].amount);
   assert.equal(app.networkCalls.length, 0);
+});
+
+test('public report module matches its authoritative fictional catalog and published summaries', async () => {
+  const catalog = JSON.parse(await readFile(new URL('../templates/coa/sample_reports.json', import.meta.url), 'utf8'));
+  assert.deepEqual(SAMPLE_REPORT_DATA, catalog);
+  assert.deepEqual(Object.keys(catalog).sort(), DEMO_REPORTS.map(report => report.lookupCode).sort());
+  for (const report of DEMO_REPORTS) {
+    const record = catalog[report.lookupCode];
+    assert.equal(record.reportId, report.id);
+    assert.equal(record.purity[2] + '%', report.purity);
+    assert.equal(record.identity, report.identity);
+    assert.equal(record.retentionTime + ' min', report.retentionTime);
+    assert.equal(record.received, report.received);
+    assert.equal(record.reported, report.issued);
+    assert.equal(record.composition.length, 4);
+    assert.equal(record.spectra.length, 4);
+    assert.equal(record.screenings[0].result, record.identity);
+    for (const row of record.composition) assert.equal(((Number(row.sample1) + Number(row.sample2)) / 2).toFixed(2), row.summary);
+    assert.equal(Math.max(...record.chromatogram.map(peak => peak.response)), record.chromatogram.find(peak => peak.time === Number(record.retentionTime)).response);
+  }
 });
