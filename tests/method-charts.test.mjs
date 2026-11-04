@@ -85,6 +85,16 @@ test('paired controls wrap both ways, preserve exact data and focused button nod
   assert.equal(f.controller.getState().sample, start); assert.equal(f.button('play'), play); assert.equal(f.document.activeElement, f.button('previous', 1)); assert.ok(f.figures[0].nodes['.methods-chart'].innerHTML.includes('0 0 218 236'));
 });
 
+test('HPLC response units and retention annotation occupy separate header lines at narrow widths', () => {
+  for (const width of [245, 300, 520]) for (const sample of generateMethodSamples(194)) {
+    const svg = renderMethodPlot('hplc', sample, width);
+    const units = Number(svg.match(/<text x="47" y="([\d.]+)">Response \(mAU\)<\/text>/)[1]);
+    const retention = Number(svg.match(/<text x="[\d.]+" y="([\d.]+)" text-anchor="middle">[\d.]+ min<\/text>/)[1]);
+    assert.ok(retention - units >= 14, '11px labels have separate rows with a gap');
+    assert.ok(retention + 3 <= 33, 'retention label stays above the plot boundary');
+  }
+});
+
 test('one paired 7.5-second timer starts only after visible intersection and pauses manually', () => {
   const f = fixture(); assert.equal(f.tasks.size, 0); f.advance(30000); assert.equal(f.controller.getState().index, 0);
   f.visible(); assert.equal(f.tasks.size, 1); assert.equal([...f.tasks.values()][0].delay, ROTATION_MS);
