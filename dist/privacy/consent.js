@@ -1,4 +1,4 @@
-import { POLICY, DRAFT_KEY, CATALOG, validateCatalog, readPreferenceCookie, gpcRestricted, createServiceGate, createPreferenceSyncGuard, createConsentActionAdapter } from './policy.js';
+import { POLICY, DRAFT_KEY, SUPPORT_DRAFT_KEY, CATALOG, validateCatalog, readPreferenceCookie, gpcRestricted, createServiceGate, createPreferenceSyncGuard, createConsentActionAdapter } from './policy.js';
 
 // History navigation never creates a second controller. No application draft data is read here.
 if (!window.assayNovaPrivacy) window.assayNovaPrivacy = boot();
@@ -37,7 +37,7 @@ function boot() {
   const fallback = document.createElement('dialog');
   fallback.className = 'an-privacy-fallback';
   fallback.setAttribute('aria-labelledby', 'an-privacy-fallback-title');
-  fallback.innerHTML = '<h2 id="an-privacy-fallback-title">Privacy & cookie settings</h2><p>Only necessary storage is used. Analytics and advertising are not enabled.</p><p>The preference cookie, <code>assaynova_privacy</code>, remembers a choice for 180 days. Requests are saved on this device only when you select Save request: up to 50 drafts in <code>assaynova.prototype.requests.v1</code>, kept until you clear this site’s data. Privacy choices do not delete these drafts.</p><p data-privacy-feedback role="status"></p><div class="an-privacy-actions"><button type="button" data-privacy-retry>Retry privacy settings</button><button type="button" data-privacy-close>Close</button></div>';
+  fallback.innerHTML = '<h2 id="an-privacy-fallback-title">Privacy & cookie settings</h2><p>Only necessary storage is used. Analytics and advertising are not enabled.</p><p>The preference cookie, <code>assaynova_privacy</code>, remembers a choice for 180 days. Requests are saved on this device only when you select Save request: up to 50 drafts in <code>assaynova.prototype.requests.v1</code>, kept until you clear this site’s data. Recovery requests are saved only when you select Save draft: one draft in <code>' + SUPPORT_DRAFT_KEY + '</code>, kept until you select Clear saved draft in Nova Support or clear this site’s data. Privacy choices do not delete either kind of draft.</p><p data-privacy-feedback role="status"></p><div class="an-privacy-actions"><button type="button" data-privacy-retry>Retry privacy settings</button><button type="button" data-privacy-close>Close</button></div>';
   document.body.append(fallback);
   fallback.querySelector('[data-privacy-close]').addEventListener('click', () => fallback.close());
   fallback.addEventListener('close', () => previousFocus?.isConnected && previousFocus.focus());
@@ -148,10 +148,11 @@ function boot() {
           title: 'Privacy & cookie settings', closeIconLabel: 'Close privacy settings',
           acceptAllBtn: 'Accept All', acceptNecessaryBtn: 'Reject All', savePreferencesBtn: 'Save preferences',
           sections: [
-            { title: 'Storage on this device', description: 'These settings explain cookies and browser storage used by this site. They do not delete saved request drafts. You can clear drafts using your browser’s site-data controls.' },
-            { title: 'Necessary storage — always available', linkedCategory: 'necessary', description: 'Used to remember your privacy choice and to save requests when you explicitly choose Save request. Optional consent is never required to browse or use COA lookup.', cookieTable: { caption: 'Current storage inventory', headers: { name: 'Name', purpose: 'Purpose', retention: 'Retention' }, body: [
+            { title: 'Storage on this device', description: 'These settings explain cookies and browser storage used by this site. They do not delete saved request or recovery drafts. Clear a recovery draft in Nova Support, or clear drafts using your browser’s site-data controls.' },
+            { title: 'Necessary storage — always available', linkedCategory: 'necessary', description: 'Used to remember your privacy choice and to save drafts when you explicitly choose Save request or Save draft. Optional consent is never required to browse or use COA lookup.', cookieTable: { caption: 'Current storage inventory', headers: { name: 'Name', purpose: 'Purpose', retention: 'Retention' }, body: [
               { name: POLICY.cookie, purpose: 'Host-only preference cookie: choices, policy/catalog version, timestamps and a randomly generated receipt ID. No analytics use.', retention: '180 days after a choice; the same period for acceptance and rejection.' },
-              { name: DRAFT_KEY, purpose: 'Local storage for requests explicitly saved on this device. Up to 50 drafts.', retention: 'Until you clear this site’s data in your browser. No automatic time-based expiry.' }
+              { name: DRAFT_KEY, purpose: 'Local storage for requests explicitly saved on this device. Up to 50 drafts.', retention: 'Until you clear this site’s data in your browser. No automatic time-based expiry.' },
+              { name: SUPPORT_DRAFT_KEY, purpose: 'One report recovery draft, saved on this device only when you select Save draft in Nova Support.', retention: 'Until Clear saved draft in Nova Support or browser site-data clearing. No automatic time-based expiry.' }
             ] } },
             ...catalog.purposes.map((purpose) => ({ title: escape(purpose.label), linkedCategory: purpose.id, description: `${escape(purpose.description)}${signal === true && gpcRestricted(purpose) ? ' Off while Global Privacy Control is on.' : ''}<ul>${catalog.services.filter((service) => service.purpose === purpose.id).map((service) => `<li>${escape(service.label)}: ${escape(service.description)} Retention: ${escape(service.retention)}</li>`).join('')}</ul>` })),
             ...(!optional ? [{ title: 'Analytics & advertising', description: 'No analytics, advertising, third-party fonts, embeds or tracking SDKs are enabled. There are no optional services to switch on.' }] : []),

@@ -14,6 +14,9 @@ The controller runs in default, watch and production modes. The server injects i
 | --- | --- | --- |
 | `assaynova_privacy` | Necessary host-only preference cookie. CookieConsent supplies categories/services, revision, receipt timestamps, a random receipt ID and language. First-party `data` records schema/policy/catalog version, exact choices, issue/expiry timestamps and `explicit-choice` proof. The random ID is not used for analytics or sent to a consent logging endpoint. | 180 days from an explicit choice, equally for acceptance and rejection. Path `/`, SameSite `Lax`, Secure on HTTPS; no Domain attribute and no localStorage fallback. |
 | `assaynova.prototype.requests.v1` | Existing localStorage functionality: requests explicitly saved on this device through Save request, capped at 50 drafts. | Until the user clears the site's browser data. No time-based automatic expiry exists. Privacy controls neither read the contents nor remove this key. |
+| `assaynova.support.recovery.v1` | One recovery draft explicitly saved through Nova Support. Only the testing email, company/project name and optional context are retained, with schema version 1. Copy request does not save it. | Until Clear saved draft in Nova Support or browser site-data clearing. No automatic expiry; privacy choices do not read or remove it. |
+
+The recovery draft is necessary storage requested by the user through an explicit Save draft action. Its exact key is protected from optional-service cleanup. POLICY version/revision remain 1 because optional purposes, the empty service catalog, permission decisions, receipts and 180-day lifetime are unchanged; this adds only a necessary draft inventory entry.
 
 There is no authentication cookie yet. Clearing browser site data also clears the preference, so the notice returns. Settings explain how to clear drafts through browser controls. This disclosure covers current storage, not a claimed final privacy policy.
 

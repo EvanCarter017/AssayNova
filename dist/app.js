@@ -1,5 +1,6 @@
 import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from './data.js';
 import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
+import { SUPPORT_DRAFT_KEY, normalizeSupport, validateSupport, parseSupportDraft, formatSupportRequest } from './support.js';
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
@@ -59,23 +60,16 @@ dialog.addEventListener('click', (event) => {
 
 function renderSubmission(service = 'comprehensive') {
   if (!Object.hasOwn(SERVICE_NAMES, service)) service = 'comprehensive';
-  openDialog(`<div class="dialog-padding">
-    <p class="dialog-eyebrow">YOUR NEXT ANSWER STARTS HERE</p>
+  openDialog(`<div class="request-dialog">
+    <p class="dialog-eyebrow">SAMPLE REQUEST</p>
     <h2 class="dialog-title" id="dialog-title">Tell us about your sample.</h2>
     <p class="dialog-description">No account needed. Add a contact email and the details of your testing request.</p>
-    <div class="demo-notice email-connection"><p class="email-connection-heading"><strong>Request draft</strong><span class="email-connection-status">On this device</span></p><p>Saving does not send your request or email. Keep a draft on this device and return to it from Saved drafts.</p></div>
     <form class="submission-form" id="submission-form" novalidate>
-      <div class="form-grid">
-        <div class="form-field"><label for="request-name">Your name</label><input id="request-name" name="name" required maxlength="100" autocomplete="name" placeholder="Full name" aria-describedby="error-name"><span class="field-error" id="error-name"></span></div>
-        <div class="form-field"><label for="request-email">Contact email</label><input id="request-email" name="email" type="email" required maxlength="160" autocomplete="email" placeholder="you@company.com" aria-describedby="request-email-help error-email"><small class="field-helper" id="request-email-help">Use the contact address you want associated with this request.</small><span class="field-error" id="error-email"></span></div>
-        <div class="form-field full"><label for="request-company">Company or laboratory <span>Optional</span></label><input id="request-company" name="company" maxlength="160" autocomplete="organization" placeholder="Your organization"></div>
-        <div class="form-field full"><label for="request-sample">Sample or project name</label><input id="request-sample" name="sample" required maxlength="160" placeholder="A name you will recognize" aria-describedby="error-sample"><span class="field-error" id="error-sample"></span></div>
-        <div class="form-field"><label for="request-service">Testing service</label><select id="request-service" name="service" aria-describedby="error-service">${Object.entries(SERVICE_NAMES).map(([key, name]) => `<option value="${key}"${key === service ? ' selected' : ''}>${name}</option>`).join('')}</select><span class="field-error" id="error-service"></span></div>
-        <div class="form-field"><label for="request-quantity">Number of samples</label><input id="request-quantity" name="quantity" type="number" min="1" max="100" step="1" value="1" required aria-describedby="error-quantity"><span class="field-error" id="error-quantity"></span></div>
-        <div class="form-field full"><label for="request-notes">What would you like to understand? <span>Optional</span></label><textarea id="request-notes" name="notes" maxlength="1200" placeholder="Add context, questions, or specific testing needs."></textarea></div>
-      </div>
+      <fieldset class="request-group"><legend>Your details</legend><div class="form-grid"><div class="form-field"><label for="request-name">Your name</label><input id="request-name" name="name" required maxlength="100" autocomplete="name" placeholder="Full name" aria-describedby="error-name"><span class="field-error" id="error-name"></span></div><div class="form-field"><label for="request-email">Contact email</label><input id="request-email" name="email" type="email" required maxlength="160" autocomplete="email" placeholder="you@company.com" aria-describedby="request-email-help error-email"><small class="field-helper" id="request-email-help">Use the contact address you want associated with this request.</small><span class="field-error" id="error-email"></span></div><div class="form-field full"><label for="request-company">Company or laboratory <span>Optional</span></label><input id="request-company" name="company" maxlength="160" autocomplete="organization" placeholder="Your organization"></div></div></fieldset>
+      <fieldset class="request-group"><legend>Sample &amp; analysis</legend><div class="form-grid"><div class="form-field full"><label for="request-sample">Sample or project name</label><input id="request-sample" name="sample" required maxlength="160" placeholder="A name you will recognize" aria-describedby="error-sample"><span class="field-error" id="error-sample"></span></div><div class="form-field"><label for="request-service">Testing service</label><select id="request-service" name="service" aria-describedby="error-service">${Object.entries(SERVICE_NAMES).map(([key, name]) => `<option value="${key}"${key === service ? ' selected' : ''}>${name}</option>`).join('')}</select><span class="field-error" id="error-service"></span></div><div class="form-field"><label for="request-quantity">Number of samples</label><input id="request-quantity" name="quantity" type="number" min="1" max="100" step="1" value="1" required aria-describedby="error-quantity"><span class="field-error" id="error-quantity"></span></div><div class="form-field full"><label for="request-notes">What would you like to understand? <span>Optional</span></label><textarea id="request-notes" name="notes" maxlength="1200" placeholder="Add context, questions, or specific testing needs."></textarea></div></div></fieldset>
+      <div class="demo-notice email-connection"><p class="email-connection-heading"><strong>Request draft</strong><span class="email-connection-status">On this device</span></p><p>Saving does not send your request or email. Keep a draft on this device and return to it from Saved drafts.</p></div>
       <p class="inline-error" id="submission-error" role="alert"></p>
-      <div class="form-footer"><p>Review your details before saving.</p><button class="button button-teal" type="submit">Save request ${icon('arrow', true)}</button></div>
+      <div class="form-footer"><p>Review your details before saving.</p><div class="request-actions"><button class="text-button" type="button" data-action="close">Cancel</button><button class="button button-teal" type="submit">Save request ${icon('arrow', true)}</button></div></div>
     </form>
   </div>`);
   const form = document.querySelector('#submission-form');
@@ -102,6 +96,111 @@ function renderSubmission(service = 'comprehensive') {
     try { localStorage.setItem(storageKey, JSON.stringify([request, ...readRequests()].slice(0, 50))); }
     catch { document.querySelector('#submission-error').textContent = 'This browser could not save the request. Please enable local storage and try again.'; return; }
     renderSuccess(request);
+  });
+}
+
+function renderRecovery() {
+  let saved = null;
+  let readFailed = false;
+  try { saved = parseSupportDraft(localStorage.getItem(SUPPORT_DRAFT_KEY)); }
+  catch { readFailed = true; }
+  const values = saved || { email: '', reference: '', notes: '' };
+  openDialog(`<div class="nova-support-dialog">
+    <p class="dialog-eyebrow">NOVA SUPPORT</p>
+    <h2 class="dialog-title" id="dialog-title">Recover your report.</h2>
+    <p class="dialog-description">Use the email used for testing and your company or project name to prepare a report recovery request.</p>
+    <form id="recovery-form" class="recovery-form" novalidate>
+      <div class="form-grid">
+        <div class="form-field full"><label for="support-email">Testing email</label><input id="support-email" name="email" type="email" required maxlength="160" autocomplete="email" value="${escape(values.email)}" placeholder="you@company.com" aria-describedby="support-email-help support-error-email"><small id="support-email-help" class="field-helper">Use the contact email associated with the original testing request.</small><span class="field-error" id="support-error-email"></span></div>
+        <div class="form-field full"><label for="support-reference">Company or project name</label><input id="support-reference" name="reference" required maxlength="160" value="${escape(values.reference)}" placeholder="Your company or project" aria-describedby="support-reference-help support-error-reference"><small id="support-reference-help" class="field-helper">Additional verification may be needed before a report is shared.</small><span class="field-error" id="support-error-reference"></span></div>
+        <div class="form-field full"><label for="support-notes">Additional context <span>Optional</span></label><textarea id="support-notes" name="notes" maxlength="1200" placeholder="Sample name, approximate testing date, or anything else that helps" aria-describedby="support-error-notes">${escape(values.notes)}</textarea><span class="field-error" id="support-error-notes"></span></div>
+      </div>
+      <div class="demo-notice email-connection"><p class="email-connection-heading"><strong>Recovery draft</strong><span class="email-connection-status">On this device</span></p><p>Saving or copying prepares your request. Nothing is sent to Nova Support.</p></div>
+      <p id="support-error" class="inline-error" role="alert">${readFailed ? 'Your saved recovery draft could not be opened. You can still prepare a request below.' : ''}</p>
+      <p id="support-status" class="support-status" role="status"></p>
+      <div id="support-copy-fallback" class="support-copy-fallback" role="region" aria-label="Manual request copy" hidden><p>Automatic copying was unavailable. Select and copy the complete request below.</p><label for="support-copy-value">Request details</label><textarea id="support-copy-value" readonly></textarea><button type="button" class="text-button" data-recovery-action="select">Select all</button></div>
+      <div class="form-footer support-footer"><button class="button button-teal" type="submit">Save draft ${icon('arrow', true)}</button><button class="button button-outline" type="button" data-recovery-action="copy">Copy request</button><button class="text-button" type="button" data-recovery-action="clear">Clear saved draft</button></div>
+    </form>
+  </div>`);
+  const form = document.querySelector('#recovery-form');
+  const field = (key) => form.elements.namedItem(key);
+  const error = form.querySelector('#support-error');
+  const status = form.querySelector('#support-status');
+  const fallback = form.querySelector('#support-copy-fallback');
+  const copyField = form.querySelector('#support-copy-value');
+  let operation = 0;
+  const currentValues = () => Object.fromEntries(['email', 'reference', 'notes'].map((key) => [key, field(key).value]));
+  function resetFeedback() {
+    operation++;
+    error.textContent = '';
+    status.textContent = '';
+    fallback.hidden = true;
+    copyField.value = '';
+  }
+  function validatedValues() {
+    const current = currentValues();
+    const errors = validateSupport(current);
+    for (const key of ['email', 'reference', 'notes']) {
+      form.querySelector('#support-error-' + key).textContent = errors[key] || '';
+      if (errors[key]) field(key).setAttribute('aria-invalid', 'true');
+      else field(key).removeAttribute('aria-invalid');
+    }
+    const invalid = ['email', 'reference', 'notes'].find((key) => errors[key]);
+    if (invalid) { field(invalid).focus(); return null; }
+    return normalizeSupport(current);
+  }
+  form.addEventListener('input', (event) => {
+    resetFeedback();
+    if (['email', 'reference', 'notes'].includes(event.target.name)) {
+      event.target.removeAttribute('aria-invalid');
+      form.querySelector('#support-error-' + event.target.name).textContent = '';
+    }
+  });
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    resetFeedback();
+    const current = validatedValues();
+    if (!current) return;
+    try {
+      const serialized = JSON.stringify({ version: 1, ...current });
+      localStorage.setItem(SUPPORT_DRAFT_KEY, serialized);
+      if (localStorage.getItem(SUPPORT_DRAFT_KEY) !== serialized) throw new Error('Recovery draft was not persisted');
+      status.textContent = 'Draft saved on this device. Nothing has been sent to Nova Support.';
+    } catch { error.textContent = 'Your recovery draft could not be saved. Keep this form open or copy the request details.'; }
+  });
+  form.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-recovery-action]');
+    if (!button) return;
+    const action = button.dataset.recoveryAction;
+    if (action === 'select') { copyField.focus(); copyField.select(); return; }
+    resetFeedback();
+    if (action === 'clear') {
+      try {
+        localStorage.removeItem(SUPPORT_DRAFT_KEY);
+        if (localStorage.getItem(SUPPORT_DRAFT_KEY) !== null) throw new Error('Recovery draft was not removed');
+        for (const key of ['email', 'reference', 'notes']) { field(key).value = ''; field(key).removeAttribute('aria-invalid'); form.querySelector('#support-error-' + key).textContent = ''; }
+        status.textContent = 'Saved recovery draft cleared from this device.';
+        field('email').focus();
+      } catch { error.textContent = 'Your saved recovery draft could not be cleared. Your current details have been kept.'; }
+      return;
+    }
+    if (action !== 'copy') return;
+    const current = validatedValues();
+    if (!current) return;
+    const value = formatSupportRequest(current);
+    const revision = operation;
+    const snapshot = JSON.stringify(currentValues());
+    const stillCurrent = () => dialog.open && document.querySelector('#recovery-form') === form && revision === operation && JSON.stringify(currentValues()) === snapshot;
+    try {
+      await navigator.clipboard.writeText(value);
+      if (stillCurrent()) status.textContent = 'Request details copied. Nothing has been sent.';
+    } catch {
+      if (!stillCurrent()) return;
+      fallback.hidden = false;
+      copyField.value = value;
+      copyField.focus();
+      copyField.select();
+    }
   });
 }
 
@@ -280,6 +379,7 @@ document.addEventListener('click', (event) => {
   closeMobileNavigation();
   const actions = {
     submit: () => renderSubmission(target.dataset.service),
+    'recover-report': () => renderRecovery(),
     report: () => navigateToReport(target.dataset.lookupCode),
     home: () => navigateToURL('/'),
     portal: () => renderPortal(),

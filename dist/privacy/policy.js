@@ -1,3 +1,6 @@
+import { SUPPORT_DRAFT_KEY } from '../support.js';
+export { SUPPORT_DRAFT_KEY };
+
 // First-party permission boundary. No service is imported or started by this module.
 export const POLICY = Object.freeze({ version: 1, revision: 1, days: 180, cookie: 'assaynova_privacy' });
 export const DRAFT_KEY = 'assaynova.prototype.requests.v1';
@@ -10,7 +13,7 @@ const record = (value) => value !== null && typeof value === 'object' && !Array.
 const text = (value) => typeof value === 'string' && value.trim().length > 0 && value.length <= 500;
 const exactKeys = (value, keys) => record(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 const unique = (items) => new Set(items).size === items.length;
-const protectedStorage = (key) => key === DRAFT_KEY || key === POLICY.cookie || key.startsWith('assaynova.privacy');
+const protectedStorage = (key) => key === DRAFT_KEY || key === SUPPORT_DRAFT_KEY || key === POLICY.cookie || key.startsWith('assaynova.privacy');
 
 export function validateCatalog(input) {
   if (!exactKeys(input, ['purposes', 'services']) || !Array.isArray(input.purposes) || !Array.isArray(input.services)) throw new TypeError('Invalid privacy catalog');

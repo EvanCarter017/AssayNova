@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import * as reportData from '../dist/data.js';
 import * as pageData from '../dist/routes.js';
+import * as supportData from '../dist/support.js';
 import { DEMO_REPORT, DEMO_REPORTS, normalizeLookupCode, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from '../dist/data.js';
 
 test('published immutable lookup codes identify two distinct fictional report records', () => {
@@ -90,13 +91,15 @@ test('failed lookup destinations are safe, refreshable not-found routes rather t
 
 // Minimal DOM adapters run the actual app event handlers and History transitions.
 // They do not replace browser acceptance for layout, focus or native navigation.
-function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false } = {}) {
+function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false, storageReadBlocked = false, storageSilent = false, savedSupport, clipboardWrite } = {}) {
   const documentEvents = new Map();
   const windowEvents = new Map();
   const nodes = new Map();
   const copied = [];
   const networkCalls = [];
   const storage = new Map([['assaynova.prototype.requests.v1', JSON.stringify(savedRequests)]]);
+  if (savedSupport !== undefined) storage.set(supportData.SUPPORT_DRAFT_KEY, savedSupport);
+  const storageCalls = [];
   let printed = 0;
   let focused = null;
   const scrolls = [];
@@ -113,15 +116,30 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     let html = '';
     const value = {
       id: name.replace(/^#/, ''), tagName: 'DIV', parent: null, dataset: {}, isConnected: true, hidden: false, open: false, htmlWrites: 0, textContent: '', value: '', values: {}, events, attributes,
-      get innerHTML() { return html; }, set innerHTML(value) { html = value; this.htmlWrites++; },
+      get innerHTML() { return html; }, set innerHTML(value) {
+        html = value; this.htmlWrites++;
+        if (name === '#dialog-content') {
+          for (const [key, child] of [...nodes]) if (key === '#recovery-form' || key.startsWith('#support-')) { child.isConnected = false; nodes.delete(key); }
+          if (value.includes('id="recovery-form"')) {
+            node('#recovery-form');
+            const decode = (text) => text.replace(/&(amp|lt|gt|quot|#39);/g, (_match, entity) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]);
+            for (const key of ['email', 'reference', 'notes']) {
+              const field = node('#support-' + key); field.name = key;
+              const content = key === 'notes' ? value.match(/<textarea[^>]*id="support-notes"[^>]*>([\s\S]*?)<\/textarea>/)?.[1] : value.match(new RegExp('<input[^>]*id="support-' + key + '"[^>]*value="([^\"]*)"'))?.[1];
+              field.value = decode(content || '');
+            }
+            node('#support-copy-fallback').hidden = true;
+          }
+        }
+      },
       classList: { add() {}, remove() {}, toggle() {} },
       addEventListener(type, callback) { events.set(type, callback); },
       setAttribute(key, value) { attributes.set(key, String(value)); }, getAttribute(key) { return attributes.get(key) ?? null; }, hasAttribute(key) { return attributes.has(key); }, removeAttribute(key) { attributes.delete(key); },
       focus() { focused = name; document.activeElement = this; }, select() {}, scrollIntoView() { scrolls.push(this.id); },
-      matches(selector) { return selector.split(',').some((item) => item === 'a[href]' ? this.tagName === 'A' && attributes.has('href') : item === '[data-action]' ? !!this.dataset.action : item === '[hidden]' ? this.hidden : item.startsWith('#') && this.id === item.slice(1)); },
+      matches(selector) { return selector.split(',').some((item) => item === 'a[href]' ? this.tagName === 'A' && attributes.has('href') : item === '[data-action]' ? !!this.dataset.action : item === '[data-recovery-action]' ? !!this.dataset.recoveryAction : item === '[hidden]' ? this.hidden : item.startsWith('#') && this.id === item.slice(1)); },
       closest(selector) { for (let current = this; current; current = current.parent) if (current.matches(selector)) return current; return null; },
       close() { this.open = false; events.get('close')?.(); }, showModal() { this.open = true; },
-      elements: { namedItem(key) { return node('#request-' + key); } },
+      elements: { namedItem(key) { return node((name === '#recovery-form' ? '#support-' : '#request-') + key); } },
       requestSubmit() { for (const callback of documentEvents.get('submit') || []) callback({ target: this, preventDefault() {} }); },
       querySelector(selector) { return selector === '[aria-invalid=true]' ? [...nodes.values()].find((item) => item.attributes.get('aria-invalid') === 'true') : selector === 'input[name="lookupCode"]' ? node(this.id === 'verify-form' ? '#report-id' : '#coa-lookup-code') : node(selector); },
       querySelectorAll(selector) { return [...nodes.values()].filter((item) => selector === '[aria-invalid]' ? item.attributes.has('aria-invalid') : selector === '.field-error' && item.id.startsWith('error-')); }
@@ -168,10 +186,14 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   assert.notEqual(runnable, appSource);
   const unexpectedNetwork = (...args) => { networkCalls.push(args); throw new Error('This draft-only workflow must not send network requests'); };
   runInNewContext(runnable, {
-    ...reportData, ...pageData, document, window, location, history, URL,
-    navigator: { clipboard: { writeText(value) { copied.push(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
+    ...reportData, ...pageData, ...supportData, document, window, location, history, URL,
+    navigator: { clipboard: { writeText(value) { copied.push(value); if (clipboardWrite) return clipboardWrite(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
     fetch: unexpectedNetwork, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
-    localStorage: { getItem: (key) => storage.get(key), setItem: (key, value) => { if (storageBlocked) throw new Error('Synthetic storage restriction'); storage.set(key, value); } },
+    localStorage: {
+      getItem: (key) => { storageCalls.push(['get', key]); if (storageReadBlocked) throw new Error('Synthetic read restriction'); return storage.get(key) ?? null; },
+      setItem: (key, value) => { storageCalls.push(['set', key]); if (storageBlocked) throw new Error('Synthetic storage restriction'); if (!storageSilent) storage.set(key, value); },
+      removeItem: (key) => { storageCalls.push(['remove', key]); if (storageBlocked) throw new Error('Synthetic storage restriction'); if (!storageSilent) storage.delete(key); }
+    },
     crypto: { randomUUID: () => '12345678-0000-0000-0000-000000000000' },
     FormData: class { constructor(form) { this.form = form; } entries() { return Object.entries(this.form.values); } },
     requestAnimationFrame: (callback) => frames.push(callback), setTimeout: () => 0, clearTimeout() {}
@@ -184,7 +206,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     return event;
   }
   return {
-    nodes, copied, location, networkCalls, document, navLinks, scrolls, printed: () => printed, focused: () => focused, entryCount: () => entries.length,
+    nodes, copied, location, networkCalls, document, navLinks, scrolls, storageCalls, storageSnapshot: () => new Map(storage), printed: () => printed, focused: () => focused, entryCount: () => entries.length,
     visibleViews: () => [...pageData.PAGE_ROUTES.map(({ view }) => '#' + view), '#coa-view'].filter((id) => !node(id).hidden),
     requests: () => JSON.parse(storage.get('assaynova.prototype.requests.v1')),
     click(action, extra = {}, { mobile = false } = {}) {
@@ -223,6 +245,10 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
       const form = { id: publicView ? 'coa-lookup-form' : 'verify-form', matches: () => true, querySelector: () => input };
       for (const callback of documentEvents.get('submit') || []) callback({ target: form, preventDefault() {} });
     },
+    fillRecovery(values) { for (const [key, value] of Object.entries(values)) node('#support-' + key).value = value; },
+    recoveryInput(key, value) { const field = node('#support-' + key); field.value = value; node('#recovery-form').events.get('input')({ target: field }); },
+    saveRecovery() { node('#recovery-form').events.get('submit')({ preventDefault() {} }); },
+    recoveryAction(action) { const target = node('recovery-action-' + nextTarget++); target.dataset.recoveryAction = action; return node('#recovery-form').events.get('click')({ target }); },
     saveRequest(values) {
       const form = node('#submission-form');
       form.values = values;
@@ -747,3 +773,157 @@ for (const mode of ['default', 'production', 'watch']) {
     });
   });
 }
+
+test('Nova Support saves/reopens one separate recovery draft and clears only its own key', async () => {
+  const old = Array.from({ length: 50 }, (_, i) => ({ id: 'AN-DEMO-' + i, sample: 'Existing synthetic ' + i, service: 'purity', quantity: 1 }));
+  const app = bootApp('/', old);
+  const trigger = app.click('recover-report').target;
+  assert.deepEqual(app.storageCalls, [['get', supportData.SUPPORT_DRAFT_KEY]]);
+  assert.match(app.nodes.get('#dialog-content').innerHTML, /NOVA SUPPORT/);
+  assert.match(app.nodes.get('#dialog-content').innerHTML, /Nothing is sent to Nova Support/);
+  app.saveRecovery();
+  assert.equal(app.focused(), '#support-email');
+  assert.equal(app.nodes.get('#support-email').getAttribute('aria-invalid'), 'true');
+  app.recoveryInput('email', ' QA@example.invalid ');
+  assert.equal(app.nodes.get('#support-email').hasAttribute('aria-invalid'), false);
+  app.saveRecovery();
+  assert.equal(app.focused(), '#support-reference');
+  app.fillRecovery({ reference: ' Project Case ', notes: 'n'.repeat(1201) });
+  app.saveRecovery();
+  assert.equal(app.focused(), '#support-notes');
+  app.recoveryInput('notes', ' A sample from October ');
+  app.saveRecovery();
+  const saved = JSON.parse(app.storageSnapshot().get(supportData.SUPPORT_DRAFT_KEY));
+  assert.deepEqual(saved, { version: 1, email: 'QA@example.invalid', reference: 'Project Case', notes: 'A sample from October' });
+  assert.equal(app.nodes.get('#support-status').textContent, 'Draft saved on this device. Nothing has been sent to Nova Support.');
+  assert.deepEqual(app.requests(), old);
+  assert.ok(app.storageCalls.every(([, key]) => key === supportData.SUPPORT_DRAFT_KEY));
+  app.click('close');
+  assert.equal(app.document.activeElement, trigger);
+  app.click('recover-report');
+  assert.equal(app.nodes.get('#support-reference').value, saved.reference);
+  assert.equal(app.nodes.get('#support-notes').value, saved.notes);
+  assert.equal(app.location.pathname, '/');
+  assert.equal(app.nodes.get('#coa-view').innerHTML, '');
+  await app.recoveryAction('clear');
+  assert.equal(app.storageSnapshot().has(supportData.SUPPORT_DRAFT_KEY), false);
+  assert.deepEqual(app.requests(), old);
+  assert.equal(app.nodes.get('#support-email').value, '');
+  assert.equal(app.focused(), '#support-email');
+  assert.deepEqual(app.storageCalls.filter(([operation]) => operation === 'remove'), [['remove', supportData.SUPPORT_DRAFT_KEY]]);
+  assert.equal(app.networkCalls.length, 0);
+});
+
+test('Nova Support storage failures preserve input and never claim a saved or cleared draft', async () => {
+  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: 'Keep these details' };
+  for (const restriction of [{ storageBlocked: true }, { storageSilent: true }]) {
+    const app = bootApp('/', [], { ...restriction, savedSupport: JSON.stringify({ version: 1, ...values }) });
+    app.click('recover-report');
+    app.fillRecovery({ ...values, reference: 'Changed project' });
+    app.saveRecovery();
+    assert.match(app.nodes.get('#support-error').textContent, /could not be saved/);
+    assert.equal(app.nodes.get('#support-status').textContent, '');
+    assert.equal(app.nodes.get('#support-reference').value, 'Changed project');
+    await app.recoveryAction('clear');
+    assert.match(app.nodes.get('#support-error').textContent, /could not be cleared/);
+    assert.equal(app.nodes.get('#support-reference').value, 'Changed project');
+    assert.ok(app.storageSnapshot().has(supportData.SUPPORT_DRAFT_KEY));
+    assert.equal(app.networkCalls.length, 0);
+  }
+  const blockedRead = bootApp('/', [], { storageReadBlocked: true });
+  blockedRead.click('recover-report');
+  assert.match(blockedRead.nodes.get('#dialog-content').innerHTML, /could not be opened/);
+  assert.equal(blockedRead.nodes.get('#support-email').value, '');
+});
+
+test('Nova Support copies validated current details without saving and exposes complete manual copy on failure', async () => {
+  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: 'Full context\nSecond line' };
+  for (const clipboardBlocked of [false, true]) {
+    const app = bootApp('/', [], { clipboardBlocked });
+    app.click('recover-report');
+    await app.recoveryAction('copy');
+    assert.equal(app.focused(), '#support-email');
+    assert.equal(app.copied.length, 0);
+    app.fillRecovery(values);
+    const before = app.storageSnapshot();
+    await app.recoveryAction('copy');
+    assert.equal(app.copied[0], supportData.formatSupportRequest(values));
+    assert.deepEqual(app.storageSnapshot(), before);
+    assert.equal(app.storageCalls.filter(([action]) => action !== 'get').length, 0);
+    if (clipboardBlocked) {
+      assert.equal(app.nodes.get('#support-status').textContent, '');
+      assert.equal(app.nodes.get('#support-copy-fallback').hidden, false);
+      assert.equal(app.nodes.get('#support-copy-value').value, supportData.formatSupportRequest(values));
+      await app.recoveryAction('select');
+      assert.equal(app.focused(), '#support-copy-value');
+    } else assert.equal(app.nodes.get('#support-status').textContent, 'Request details copied. Nothing has been sent.');
+    app.recoveryInput('reference', 'Edited project');
+    assert.equal(app.nodes.get('#support-copy-fallback').hidden, true);
+    assert.equal(app.nodes.get('#support-status').textContent, '');
+    assert.equal(app.nodes.get('#support-copy-value').value, '');
+    assert.equal(app.networkCalls.length, 0);
+  }
+});
+
+test('Nova Support ignores late clipboard outcomes after close, replacement, input, Save, Clear or a newer copy', async () => {
+  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: '' };
+  for (const action of ['close', 'replace', 'input', 'save', 'clear', 'new-copy']) {
+    const pending = [];
+    const app = bootApp('/', [], { clipboardWrite: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) });
+    app.click('recover-report');
+    app.fillRecovery(values);
+    const form = app.nodes.get('#recovery-form');
+    const status = app.nodes.get('#support-status');
+    const fallback = app.nodes.get('#support-copy-fallback');
+    const first = app.recoveryAction('copy');
+    if (action === 'close') app.click('close');
+    if (action === 'replace') app.click('submit', { service: 'purity' });
+    if (action === 'input') { app.recoveryInput('reference', 'Edited'); app.recoveryInput('reference', values.reference); }
+    if (action === 'save') app.saveRecovery();
+    if (action === 'clear') await app.recoveryAction('clear');
+    if (action === 'new-copy') { const second = app.recoveryAction('copy'); pending[1].resolve(); await second; }
+    const latest = status.textContent;
+    pending[0].reject(new Error('Late synthetic failure'));
+    await first;
+    assert.equal(status.textContent, latest, action);
+    assert.equal(fallback.hidden, true, action);
+    if (action === 'save') assert.match(latest, /^Draft saved/);
+    if (action === 'new-copy') assert.match(latest, /^Request details copied/);
+    if (action === 'replace') { assert.equal(form.isConnected, false); assert.match(app.nodes.get('#dialog-content').innerHTML, /id="submission-form"/); }
+    assert.equal(app.networkCalls.length, 0);
+  }
+});
+
+test('Nova Support rejects malformed saved drafts and safely prefills hostile text as text', () => {
+  for (const savedSupport of ['{', '[]', JSON.stringify({ version: 2, email: 'qa@example.invalid', reference: 'Synthetic', notes: '' }), JSON.stringify({ version: 1, email: 'qa@example.invalid', reference: 'Synthetic', notes: 'x'.repeat(1201) })]) {
+    const app = bootApp('/', [], { savedSupport });
+    app.click('recover-report');
+    assert.equal(app.nodes.get('#support-email').value, '');
+    assert.equal(app.nodes.get('#support-reference').value, '');
+  }
+  const values = { email: 'qa"><img>@example.invalid', reference: '<Project & Team>', notes: '</textarea><script>text only</script>' };
+  const app = bootApp('/', [], { savedSupport: JSON.stringify({ version: 1, ...values }) });
+  app.click('recover-report');
+  const html = app.nodes.get('#dialog-content').innerHTML;
+  assert.ok(html.includes('qa&quot;&gt;&lt;img&gt;@example.invalid'));
+  assert.ok(html.includes('&lt;Project &amp; Team&gt;'));
+  assert.ok(html.includes('&lt;/textarea&gt;&lt;script&gt;text only&lt;/script&gt;'));
+  assert.ok(!html.includes('<script>text only'));
+  assert.equal(app.nodes.get('#support-notes').value, values.notes);
+  assert.equal(app.networkCalls.length, 0);
+});
+
+test('request dialog keeps service presets and native grouped fields with Cancel returning focus', () => {
+  const app = bootApp('/testing-methods');
+  const trigger = app.click('submit', { service: 'purity' }).target;
+  const html = app.nodes.get('#dialog-content').innerHTML;
+  assert.equal((html.match(/<fieldset\b/g) || []).length, 2);
+  assert.match(html, /<legend>Your details<\/legend>/);
+  assert.match(html, /<legend>Sample &amp; analysis<\/legend>/);
+  assert.match(html, /value="purity" selected/);
+  assert.match(html, /type="button" data-action="close">Cancel/);
+  app.click('close');
+  assert.equal(app.document.activeElement, trigger);
+  assert.equal(app.location.pathname, '/testing-methods');
+  assert.equal(app.networkCalls.length, 0);
+});

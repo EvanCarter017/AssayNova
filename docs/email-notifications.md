@@ -12,6 +12,8 @@ Account work is cancelled. The current product uses a contact email and local re
 - **Saved drafts** lists only drafts on the current device. It has no Reports tab, account workspace, cloud history or customer-owned report list. Public fictional sample reports remain accessible from the homepage and COA Lookup, with their sample disclaimers.
 - The HTTP server remains read-only. No backend, provider connection or account implementation exists. No existing device draft is uploaded automatically.
 
+Nova Support prepares a report recovery request using the original testing email and company or project name. Save draft stores one versioned record in `assaynova.support.recovery.v1`; Copy request copies the current validated text without saving it. Clear saved draft removes only that recovery record. Nothing is sent, no ticket is created, and no report is matched or disclosed from these details. Additional ownership verification remains a manual requirement.
+
 ## Design after a provider is chosen
 
 The following is future work, not an implemented interface or provider adapter:
