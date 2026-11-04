@@ -130,10 +130,10 @@ Both reports use the supplied blue-cap vial with the final user-requested
 label redesign: KLOW / 80 mg, real blend names and research-use text in a navy
 and teal label. The trademark, QUALITY TESTED / COA available sticker, and old
 Sterile / Multi-dose badges are removed. The selected built-in imagegen output
-is copied unchanged to ssets/sample-vial-product.png and embedded in full.
+is copied unchanged to assets/sample-vial-product.png and embedded in full.
 The user confirmed the KLOW 80mg label choice and subsequent complete redesign.
-ssets/vial-unbranded.png is an archived intermediate brand-only edit, not the
-current deliverable. ssets/sample-vials-sources.json records the supplied
+assets/vial-unbranded.png is an archived intermediate brand-only edit, not the
+current deliverable. assets/sample-vials-sources.json records the supplied
 source hash, edit hashes and final active selection without asserting copyright
 ownership or untouched photographic pixels. Prior Thirdman/Pexels JPEGs and
 source/license records remain archived unchanged. Optional --product-image
