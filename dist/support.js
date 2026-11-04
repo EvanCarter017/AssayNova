@@ -1,6 +1,7 @@
 // Pure recovery-draft helpers. Importing this module never reads or writes storage.
 export const SUPPORT_DRAFT_KEY = 'assaynova.support.recovery.v1';
 const limits = Object.freeze({ email: 160, reference: 160, notes: 1200 });
+const maxSerializedLength = 6 * Object.values(limits).reduce((sum, maximum) => sum + maximum, 0) + 128;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function normalizeSupport(values = {}) {
@@ -21,7 +22,7 @@ export function validateSupport(values) {
 
 export function parseSupportDraft(raw) {
   try {
-    if (typeof raw !== 'string' || raw.length > 4096) return null;
+    if (typeof raw !== 'string' || raw.length > maxSerializedLength) return null;
     const value = JSON.parse(raw);
     const keys = ['version', 'email', 'reference', 'notes'];
     if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).length !== keys.length || !keys.every((key) => Object.hasOwn(value, key)) || value.version !== 1 || Object.keys(validateSupport(value)).length) return null;

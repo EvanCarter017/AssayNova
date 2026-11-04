@@ -27,6 +27,15 @@ test('versioned recovery parsing fails closed on corrupt, unknown, oversized or 
   for (const raw of [null, '', '{', '[]', 'null', '42', JSON.stringify({ ...record, version: 2 }), JSON.stringify({ ...record, extra: 'not allowed' }), JSON.stringify({ version: 1, email: valid.email, reference: valid.reference }), JSON.stringify({ ...record, notes: [] }), JSON.stringify({ ...record, notes: 'n'.repeat(1201) }), JSON.stringify({ ...record, reference: ' '.repeat(161) }), JSON.stringify({ ...record, email: 'bad' }), ' '.repeat(4097)]) assert.equal(parseSupportDraft(raw), null, String(raw).slice(0, 80));
 });
 
+test('every accepted escaped maximum-length recovery record survives JSON serialization and parsing', () => {
+  const record = { version: 1, email: 'a'.repeat(144) + '@example.invalid', reference: '"\u0001'.repeat(80), notes: 'A\u0001'.repeat(600) };
+  assert.deepEqual(validateSupport(record), {});
+  const serialized = JSON.stringify(record);
+  assert.ok(serialized.length > 4096);
+  assert.deepEqual(parseSupportDraft(serialized), record);
+  assert.equal(parseSupportDraft(' '.repeat(6 * (160 + 160 + 1200) + 129)), null);
+});
+
 test('request formatting is complete plain text and never claims sending or report verification', () => {
   const values = { ...valid, reference: '<Project & Team>', notes: '</textarea><script>text only</script>\nMore context' };
   const message = formatSupportRequest(values);

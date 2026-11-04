@@ -836,6 +836,22 @@ test('Nova Support storage failures preserve input and never claim a saved or cl
   assert.equal(blockedRead.nodes.get('#support-email').value, '');
 });
 
+test('Nova Support reopens a successfully saved draft with long JSON-escaped notes', () => {
+  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: 'A\u0001'.repeat(590) };
+  const app = bootApp('/');
+  app.click('recover-report');
+  app.fillRecovery(values);
+  app.saveRecovery();
+  assert.match(app.nodes.get('#support-status').textContent, /^Draft saved/);
+  assert.ok(app.storageSnapshot().get(supportData.SUPPORT_DRAFT_KEY).length > 4096);
+  app.click('close');
+  app.click('recover-report');
+  assert.equal(app.nodes.get('#support-email').value, values.email);
+  assert.equal(app.nodes.get('#support-reference').value, values.reference);
+  assert.equal(app.nodes.get('#support-notes').value, values.notes);
+  assert.equal(app.networkCalls.length, 0);
+});
+
 test('Nova Support copies validated current details without saving and exposes complete manual copy on failure', async () => {
   const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: 'Full context\nSecond line' };
   for (const clipboardBlocked of [false, true]) {
