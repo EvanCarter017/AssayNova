@@ -196,6 +196,23 @@ def spectrum_for(component, seed):
     return {"analyte": name, "species": profile["species"], "cid": profile["cid"], "neutralMass": round(mass, 8), "ions": ions, "noise": noise, "scan": [100, 1600], "status": "Observed"}
 
 
+def place_retention(preferred, peaks, separation):
+    """Choose the nearest free centiminute on the open 0-15 minute axis.
+
+    Search each finite candidate once. Integer spacing avoids float rounding
+    at the minimum gap, and neither upper-axis reversal nor collision can loop.
+    """
+    origin = max(1, min(1499, int(round(preferred * 100))))
+    occupied = [int(round(peak["time"] * 100)) for peak in peaks]
+    gap = int(math.ceil(separation * 100))
+    for distance in range(1500):
+        candidates = (origin,) if distance == 0 else (origin + distance, origin - distance)
+        for candidate in candidates:
+            if 1 <= candidate <= 1499 and all(abs(candidate - other) >= gap for other in occupied):
+                return candidate / 100
+    raise RequestError("Chromatographic peaks cannot fit within the retention-time axis")
+
+
 def make_bundle(clean):
     product, fields, code, seed = clean["product"], clean["fields"], clean["lookupCode"], clean["seed"]
     rng = random.Random(stable_int(seed + ":" + product["id"]))
@@ -220,19 +237,14 @@ def make_bundle(clean):
         name = component["name"]
         profile = profile_for(name)
         baseline = profile["retention"] if profile else 2.2 + (stable_int(name.lower()) % 980) / 100
-        time = round(baseline + rng.uniform(-.16, .16), 2)
-        # Avoid indistinguishable coelution in these illustrative profiles.
-        while any(abs(time - p["time"]) < .38 for p in peaks):
-            time = round(time + .41 if time < 12 else time - .41, 2)
+        time = place_retention(round(baseline + rng.uniform(-.16, .16), 2), peaks, .38)
         peaks.append({"analyte": name, "kind": "target", "time": time, "area": area, "width": round(rng.uniform(.033, .075), 4), "tail": round(rng.uniform(1.1, 1.8), 3)})
     impurity_total = round(100 - float(purity[2]), 6)
     impurity_weights = [rng.uniform(.3, 1) for _ in range(3)]
     impurity_areas = [round(impurity_total * w / sum(impurity_weights), 6) for w in impurity_weights]
     impurity_areas[-1] = round(impurity_total - sum(impurity_areas[:-1]), 6)
     for index, area in enumerate(impurity_areas):
-        time = round((1.4, 7.1, 13.2)[index] + rng.uniform(-.4, .4), 2)
-        while any(abs(time - p["time"]) < .25 for p in peaks):
-            time = round(time + .27, 2)
+        time = place_retention(round((1.4, 7.1, 13.2)[index] + rng.uniform(-.4, .4), 2), peaks, .25)
         peaks.append({"analyte": f"Impurity {index + 1}", "kind": "impurity", "time": time, "area": area, "width": round(rng.uniform(.025, .045), 4), "tail": round(rng.uniform(1.1, 1.65), 3)})
     heights = [peak["area"] / (peak["width"] * (1 + peak["tail"])) for peak in peaks]
     for peak, height in zip(peaks, heights):

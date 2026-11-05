@@ -12,6 +12,8 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -96,6 +98,31 @@ class ReportRendererTests(unittest.TestCase):
         values = self.bundle()["record"]["purity"]
         self.assertEqual(values[0], "99.05")
         self.assertLessEqual(abs(Decimal(values[1]) - Decimal("99.05")), Decimal("0.04"))
+
+    def test_colliding_retention_regression_is_bounded_and_axis_safe(self):
+        request = copy.deepcopy(self.request)
+        request["seed"] = "0"
+        request["product"].update(id="test", name="Custom blend", components=[{"name": name, "nominal": 10, "unit": "mg"} for name in ("Component44", "Component138", "Component225")])
+        # Run the exact previously oscillating request in a bounded child, so a
+        # future regression fails this test instead of hanging the entire suite.
+        script = "import json,runpy,sys; r=runpy.run_path(sys.argv[1]); print(json.dumps(r['make_bundle'](r['validate_request'](json.load(sys.stdin)))))"
+        child = subprocess.run([sys.executable, "-B", "-c", script, str(ROOT / "conference" / "render_report.py")], input=json.dumps(request), text=True, capture_output=True, timeout=2, check=True)
+        bundle = json.loads(child.stdout)
+        self.assertEqual(bundle, self.bundle(request))
+        peaks = bundle["record"]["chromatogram"]
+        for index, peak in enumerate(peaks):
+            self.assertTrue(0 < peak["time"] < 15)
+            for other in peaks[:index]:
+                gap = Decimal(".38") if peak["kind"] == other["kind"] == "target" else Decimal(".25")
+                self.assertGreaterEqual(abs(Decimal(str(peak["time"])) - Decimal(str(other["time"]))), gap)
+        # Impurity collisions near the upper edge must move inward rather than
+        # escape the axis; a fully occupied synthetic axis must reject promptly.
+        occupied = [{"time": value} for value in (14.89, 14.62, 14.35)]
+        placed = renderer.place_retention(14.99, occupied, .25)
+        self.assertTrue(0 < placed < 15)
+        self.assertTrue(all(abs(Decimal(str(placed)) - Decimal(str(p["time"]))) >= Decimal(".25") for p in occupied))
+        with self.assertRaises(renderer.RequestError):
+            renderer.place_retention(7.5, [{"time": i / 2} for i in range(31)], .5)
 
     def test_primary_formula_masses_charge_spacing_and_dose_independence(self):
         for name, expected in [("Semaglutide", 4111.1153759), ("Tirzepatide", 4810.5248574), ("BPC-157", 1418.7041588)]:
