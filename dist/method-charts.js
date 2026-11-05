@@ -74,21 +74,30 @@ export function createMethodCharts(root, options = {}) {
   if (!samples.length) throw new TypeError('Chart samples are required');
   const figures = [...root.querySelectorAll('.methods-figure[data-method-chart]')];
   if (figures.length !== 2) return null;
-  const nodes = figures.map(figure => ({ figure, kind: figure.dataset.methodChart, plot: figure.querySelector('.methods-chart'), frame: figure.querySelector('.methods-chart-frame'), controls: figure.querySelector('.methods-carousel-controls'), play: figure.querySelector('[data-chart-action="play"]') }));
-  if (nodes.some(node => Object.values(node).some(value => !value))) throw new TypeError('Method chart controls are incomplete');
+  const nodes = figures.map(figure => {
+    const plot = figure.querySelector('.methods-chart');
+    return { figure, kind: figure.dataset.methodChart, plot, frame: figure.querySelector('.methods-chart-frame'), layers: [...(plot?.querySelectorAll('.methods-chart-layer') || [])] };
+  });
+  if (nodes.some(node => !node.plot || !node.frame || node.layers.length !== 2)) throw new TypeError('Method chart layers are incomplete');
   const scheduler = options.scheduler || { setTimeout: (callback, delay) => window.setTimeout(callback, delay), clearTimeout: id => window.clearTimeout(id) };
   const IO = options.IntersectionObserver ?? window.IntersectionObserver, MO = options.MutationObserver ?? window.MutationObserver, RO = options.ResizeObserver ?? window.ResizeObserver;
   const media = options.media || window.matchMedia?.('(prefers-reduced-motion: reduce)');
-  let index = 0, timer = null, wanted = !media?.matches, destroyed = false;
-  const hovering = new Set(), intersecting = new Set(), cleanups = [], observers = [];
+  let index = 0, activeLayer = 0, timer = null, reducedMotion = Boolean(media?.matches), destroyed = false;
+  const intersecting = new Set(), cleanups = [], observers = [];
   const canObserve = Boolean(IO && MO && RO && media);
-  const eligible = () => !destroyed && wanted && canObserve && !root.hidden && !document.hidden && intersecting.size > 0 && hovering.size === 0;
+  const eligible = () => !destroyed && canObserve && !reducedMotion && !root.hidden && !document.hidden && intersecting.size > 0;
   const listen = (target, event, handler) => { target.addEventListener(event, handler); cleanups.push(() => target.removeEventListener(event, handler)); };
-  function paint() {
+  function paint(rotating = false) {
     if (destroyed) return;
     const sample = samples[index];
     for (const node of nodes) {
-      node.plot.innerHTML = renderMethodPlot(node.kind, sample, node.plot.clientWidth || 520);
+      const svg = renderMethodPlot(node.kind, sample, node.plot.clientWidth || 520);
+      for (let i = 0; i < node.layers.length; i++) {
+        const layer = node.layers[i];
+        if (!rotating || i === activeLayer) layer.innerHTML = svg;
+        layer.classList.toggle('is-active', i === activeLayer);
+        layer.setAttribute('aria-hidden', i === activeLayer ? 'false' : 'true');
+      }
       node.frame.setAttribute('aria-label', `${sample.analyte.name}, ${index + 1} of ${samples.length}`);
       node.frame.setAttribute('aria-live', 'off');
     }
@@ -96,21 +105,14 @@ export function createMethodCharts(root, options = {}) {
   function schedule() {
     if (destroyed) return;
     if (timer !== null) { scheduler.clearTimeout(timer); timer = null; }
-    for (const node of nodes) { const label = wanted ? 'Pause rotation' : 'Start rotation'; node.play.setAttribute('aria-label', label); node.play.setAttribute('title', label); node.play.dataset.state = wanted ? 'playing' : 'paused'; }
-    if (eligible()) timer = scheduler.setTimeout(() => { timer = null; if (eligible()) { index = (index + 1) % samples.length; paint(); } schedule(); }, ROTATION_MS);
-  }
-  for (const node of nodes) {
-    // Pointer focus pauses first; retain the rotation action the pointer selected.
-    let pointerIntent = null;
-    listen(node.play, 'pointerdown', () => { pointerIntent = !wanted; });
-    listen(node.play, 'pointercancel', () => { pointerIntent = null; });
-    listen(node.play, 'click', event => { wanted = event.detail > 0 && pointerIntent !== null ? pointerIntent : !wanted; pointerIntent = null; schedule(); });
-    listen(node.figure, 'focusin', () => { wanted = false; schedule(); });
-    listen(node.figure, 'pointerenter', () => { hovering.add(node.figure); schedule(); });
-    listen(node.figure, 'pointerleave', () => { hovering.delete(node.figure); schedule(); });
+    if (eligible()) timer = scheduler.setTimeout(() => {
+      timer = null;
+      if (eligible()) { index = (index + 1) % samples.length; activeLayer = 1 - activeLayer; paint(true); }
+      schedule();
+    }, ROTATION_MS);
   }
   listen(document, 'visibilitychange', schedule);
-  const onMotion = event => { if (event.matches) wanted = false; schedule(); };
+  const onMotion = event => { reducedMotion = Boolean(event.matches); schedule(); };
   if (media?.addEventListener) listen(media, 'change', onMotion);
   else if (media?.addListener) { media.addListener(onMotion); cleanups.push(() => media.removeListener(onMotion)); }
   if (canObserve) {
@@ -119,10 +121,11 @@ export function createMethodCharts(root, options = {}) {
     const mutation = new MO(schedule); mutation.observe(root, { attributes: true, attributeFilter: ['hidden'] }); observers.push(mutation);
     const resize = new RO(() => paint()); nodes.forEach(node => resize.observe(node.plot)); observers.push(resize);
   }
-  paint();
-  for (const node of nodes) { node.controls.hidden = !canObserve; node.play.disabled = !canObserve; }
-  schedule();
-  const controller = Object.freeze({ getState: () => ({ index, wanted, timerActive: timer !== null, sample: samples[index] }), destroy() { if (destroyed) return; destroyed = true; if (timer !== null) scheduler.clearTimeout(timer); timer = null; cleanups.forEach(cleanup => cleanup()); observers.forEach(observer => observer.disconnect()); for (const node of nodes) { node.controls.hidden = true; node.play.disabled = true; } bindings.delete(root); } });
+  paint(); schedule();
+  const controller = Object.freeze({
+    getState: () => ({ index, activeLayer, reducedMotion, timerActive: timer !== null, sample: samples[index] }),
+    destroy() { if (destroyed) return; destroyed = true; if (timer !== null) scheduler.clearTimeout(timer); timer = null; cleanups.forEach(cleanup => cleanup()); observers.forEach(observer => observer.disconnect()); bindings.delete(root); }
+  });
   bindings.set(root, controller);
   return controller;
 }

@@ -30,29 +30,29 @@ envelope ratios remain intact. The displayed monoisotopic m/z is distinct from
 the most intense isotope: thymosin beta-4 has its base peak at M+2. These plots
 make no copper-complex assignment or pass/fail claim.
 
-## Interaction and lifecycle
+## Borderless crossfade presentation
 
-Both figures share one 7.5-second timeout. Rotation runs only when Our Testing
+Only the analytical plots are visible: no controls, outer border, mint card,
+toolbar or caption row. The short illustrative-data caption remains available to
+assistive technology, and SVG titles/descriptions retain scientific context.
+
+Both figures share one 7.5-second timeout. They rotate only while Our Testing
 and the document are visible, at least one figure intersects the viewport, and
-the user has requested playback. Intersection starts unknown and therefore off.
-Hover temporarily stops rotation. Focus entry pauses until explicit Start
-rotation; focus departure never restarts it. A small icon-only Pause/Start button
-beside each caption controls the pair without moving focus or recreating its SVG
-icons. There is no dashboard, visible run metadata, counter or manual slide navigation.
-Automatic updates do not announce slides. Buttons are bound before being enabled.
+the user does not prefer reduced motion. Intersection starts unknown and off.
+Reduced motion or missing lifecycle observers leaves a static accessible first
+plot. Changing the preference back resumes rotation when other gates allow it.
+There are no focus/hover interactions or interactive carousel widgets.
 
-Reduced motion starts in manual mode, and a change to reduced motion pauses.
-Explicit Start rotation can enable instant, static frame changes even with this
-preference; there are no transitions or animated paths. If lifecycle observers or
-the media query are unavailable, the accessible plot stays static and its playback
-control remains hidden and disabled. One idempotent controller owns observers,
-listeners and timer, and releases them on destroy.
+Each chart has two persistent layers in the same grid cell. A rotation writes
+the next sample only into the incoming layer while retaining the old SVG in the
+outgoing layer. Their opacity transitions overlap for 500ms with no translation,
+scaling, morphing or completion timer. The layers exchange roles on the next
+7.5-second turn. Reduced-motion CSS removes transitions. Automatic changes use
+aria-live off, without recreating nodes or moving focus.
 
-SVG width follows the actual plot width through ResizeObserver, keeping 11px
-numeric labels at their CSS size instead of shrinking a desktop viewBox. Plot
-height follows the original compact figure footprint: the measured width times
-235/520 plus 62.4px, with a 160px minimum. Figure padding and brief captions keep
-their original proportions. Height is invariant across runs at the same width.
-Accessible SVG titles/descriptions retain the analyte, numerical context and position.
-Carousel behavior follows the [WAI carousel pattern](https://www.w3.org/WAI/ARIA/apg/patterns/carousel/);
-all data-generation, rendering and controller code is original to this project.
+Resize redraws both layers with the same current immutable sample and preserves
+the active layer. Width follows the actual plot width, keeping numeric labels at
+11px. The compact renderer height remains width times 235/520 plus 62.4px, with
+a 160px minimum; both layers reserve the same space at every turn. One idempotent
+controller owns the timer, observers and media/visibility listeners and releases
+them on destroy. Queued old callbacks cannot alter a newly bound controller.

@@ -583,18 +583,12 @@
 @media(max-width:900px){#contact-view .contact-workspace{grid-template-columns:minmax(0,1fr)}#contact-view h1{font-size:52px}#contact-view .contact-sidebar dl{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}#contact-view .contact-sidebar dl>div{min-width:0}}
 @media(max-width:600px){#contact-view .contact-intro{padding:32px 0 24px}#contact-view h1{font-size:40px;line-height:1.12;letter-spacing:-1.2px}#contact-view .contact-description{font-size:16px;margin-top:16px}#contact-view .contact-form-panel,#contact-view .contact-sidebar{padding:24px 20px;border-radius:14px}#contact-view .contact-form-panel h2,#contact-view .contact-sidebar h2{font-size:26px}#contact-view .contact-fields{grid-template-columns:minmax(0,1fr);gap:20px}#contact-view .contact-sidebar dl{grid-template-columns:minmax(0,1fr);gap:22px}#contact-view .contact-mail{font-size:16px}#contact-view .contact-actions .button{flex:1 1 140px}#contact-view .contact-copy-fallback{padding:16px}#contact-view .contact-shortcuts{padding:24px 0 40px;margin-top:26px}#contact-view .contact-shortcuts>div{flex-direction:column;align-items:flex-start}#contact-view .contact-shortcuts .button{width:100%}}
 
-/* Paired, compact automatic method plots. */
-#testing-view .methods-figure[data-method-chart]{position:relative}
+/* Paired borderless plots with overlapping crossfade layers. */
+#testing-view .methods-figure[data-method-chart]{padding:0;border:0;background:transparent;border-radius:0;box-shadow:none}
 #testing-view .methods-figure[data-method-chart] .methods-chart-frame{min-width:0}
-#testing-view .methods-figure[data-method-chart] .methods-chart>svg{display:block;width:100%;height:auto;max-width:100%;margin:0}
-#testing-view .methods-figure[data-method-chart] .methods-carousel-controls{position:absolute;right:26px;bottom:11px}
-#testing-view .methods-figure[data-method-chart] .methods-carousel-controls[hidden]{display:none}
-#testing-view .methods-figure[data-method-chart] button{display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:4px;background:transparent;color:#536b72}
-#testing-view .methods-figure[data-method-chart] button:hover{color:#00615c}
-#testing-view .methods-figure[data-method-chart] button:focus-visible{outline:3px solid #007a74;outline-offset:2px}
-#testing-view .methods-figure[data-method-chart] button>svg{width:16px;height:16px;fill:currentColor}
-#testing-view .methods-figure[data-method-chart] .methods-play-icon{display:none}
-#testing-view .methods-figure[data-method-chart] button[data-state="paused"] .methods-pause-icon{display:none}
-#testing-view .methods-figure[data-method-chart] button[data-state="paused"] .methods-play-icon{display:block}
-#testing-view .methods-figure[data-method-chart] figcaption{padding-right:52px}
-@media(max-width:600px){#testing-view .methods-figure[data-method-chart] .methods-carousel-controls{right:14px;bottom:8px}}
+#testing-view .methods-figure[data-method-chart] .methods-chart{display:grid;min-width:0}
+#testing-view .methods-figure[data-method-chart] .methods-chart-layer{grid-area:1/1;min-width:0;opacity:0;transition:opacity 500ms ease}
+#testing-view .methods-figure[data-method-chart] .methods-chart-layer.is-active{opacity:1}
+#testing-view .methods-figure[data-method-chart] .methods-chart-layer>svg{display:block;width:100%;height:auto;max-width:100%;margin:0}
+#testing-view .methods-figure[data-method-chart] figcaption.sr-only{margin:0;padding:0;border:0}
+@media(prefers-reduced-motion:reduce){#testing-view .methods-figure[data-method-chart] .methods-chart-layer{transition:none}}
