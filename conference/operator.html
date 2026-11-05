@@ -21,13 +21,13 @@
       <main class="reports-layout">
         <aside id="create-report" aria-labelledby="create-title">
           <div class="section-heading"><h2 id="create-title">Create report</h2><span class="data-badge">Synthetic data</span></div>
-          <p class="notice">Generated values are examples, not instrument measurements. Review the original product photo and composition before publishing. Customer reports use the normal COA experience.</p>
+          <p class="notice">Generated values are examples, not instrument measurements. Choose a product and review the full report preview before publishing. Customer reports use the normal COA experience.</p>
           <label for="search">Search products by name or SKU</label><input id="search" type="search" placeholder="e.g. TR10, BC10, sema, NAD+" autocomplete="off" aria-describedby="product-help">
           <label for="product">Product <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
           <p id="product-help" class="hint">Use a full SKU for an exact dose, or a family such as TR / SM. Only products with original photos are listed.</p>
           <div class="selected-summary"><span class="eyebrow">SELECTED PRODUCT</span><strong id="selected-name">Choose a product</strong></div>
           <form id="generate">
-            <fieldset><legend>Composition recipe</legend><div id="components"></div><p class="hint">Nominal content is separate from HPLC area purity. Preserve IU / ml units.</p></fieldset>
+
             <div class="grid">
               <label>Client<input name="client" maxlength="64" placeholder="Research client"></label>
               <label>Lot<input name="lot" maxlength="40" placeholder="Automatic"></label>
@@ -48,7 +48,7 @@
             <div class="buttons"><button id="copy-code">Copy LC</button><a id="public-link" target="_blank" rel="noopener">Open customer report</a><a id="pdf" target="_blank" rel="noopener">Download PDF</a></div>
             <label id="manual-label" hidden>Manual copy<input id="manual-copy" readonly></label>
           </div>
-          <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2>Review your report here</h2><p>Choose a product and check the recipe.<br>Preview privately or generate and publish.</p></div>
+          <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2>Review your report here</h2><p>Choose a product to preview its report.<br>Preview privately or generate and publish.</p></div>
           <img id="paper" alt="Report preview" width="595" height="842" hidden>
         </section>
         <section id="published-reports" class="history-panel" aria-labelledby="history-title"><div class="section-heading"><div><p class="eyebrow">REPORT LIBRARY</p><h2 id="history-title">Published reports</h2></div><p class="hint">Stable Lookup Codes · preserved across restart</p></div><div id="history"></div></section>

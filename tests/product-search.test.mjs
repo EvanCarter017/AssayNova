@@ -105,15 +105,15 @@ function selectionUI() {
   const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};globalThis.ui={filter,selectProduct,selected:()=>selected,setBusy:value=>{busy=value}};', holder);
   return { nodes, node, buttons, ui: holder.ui };
 }
-test('actual selection handlers preserve exact recipes, no-results/busy guards and the last report', () => {
+test('actual selection handlers preserve canonical defaults, no-results/busy guards and the last report', () => {
   const app = selectionUI(), search = value => { app.node('search').value = value; app.ui.filter(); };
   app.node('paper').src = '/admin/bundles/published/AN-OLD0-0001/report.svg';
-  search('TR10'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg'); assert.equal(app.node('selected-name').textContent, 'Tirzepatide 10mg'); assert.match(app.node('components').innerHTML, /Tirzepatide/); assert.ok(app.buttons.every(button => !button.disabled));
+  search('TR10'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg'); assert.equal(app.node('selected-name').textContent, 'Tirzepatide 10mg'); assert.deepEqual(app.ui.selected().components, [{name:'Tirzepatide',nominal:10,unit:'mg'}]); assert.ok(app.buttons.every(button => !button.disabled));
   search('TR'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg');
-  search('SM'); assert.equal(app.ui.selected(), undefined); assert.equal(app.node('components').innerHTML, ''); assert.ok(app.buttons.every(button => button.disabled));
-  app.node('product').value = products.find(row => row.name === 'Semaglutide 10mg').id; app.ui.selectProduct(); assert.match(app.node('components').innerHTML, /Semaglutide/); assert.doesNotMatch(app.node('components').innerHTML, /Tirzepatide/);
+  search('SM'); assert.equal(app.ui.selected(), undefined); assert.ok(app.buttons.every(button => button.disabled));
+  app.node('product').value = products.find(row => row.name === 'Semaglutide 10mg').id; app.ui.selectProduct(); assert.deepEqual(app.ui.selected().components, [{name:'Semaglutide',nominal:10,unit:'mg'}]);
   app.ui.setBusy(true); app.ui.selectProduct(); assert.ok(app.buttons.every(button => button.disabled)); app.ui.setBusy(false); app.ui.selectProduct(); assert.ok(app.buttons.every(button => !button.disabled));
-  search('SM2'); assert.equal(app.ui.selected(), undefined); assert.equal(app.node('components').innerHTML, ''); assert.match(app.node('status').textContent, /No matching product or dose/); assert.ok(app.buttons.every(button => button.disabled));
+  search('SM2'); assert.equal(app.ui.selected(), undefined); assert.match(app.node('status').textContent, /No matching product or dose/); assert.ok(app.buttons.every(button => button.disabled));
   assert.equal(app.node('paper').src, '/admin/bundles/published/AN-OLD0-0001/report.svg'); assert.equal(app.nodes.has('photo'), false);
   search(''); assert.equal(app.ui.selected(), undefined); assert.match(app.node('product').innerHTML, /Choose a matching product/);
 });
