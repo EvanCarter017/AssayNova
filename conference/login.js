@@ -5,7 +5,7 @@ const button = document.getElementById('unlock');
 const status = document.getElementById('login-status');
 const mode = document.querySelector('meta[name="admin-auth-mode"]').content;
 const csrf = document.querySelector('meta[name="admin-auth-csrf"]').content;
-const language = createAdminI18n({ storage: () => localStorage, browserLanguage: navigator.language });
+const language = createAdminI18n({ browserLanguage: 'en' });
 const keys = mode === 'setup' ? ['setupTitle','setupIntro','setupTitle'] : mode === 'login' ? ['loginTitle','loginIntro','unlock'] : ['unavailableTitle','unavailableIntro','unavailable'];
 let feedback = mode === 'unavailable' ? { message:'Administrator credential storage is unavailable.' } : null;
 function applyLanguage() {
