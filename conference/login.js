@@ -11,15 +11,13 @@ let feedback = mode === 'unavailable' ? { message:'Administrator credential stor
 function applyLanguage() {
   language.apply(document, keys[0]);
   document.querySelector('.brand span').textContent = language.t('admin');
-  document.getElementById('admin-language').value = language.locale;
   document.getElementById('login-title').textContent = language.t(keys[0]);
   document.getElementById('login-intro').textContent = language.t(keys[1]);
   button.textContent = language.t(keys[2]);
   status.textContent = feedback ? feedback.key ? language.t(feedback.key) : language.error(feedback.message,'authFallback') : '';
 }
 function showFeedback(value) { feedback = value; applyLanguage(); }
-document.getElementById('admin-language').addEventListener('change', event => language.setLocale(event.target.value));
-language.subscribe(applyLanguage); applyLanguage();
+applyLanguage();
 form.addEventListener('submit', async event => {
   event.preventDefault();
   if (!['setup', 'login'].includes(mode) || button.disabled) return;

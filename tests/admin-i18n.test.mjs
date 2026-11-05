@@ -110,15 +110,19 @@ test('actual Reports locale switch preserves values, selection, snapshot, manual
   assert.ok(app.storage.writes.every(([key,value])=>key===LOCALE_KEY&&['en','zh-CN'].includes(value)));
 });
 
-test('actual login switch preserves its password/disabled state and shares only the locale preference', async () => {
-  const storage=storageFixture();let finish;const calls=[];
+test('actual login has no switch and follows saved language without password loss or locale writes', async () => {
+  assert.doesNotMatch(loginHTML, /<select\b|id="admin-language"/);
+  const storage=storageFixture('zh-CN');let finish;const calls=[];
   const html=loginHTML.replaceAll('{{MODE}}','login').replaceAll('{{CSRF}}','synthetic').replaceAll('{{DISABLED}}','');
-  const app=await boot(loginJS,html,{storage,fetch:async(...args)=>{calls.push(args);return new Promise(resolve=>finish=resolve);},extra:'globalThis.ui={language};'});
+  const app=await boot(loginJS,html,{storage,fetch:async(...args)=>{calls.push(args);return new Promise(resolve=>finish=resolve);},extra:'globalThis.ui={showFeedback};'});
   const input=app.node('admin-password');input.value='Synthetic password fixture';input.focus();const count=input.focusCalls;
-  app.context.ui.language.setLocale('zh-CN');assert.equal(input.value,'Synthetic password fixture');assert.equal(input.focusCalls,count);assert.equal(app.document.activeElement,input);assert.equal(calls.length,0);assert.equal(app.node('unlock').textContent,'登录后台');
-  const pending=app.node('admin-login-form').events.get('submit')({preventDefault(){}});assert.equal(input.disabled,true);app.context.ui.language.setLocale('en');assert.equal(input.disabled,true);assert.equal(calls.length,1);assert.equal(app.node('login-status').textContent,DICTIONARIES.en.unlocking);
-  finish({ok:false,json:async()=>({error:'Administrator password was not accepted.'})});await pending;assert.equal(app.node('login-status').textContent,DICTIONARIES.en.passwordRejected);app.context.ui.language.setLocale('zh-CN');assert.equal(app.node('login-status').textContent,'管理员密码不正确。');
-  const next=createAdminI18n({storage,browserLanguage:'en'});assert.equal(next.locale,'zh-CN');assert.ok(storage.writes.every(([key,value])=>key===LOCALE_KEY&&['en','zh-CN'].includes(value)));assert.equal([...storage.values.keys()].length,1);
+  app.context.ui.showFeedback({key:'unlocking'});assert.equal(input.value,'Synthetic password fixture');assert.equal(input.focusCalls,count);assert.equal(app.document.activeElement,input);assert.equal(calls.length,0);assert.equal(app.node('unlock').textContent,'登录后台');assert.equal(app.document.documentElement.lang,'zh-CN');
+  const pending=app.node('admin-login-form').events.get('submit')({preventDefault(){}});assert.equal(input.disabled,true);assert.equal(calls.length,1);assert.equal(app.node('login-status').textContent,DICTIONARIES['zh-CN'].unlocking);assert.equal(calls[0][0],'/admin/auth/login');assert.equal(calls[0][1].headers['X-Admin-CSRF'],'synthetic');
+  finish({ok:false,json:async()=>({error:'Administrator password was not accepted.'})});await pending;assert.equal(app.node('login-status').textContent,'管理员密码不正确。');assert.equal(input.value,'');assert.equal(input.disabled,false);assert.deepEqual(storage.writes,[]);
+  // An explicit Reports preference is picked up on a fresh password page.
+  storage.values.set(LOCALE_KEY,'en');
+  const fresh=await boot(loginJS,html,{storage,fetch:async()=>({ok:true,json:async()=>({ok:true})})});assert.equal(fresh.document.documentElement.lang,'en');assert.equal(fresh.node('unlock').textContent,'Unlock admin');
+  fresh.node('admin-password').value='Synthetic password fixture';await fresh.node('admin-login-form').events.get('submit')({preventDefault(){}});assert.deepEqual(fresh.navigation,['/admin']);assert.deepEqual(storage.writes,[]);
 });
 
 test('only the exact static locale module is public before login; default/production/LAN namespaces remain closed', async t => {
