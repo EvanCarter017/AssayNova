@@ -95,7 +95,7 @@ test('failed lookup destinations are safe, refreshable not-found routes rather t
 
 // Minimal DOM adapters run the actual app event handlers and History transitions.
 // They do not replace browser acceptance for layout, focus or native navigation.
-function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false, storageReadBlocked = false, storageSilent = false, savedSupport, clipboardWrite } = {}) {
+function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false, storageReadBlocked = false, storageSilent = false, savedSupport, clipboardWrite, cryptoSource } = {}) {
   const documentEvents = new Map();
   const windowEvents = new Map();
   const nodes = new Map();
@@ -223,7 +223,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
       setItem: (key, value) => { storageCalls.push(['set', key]); if (storageBlocked) throw new Error('Synthetic storage restriction'); if (!storageSilent) storage.set(key, value); },
       removeItem: (key) => { storageCalls.push(['remove', key]); if (storageBlocked) throw new Error('Synthetic storage restriction'); if (!storageSilent) storage.delete(key); }
     },
-    crypto: { randomUUID: () => '12345678-0000-0000-0000-000000000000' },
+    crypto: cryptoSource ?? { randomUUID: () => '12345678-0000-0000-0000-000000000000' },
     FormData: class { constructor(form) { this.form = form; } entries() { return Object.entries(this.form.values); } },
     requestAnimationFrame: (callback) => frames.push(callback), setTimeout: () => 0, clearTimeout() {}
   });
@@ -1074,4 +1074,30 @@ test('sample ion envelopes use primary neutral masses, charge spacing and purity
     }
     assert.equal(record.spectra[3].status, code === 'AN-8P6R-3N5Y' ? 'Low signal' : 'Observed');
   }
+});
+
+test('actual app boots on LAN without randomUUID and saves/resumes distinct UUIDv4 sample entries', () => {
+  let fills = 0;
+  const cryptoSource = { getRandomValues(bytes) { assert.equal(bytes.length, 16); fills++; for (let i = 0; i < bytes.length; i++) bytes[i] = (fills + i * 13) & 255; return bytes; } };
+  const app = bootApp('/testing-methods', [], { cryptoSource });
+  assert.deepEqual(app.visibleViews(), ['#testing-view']);
+  app.click('submit', { service: 'purity' });
+  assert.equal(app.location.pathname, '/submit-sample'); assert.equal(app.focused(), '#request-page-title');
+  const flow = app.nodes.get('#request-flow');
+  flow.events.get('click')({ target: flow.querySelector('#rq-add-sample') });
+  const ids = [...flow.innerHTML.matchAll(/data-rq-field="sample:([^:]+):name"/g)].map(match => match[1]);
+  assert.equal(ids.length, 2); assert.notEqual(ids[0], ids[1]);
+  ids.forEach(id => assert.match(id, /^s-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/));
+  const field = (key, value) => { const target = flow.querySelector(`[data-rq-field="${key}"]`); assert.ok(target, key); target.value = value; flow.events.get('input')({ type: 'input', target }); };
+  ids.forEach((id, i) => field(`sample:${id}:name`, `LAN sample ${i + 1}`));
+  const submit = () => flow.events.get('submit')({ target: { id: 'request-step-form' }, preventDefault() {} });
+  submit(); field('name', 'LAN test contact'); field('email', 'lan@example.invalid'); submit(); submit();
+  const saved = app.requests(); assert.equal(saved.length, 1); assert.equal(saved[0].samples.length, 2);
+  assert.deepEqual(Array.from(saved[0].samples, sample => sample.id), ids); assert.match(saved[0].id, /^AN-REQ-[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/);
+  assert.match(flow.innerHTML, /Draft · Not sent/);
+  app.click('request-resume', { id: saved[0].id }); assert.equal(app.location.pathname, '/submit-sample'); ids.forEach(id => assert.ok(flow.innerHTML.includes(id)));
+  assert.equal(app.networkCalls.length, 0); assert.ok(fills >= 3);
+  let nativeCalls = 0;
+  bootApp('/', [], { cryptoSource: { randomUUID() { nativeCalls++; return '12345678-1234-4234-9234-123456789abc'; }, getRandomValues() { assert.fail('Native UUID must be preferred'); } } });
+  assert.ok(nativeCalls > 0);
 });
