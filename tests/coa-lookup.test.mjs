@@ -95,7 +95,7 @@ test('failed lookup destinations are safe, refreshable not-found routes rather t
 
 // Minimal DOM adapters run the actual app event handlers and History transitions.
 // They do not replace browser acceptance for layout, focus or native navigation.
-function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false, storageReadBlocked = false, storageSilent = false, savedSupport, clipboardWrite, cryptoSource } = {}) {
+function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false, storageReadBlocked = false, storageSilent = false, savedSupport, clipboardWrite, cryptoSource, publishedReader = false, remoteFetch, lookupTimeouts } = {}) {
   const documentEvents = new Map();
   const windowEvents = new Map();
   const nodes = new Map();
@@ -214,10 +214,11 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   const runnable = appSource.replace(/^(?:import[^\n]+\r?\n)+/, '');
   assert.notEqual(runnable, appSource);
   const unexpectedNetwork = (...args) => { networkCalls.push(args); throw new Error('This draft-only workflow must not send network requests'); };
+  if (publishedReader) node('meta[name="assaynova-report-reader"]').setAttribute('content','enabled');
   runInNewContext(runnable, {
     ...reportData, ...pageData, ...supportData, ...submissionData, SAMPLE_REPORT_DATA, createRequestPage, document, window, location, history, URL,
     navigator: { clipboard: { writeText(value) { copied.push(value); if (clipboardWrite) return clipboardWrite(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
-    fetch: unexpectedNetwork, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
+    fetch: remoteFetch ?? unexpectedNetwork, AbortController, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
     localStorage: {
       getItem: (key) => { storageCalls.push(['get', key]); if (storageReadBlocked) throw new Error('Synthetic read restriction'); return storage.get(key) ?? null; },
       setItem: (key, value) => { storageCalls.push(['set', key]); if (storageBlocked) throw new Error('Synthetic storage restriction'); if (!storageSilent) storage.set(key, value); },
@@ -225,7 +226,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     },
     crypto: cryptoSource ?? { randomUUID: () => '12345678-0000-0000-0000-000000000000' },
     FormData: class { constructor(form) { this.form = form; } entries() { return Object.entries(this.form.values); } },
-    requestAnimationFrame: (callback) => frames.push(callback), setTimeout: () => 0, clearTimeout() {}
+    requestAnimationFrame: (callback) => frames.push(callback), setTimeout: (callback,ms) => { if (ms===10000) lookupTimeouts?.push(callback); return 0; }, clearTimeout() {}
   });
   function setRequestField(key, value) {
     const flow = node('#request-flow'); const field = flow.querySelector(`[data-rq-field="${key}"]`);
@@ -1100,4 +1101,33 @@ test('actual app boots on LAN without randomUUID and saves/resumes distinct UUID
   let nativeCalls = 0;
   bootApp('/', [], { cryptoSource: { randomUUID() { nativeCalls++; return '12345678-1234-4234-9234-123456789abc'; }, getRandomValues() { assert.fail('Native UUID must be preferred'); } } });
   assert.ok(nativeCalls > 0);
+});
+
+function generatedFixture(code='AN-ABCD-1234') {
+  return {report:{...DEMO_REPORT,lookupCode:code,sample:'HCG 5000IU',disclaimer:undefined},record:{...SAMPLE_REPORT_DATA[DEMO_REPORT.lookupCode],product:'HCG 5000IU',contentUnit:'IU'},label:'HCG 5000IU',assets:{svg:'/__reports/'+code+'/report.svg',pdf:'/__reports/'+code+'/report.pdf'}};
+}
+const flushLookup = async () => { for(let index=0;index<6;index++) await Promise.resolve(); };
+test('opt-in lookup works without reload, preserves generated title/units/actions, refresh and back/forward',async()=>{
+  const calls=[],bundle=generatedFixture();
+  const remoteFetch=async(url,options)=>{calls.push([url,options]);return {ok:true,json:async()=>bundle};};
+  const app=bootApp('/verify',[],{publishedReader:true,remoteFetch});assert.equal(calls.length,0);
+  app.submitLookup(' an-abcd-1234 ',false);await flushLookup();assert.equal(app.location.pathname,'/coa/AN-ABCD-1234');assert.match(app.document.title,/COA report/);assert.doesNotMatch(app.document.title,/Sample/);
+  const html=app.nodes.get('#coa-view').innerHTML;assert.match(html,/HCG 5000IU/);assert.match(html,/Net content \(IU\)/);assert.match(html,/__reports\/AN-ABCD-1234\/report.pdf/);assert.doesNotMatch(html,/Sample report|Fictional data|Not a valid certificate|Illustrative certificate/);
+  app.click('copy-code');await flushLookup();assert.equal(app.copied.at(-1),'AN-ABCD-1234');app.click('copy-link');await flushLookup();assert.equal(app.copied.at(-1),'http://127.0.0.1:4999/coa/AN-ABCD-1234');
+  app.clickLink('/about');app.travel(-1);assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);app.travel(1);assert.equal(app.location.pathname,'/about');
+  const refreshed=bootApp('/coa/an-abcd-1234',[],{publishedReader:true,remoteFetch});await flushLookup();assert.equal(refreshed.location.pathname,'/coa/AN-ABCD-1234');assert.match(refreshed.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);
+  app.click('report',{lookupCode:DEMO_REPORT.lookupCode});assert.match(app.nodes.get('#coa-view').innerHTML,/Sample report/);
+});
+test('opt-in lookup ignores late responses after navigation, input edits and newer overlapping codes',async()=>{
+  const pending=[];const app=bootApp('/verify',[],{publishedReader:true,remoteFetch:(url,options)=>new Promise(resolve=>pending.push({url,options,resolve}))});
+  app.submitLookup('AN-ABCD-1234',false);app.clickLink('/about');pending[0].resolve({ok:true,json:async()=>generatedFixture()});await flushLookup();assert.equal(app.location.pathname,'/about');assert.doesNotMatch(app.document.title,/ABCD/);
+  app.clickLink('/verify');app.submitLookup('AN-ABCD-1234',false);app.submitLookup('AN-EFGH-5678',false);
+  pending[2].resolve({ok:true,json:async()=>generatedFixture('AN-EFGH-5678')});await flushLookup();pending[1].resolve({ok:true,json:async()=>generatedFixture()});await flushLookup();assert.equal(app.location.pathname,'/coa/AN-EFGH-5678');
+  const invalid=bootApp('/verify',[],{publishedReader:true,remoteFetch:async()=>({ok:false})});invalid.submitLookup('bad',false);assert.equal(invalid.networkCalls.length,0);invalid.submitLookup('AN-NONE-0000',false);await flushLookup();assert.equal(invalid.location.pathname,'/verify');assert.match(invalid.nodes.get('#verify-error').textContent,/No COA found/);
+});
+test('opt-in reader timeout returns a recoverable not-found state and accepts a later lookup',async()=>{
+  const timeouts=[];let failed=true;
+  const app=bootApp('/coa/AN-ABCD-1234',[],{publishedReader:true,lookupTimeouts:timeouts,remoteFetch:(_url,{signal})=>failed?new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new Error('timed out')))):Promise.resolve({ok:true,json:async()=>generatedFixture()})});
+  assert.match(app.nodes.get('#coa-view').innerHTML,/Finding your report/);timeouts[0]();await flushLookup();assert.match(app.nodes.get('#coa-view').innerHTML,/No COA found/);
+  failed=false;app.submitLookup('AN-ABCD-1234');await flushLookup();assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);
 });

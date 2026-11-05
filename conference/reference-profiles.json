@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "provenance": "Private synthetic report profiles. References establish molecular formulas only, never analytical findings for a supplied vial. Retention times, charge-state abundance, peak areas, concentrations and noise are generated examples rather than validated methods or measurements.",
+  "limits": "Filename TB-500 does not distinguish the fragment from full thymosin beta-4. Retatrutide/Triple G identity, salts, conjugates, proteins and all unlisted products remain unassigned. IU and ml are retained without conversion to mg. No generated profile establishes product identity or biological potency.",
+  "sources": [
+    "https://pubchem.ncbi.nlm.nih.gov/compound/73587",
+    "https://pubchem.ncbi.nlm.nih.gov/compound/125672",
+    "https://pubchem.ncbi.nlm.nih.gov/compound/9941957",
+    "https://pubchem.ncbi.nlm.nih.gov/compound/16132341",
+    "https://pubchem.ncbi.nlm.nih.gov/compound/56843331",
+    "https://pubchem.ncbi.nlm.nih.gov/compound/156588324",
+    "https://www.ema.europa.eu/en/documents/assessment-report/rybelsus-epar-public-assessment-report_en.pdf",
+    "https://www.agilent.com/cs/library/applications/an-semaglutide-2d-lcms-5994-8288en-agilent.pdf",
+    "https://www.waters.com/content/dam/waters/en/app-notes/2022/720007752/720007752-en.pdf",
+    "https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl?ele=C"
+  ],
+  "protonMassU": 1.0072764665789,
+  "carbon13SpacingU": 1.00335483507,
+  "atomicMonoisotopicMass": {"C": 12, "H": 1.00782503223, "N": 14.00307400443, "O": 15.99491461957, "S": 31.9720711744},
+  "profiles": {
+    "GHK-Cu": {"species": "GHK (apo ligand)", "cid": 73587, "formula": "C14H24N6O4", "charges": [2, 1], "retention": 8.42, "note": "Apo ligand ions do not establish intact copper-complex identity."},
+    "KPV": {"species": "KPV free acid", "cid": 125672, "formula": "C16H30N4O4", "charges": [2, 1], "retention": 2.51},
+    "BPC-157": {"species": "BPC-157 free acid", "cid": 9941957, "formula": "C62H98N16O22", "charges": [2, 3, 1], "retention": 5.74},
+    "Thymosin Beta-4": {"species": "N-acetyl thymosin beta-4 (43 aa)", "cid": 16132341, "formula": "C212H350N56O78S", "charges": [6, 5, 4], "retention": 11.7},
+    "Semaglutide": {"species": "Semaglutide free form", "cid": 56843331, "formula": "C187H291N45O59", "charges": [4, 5, 3], "retention": 9.64},
+    "Tirzepatide": {"species": "Tirzepatide free form", "cid": 156588324, "formula": "C225H348N48O68", "charges": [5, 4, 6], "retention": 10.82}
+  },
+  "aliases": {"ghk-cu": "GHK-Cu", "ghk cu": "GHK-Cu", "ghkcu": "GHK-Cu", "bpc157": "BPC-157", "bpc-157": "BPC-157", "kpv": "KPV", "thymosin beta-4": "Thymosin Beta-4", "semaglutide": "Semaglutide", "tirzepatide": "Tirzepatide"},
+  "generation": {"purityRange": [99.05, 99.95], "autoReplicateOffsetPercentagePoints": 0.04, "autoReplicateMaximumDeltaPercentagePoints": 0.08, "manualPurityPolicy": "Supplied replicates are preserved; a sole supplied replicate anchors the generated partner. Range clamps apply only to generated values.", "contentFractionRange": [0.98, 1.02], "retentionPerturbationMinutes": 0.16, "massErrorPPMRange": [-2.5, 2.5], "unassigned": "Name-hashed representative sticks with no theoretical neutral mass, isotope envelope, molecular formula or identity assertion. These profiles are explicitly marked Unassigned in the canonical record."}
+}

@@ -1,4 +1,4 @@
-import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from './data.js';
+import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission, normalizeLookupCode } from './data.js';
 import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
 import { SUPPORT_DRAFT_KEY, normalizeSupport, validateSupport, parseSupportDraft, formatSupportRequest } from './support.js';
 import { REQUEST_DRAFT_KEY, readableRequests, effectiveReportRecipient, SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES } from './submission.js';
@@ -17,6 +17,24 @@ let renderedURL = '';
 let historyFocusRevision = 0;
 let activeReport = null;
 let pendingCopyKind = null;
+const publishedReaderEnabled = document.querySelector('meta[name="assaynova-report-reader"]')?.getAttribute('content') === 'enabled';
+const publishedReports = new Map();
+let lookupRevision = 0;
+let lookupController;
+function cancelPublishedLookup() { lookupRevision++; lookupController?.abort(); lookupController = null; }
+async function fetchPublishedReport(code) {
+  const controller = new AbortController();
+  lookupController = controller;
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch('/__reports/' + code, { signal: controller.signal, cache: 'no-store' });
+    if (!response.ok) return null;
+    const bundle = await response.json();
+    if (bundle?.report?.lookupCode !== code || bundle.report.publication !== 'published' || !bundle.record || typeof bundle.label !== 'string' || bundle.assets?.svg !== '/__reports/' + code + '/report.svg' || bundle.assets?.pdf !== '/__reports/' + code + '/report.pdf') return null;
+    return bundle;
+  } catch { return null; }
+  finally { clearTimeout(timeout); if (lookupController === controller) lookupController = null; }
+}
 
 const icon = (name, small = false) => `<svg class="icon${small ? ' small' : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
@@ -206,15 +224,16 @@ function lookupForm() {
 }
 
 function renderReport(report) {
-  const sample = Object.hasOwn(SAMPLE_REPORT_ASSETS, report.lookupCode) ? SAMPLE_REPORT_ASSETS[report.lookupCode] : null;
-  const record = Object.hasOwn(SAMPLE_REPORT_DATA, report.lookupCode) ? SAMPLE_REPORT_DATA[report.lookupCode] : null;
+  const generated = publishedReports.get(report.lookupCode);
+  const sample = generated ? { label: generated.label, ...generated.assets } : Object.hasOwn(SAMPLE_REPORT_ASSETS, report.lookupCode) ? SAMPLE_REPORT_ASSETS[report.lookupCode] : null;
+  const record = generated?.record ?? (Object.hasOwn(SAMPLE_REPORT_DATA, report.lookupCode) ? SAMPLE_REPORT_DATA[report.lookupCode] : null);
   if (!sample || !record) { renderReportNotFound(); return; }
   const fields = [['Product name', record.product], ['Appearance', record.appearance], ['Client', record.client], ['Report no.', record.reportId], ['Lot', record.lot], ['Accession no.', record.accession], ['Lookup Code', report.lookupCode], ['Received', record.received], ['Reported', record.reported]];
-  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading"><div><p class="report-demo-label">Sample report</p><h1 id="report-title" tabindex="-1">${escape(sample.label)}</h1></div><p class="coa-code">Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
-    <figure class="coa-master-paper"><img src="${sample.svg}" width="595" height="842" alt="Illustrative certificate of analysis for ${escape(sample.label)}. Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
-    <p class="report-disclaimer coa-master-disclosure"><strong>Sample report.</strong> ${escape(report.disclaimer)}</p>
+  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading"><div>${generated ? '' : '<p class="report-demo-label">Sample report</p>'}<h1 id="report-title" tabindex="-1">${escape(sample.label)}</h1></div><p class="coa-code">Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
+    <figure class="coa-master-paper"><img src="${sample.svg}" width="595" height="842" alt="${generated ? 'Certificate' : 'Illustrative certificate'} of analysis for ${escape(sample.label)}. Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
+    ${generated ? '' : `<p class="report-disclaimer coa-master-disclosure"><strong>Sample report.</strong> ${escape(report.disclaimer)}</p>`}
     <div class="report-actions coa-master-tools"><a class="button button-dark" href="${sample.pdf}" download>Download PDF</a><a class="button button-outline" href="${sample.svg}" target="_blank" rel="noopener">View full size</a><button class="button button-outline" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
-    <details class="coa-master-transcript"><summary>Report fields</summary><div class="coa-master-transcript-body"><section><h2>Sample information</h2><dl class="coa-master-field-list">${fields.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl></section><section><h2>Analytical results</h2><p>Purity / HPLC-UV</p><dl class="coa-master-field-list">${['Sample 1', 'Sample 2', 'Reported summary'].map((label, index) => `<div><dt>${escape(label)}</dt><dd>${escape(record.purity[index])}%</dd></div>`).join('')}</dl><table><caption>Composition · Net content (mg)</caption><thead><tr><th scope="col">Analyte</th><th scope="col">Sample 1</th><th scope="col">Sample 2</th><th scope="col">Reported summary</th></tr></thead><tbody>${record.composition.map(row => `<tr><th scope="row">${escape(row.analyte)}</th><td>${escape(row.sample1)}</td><td>${escape(row.sample2)}</td><td>${escape(row.summary)}</td></tr>`).join('')}</tbody></table></section><section><h2>Analytical figures</h2><p>HPLC-UV chromatogram. Principal retention time: ${escape(record.retentionTime)} min. Relative UV response, 0-100%. Fitted target areas total ${escape(record.purity[2])}%.</p><ul>${record.chromatogram.map(peak => `<li>${escape(peak.analyte)}: ${escape(peak.time)} min; fitted area ${escape(peak.area)}%; relative peak response ${escape(peak.response)}.</li>`).join('')}</ul><ul>${record.spectra.map(spectrum => `<li>${escape(spectrum.analyte)} / ${escape(spectrum.species)}: ${escape(spectrum.status)}. Scan ${spectrum.scan.map(escape).join('-')} m/z. ${spectrum.ions.map(ion => `${escape(ion.label)}: ${escape(ion.mz)} m/z; relative intensity ${escape(ion.intensity)}; isotope peaks ${ion.isotopes.map(peak => escape(peak.mz)).join(', ')} m/z`).join('; ')}.</li>`).join('')}</ul></section><section><h2>Screening outcomes</h2><dl class="coa-master-field-list">${record.screenings.map(row => `<div><dt>${escape(row.test)}</dt><dd>${escape(row.result)} · ${escape(row.details)}</dd></div>`).join('')}</dl><h2>Method</h2><p>${escape(record.method)}</p></section><section><h2>Signoff</h2><p>Dylan Greene</p><p>${escape(record.signoffTitle)}</p></section></div></details>
+    <details class="coa-master-transcript"><summary>Report fields</summary><div class="coa-master-transcript-body"><section><h2>Sample information</h2><dl class="coa-master-field-list">${fields.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl></section><section><h2>Analytical results</h2><p>Purity / HPLC-UV</p><dl class="coa-master-field-list">${['Sample 1', 'Sample 2', 'Reported summary'].map((label, index) => `<div><dt>${escape(label)}</dt><dd>${escape(record.purity[index])}%</dd></div>`).join('')}</dl><table><caption>Composition · Net content (${escape(record.contentUnit || 'mg')})</caption><thead><tr><th scope="col">Analyte</th><th scope="col">Sample 1</th><th scope="col">Sample 2</th><th scope="col">Reported summary</th></tr></thead><tbody>${record.composition.map(row => `<tr><th scope="row">${escape(row.analyte)}${row.unit ? ' (' + escape(row.unit) + ')' : ''}</th><td>${escape(row.sample1)}</td><td>${escape(row.sample2)}</td><td>${escape(row.summary)}</td></tr>`).join('')}</tbody></table></section><section><h2>Analytical figures</h2><p>HPLC-UV chromatogram. Principal retention time: ${escape(record.retentionTime)} min. Relative UV response, 0-100%. Fitted target areas total ${escape(record.purity[2])}%.</p><ul>${record.chromatogram.map(peak => `<li>${escape(peak.analyte)}: ${escape(peak.time)} min; fitted area ${escape(peak.area)}%; relative peak response ${escape(peak.response)}.</li>`).join('')}</ul><ul>${record.spectra.map(spectrum => `<li>${escape(spectrum.analyte)} / ${escape(spectrum.species)}: ${escape(spectrum.status)}. Scan ${spectrum.scan.map(escape).join('-')} m/z. ${spectrum.ions.map(ion => `${escape(ion.label)}: ${escape(ion.mz)} m/z; relative intensity ${escape(ion.intensity)}; isotope peaks ${ion.isotopes.map(peak => escape(peak.mz)).join(', ')} m/z`).join('; ')}.</li>`).join('')}</ul></section><section><h2>Screening outcomes</h2><dl class="coa-master-field-list">${record.screenings.map(row => `<div><dt>${escape(row.test)}</dt><dd>${escape(row.result)} · ${escape(row.details)}</dd></div>`).join('')}</dl><h2>Method</h2><p>${escape(record.method)}</p></section><section><h2>Signoff</h2><p>Dylan Greene</p><p>${escape(record.signoffTitle)}</p></section></div></details>
     <div id="report-copy-fallback" class="copy-fallback" role="region" aria-label="Manual copy" hidden><p>Automatic copy was unavailable. Select and copy the complete value below.</p><label for="report-copy-value">Value to copy</label><textarea id="report-copy-value" readonly></textarea><div class="dialog-buttons"><button class="text-button" data-action="copy-select">Select all</button><button class="text-button" data-action="copy-retry">Try copying again</button></div></div>
     </article>${lookupForm()}`;
 }
@@ -238,11 +257,13 @@ function routeLocation(address) {
   const page = resolvePageRoute(url.pathname);
   if (page) url.pathname = page.path;
   const coa = resolveCOARoute(url.pathname);
+  if (coa && !coa.report && publishedReports.has(coa.code)) { coa.report = publishedReports.get(coa.code).report; coa.canonicalPath = lookupResultPath(coa.code); }
   if (coa?.report) { url.pathname = coa.canonicalPath; url.search = ''; }
   return { url, page, coa, invalidLegacy };
 }
 
 function renderCurrentRoute(focus = false, legacyError = false) {
+  cancelPublishedLookup();
   historyFocusRevision++;
   const current = routeLocation(location.href);
   if (current.url.href !== location.href) history.replaceState(null, '', current.url.pathname + current.url.search + current.url.hash);
@@ -264,10 +285,19 @@ function renderCurrentRoute(focus = false, legacyError = false) {
     activeReport = current.coa.report;
     if (activeReport) {
       renderReport(activeReport);
-      document.title = `Sample report · ${activeReport.lookupCode} · AssayNova`;
+      document.title = `${publishedReports.has(activeReport.lookupCode) ? 'COA report' : 'Sample report'} · ${activeReport.lookupCode} · AssayNova`;
     } else {
       renderReportNotFound();
       document.title = 'COA not found · AssayNova';
+      if (publishedReaderEnabled && current.coa.code) {
+        const revision = lookupRevision, expectedURL = location.href;
+        coaView.innerHTML = '<div class="coa-card"><h1 id="report-title" tabindex="-1">Finding your report…</h1><p role="status">Checking this Lookup Code.</p></div>';
+        fetchPublishedReport(current.coa.code).then(bundle => {
+          if (revision !== lookupRevision || location.href !== expectedURL) return;
+          if (bundle) { publishedReports.set(current.coa.code, bundle); renderCurrentRoute(focus); }
+          else { renderReportNotFound(); if (focus) document.getElementById('report-title')?.focus({preventScroll:true}); }
+        });
+      }
     }
   } else document.title = page.title;
   if (!current.coa && page.path === '/submit-sample') requestPage.activate();
@@ -288,6 +318,7 @@ function scrollToCurrentHash() {
 }
 
 function navigateToURL(address) {
+  cancelPublishedLookup();
   historyFocusRevision++;
   const current = routeLocation(address);
   if (current.url.href !== location.href) history.pushState(null, '', current.url.pathname + current.url.search + current.url.hash);
@@ -332,7 +363,7 @@ function renderRequestDetail(id) {
 async function copyReportValue(kind) {
   const report = activeReport;
   if (!report) return;
-  const value = kind === 'link' ? new URL(reportPath(report.lookupCode), location.origin).href : report.lookupCode;
+  const value = kind === 'link' ? new URL(lookupResultPath(report.lookupCode), location.origin).href : report.lookupCode;
   pendingCopyKind = kind;
   try {
     await navigator.clipboard.writeText(value);
@@ -394,6 +425,20 @@ document.addEventListener('submit', (event) => {
   const input = event.target.querySelector('input[name="lookupCode"]');
   const report = findReportByLookupCode(input.value);
   const error = event.target.id === 'verify-form' ? document.querySelector('#verify-error') : document.querySelector('#coa-lookup-error');
+  cancelPublishedLookup();
+  const code = normalizeLookupCode(input.value);
+  if (!report && publishedReaderEnabled && code) {
+    const revision = lookupRevision, expectedURL = location.href, submittedValue = input.value;
+    error.textContent = 'Finding your report…';
+    input.removeAttribute('aria-invalid');
+    fetchPublishedReport(code).then(bundle => {
+      if (revision !== lookupRevision || location.href !== expectedURL || input.value !== submittedValue) return;
+      if (bundle) { publishedReports.set(code, bundle); navigateToReport(code); }
+      else if (event.target.id === 'coa-lookup-form') navigateToReport(code);
+      else { input.setAttribute('aria-invalid','true'); error.textContent = 'No COA found. Use a Lookup Code, not a report or submission number.'; input.focus(); }
+    });
+    return;
+  }
   input.setAttribute('aria-invalid', String(!report));
   if (report) { error.textContent = ''; navigateToReport(report.lookupCode); }
   else if (event.target.id === 'coa-lookup-form') { navigateToReport(input.value); }
@@ -401,6 +446,7 @@ document.addEventListener('submit', (event) => {
 });
 document.addEventListener('input', (event) => {
   if (!event.target.matches('#report-id,#coa-lookup-code')) return;
+  cancelPublishedLookup();
   const error = document.querySelector(event.target.id === 'report-id' ? '#verify-error' : '#coa-lookup-error');
   if (error) error.textContent = '';
   event.target.removeAttribute('aria-invalid');
@@ -423,6 +469,7 @@ document.addEventListener('keydown', (event) => { if (event.key === 'Escape') cl
 window.matchMedia('(min-width: 1101px)').addEventListener('change', (event) => { if (event.matches) closeMobileNavigation(); });
 
 function handleHistoryNavigation() {
+  cancelPublishedLookup();
   if (renderedURL === location.href) return;
   const previous = new URL(renderedURL, location.href);
   const current = routeLocation(location.href);
