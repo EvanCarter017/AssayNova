@@ -61,6 +61,10 @@ test('all canonical full names/doses and controlled spellings remain searchable 
 });
 
 test('existing chemical-name plus exact dose searches work without units and preserve labelled blends', () => {
+  assert.deepEqual(names('Kisspeptin-10'), ['Kisspeptin-10 5mg']);
+  assert.deepEqual(names('KissPeptin-10'), ['Kisspeptin-10 5mg']);
+  assert.deepEqual(names('Kisspeptin 10mg'), ['Kisspeptin 10mg']);
+  assert.equal(names('BPC157').length, 6);
   for (const [query, expected] of [
     ['DSIP 10', ['DSIP 10mg']], ['GHK-Cu 50', ['GHK-Cu 50mg']], ['HCG 5000', ['HCG 5000IU']], ['KPV 10', ['KPV 10mg']],
     ['VIP10', ['VIP 10mg']], ['SS-31 10', ['SS-31 10mg']], ['AHK-Cu100', ['AHK-Cu 100mg']], ['MOTS-C10', ['MOTS-C 10mg']],

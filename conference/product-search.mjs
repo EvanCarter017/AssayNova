@@ -52,9 +52,10 @@ export function filterProducts(products, value) {
   if (family.length) return family;
   const fullName = products.filter(product => fullNames(product).some(name => key(name) === query));
   if (fullName.length) return fullName;
+  const knownName = products.some(product => aliases(product, 'names').some(name => key(name) === query));
+  if (knownName) return products.filter(product => aliases(product, 'names').some(name => key(name) === query) || (product.components ?? []).some(row => key(row.name) === query && key(product.name).includes(key(row.name + row.nominal + row.unit))));
   const nameDose = products.filter(product => exactNameDose(product, query));
   if (nameDose.length) return nameDose;
-  const knownName = products.some(product => aliases(product, 'names').some(name => key(name) === query));
   // Unknown SKU-like inputs never fall back to a partial product/dose match.
   if (!knownName && (/^[a-z]{1,5}\d+[a-z]{0,3}$/.test(query) || /^\d+[a-z]{1,3}\d*$/.test(query) || /^\d+$/.test(query) || /^[a-z]$/.test(query))) return [];
   return products.filter(product => {
