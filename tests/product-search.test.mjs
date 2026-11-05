@@ -60,6 +60,15 @@ test('all canonical full names/doses and controlled spellings remain searchable 
   assert.deepEqual(names('Oxytocin Acetate'), ['Oxytocin Acetate 2mg']);
 });
 
+test('existing chemical-name plus exact dose searches work without units and preserve labelled blends', () => {
+  for (const [query, expected] of [
+    ['DSIP 10', ['DSIP 10mg']], ['GHK-Cu 50', ['GHK-Cu 50mg']], ['HCG 5000', ['HCG 5000IU']], ['KPV 10', ['KPV 10mg']],
+    ['VIP10', ['VIP 10mg']], ['SS-31 10', ['SS-31 10mg']], ['AHK-Cu100', ['AHK-Cu 100mg']], ['MOTS-C10', ['MOTS-C 10mg']],
+    ['BPC15710', ['BPC-157 10mg', 'BPC-157 10mg + TB-500 10mg']], ['Cagriliintide 10', ['Cagrilintide 10mg']]
+  ]) assert.deepEqual(names(query), expected.sort(), query);
+  for (const query of ['TR5', 'RT5', 'SM2', 'TR100', 'DSIP 1', 'HCG 500', 'SS-31 20', 'DSIP 10IU', 'GHK-Cu 50ml']) assert.deepEqual(names(query), [], query);
+});
+
 test('curated data are unique, price-free and additive without changing catalog identity or components', () => {
   assert.equal(data.length, 108); assert.equal(data.filter(row => row.skus.length).length, 106); assert.equal(data.reduce((sum, row) => sum + row.skus.length, 0), 107);
   const rows = data.flatMap(row => row.sourceRows); assert.equal(rows.length, 107); assert.equal(new Set(rows).size, 107);

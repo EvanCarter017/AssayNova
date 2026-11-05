@@ -13,6 +13,13 @@ function fullNames(product) {
   const dose = parts.reduce((sum, row) => sum + row.nominal, 0) + parts[0].unit;
   return [product.name, ...aliases(product, 'names').map(name => name + ' ' + dose)];
 }
+function exactNameDose(product, query) {
+  // Preserve name + dose searches without requiring units. Quote-family codes
+  // are deliberately absent here, so a photo's TR 5mg variant invents no TR5 SKU.
+  if (fullNames(product).some(name => key(name).replace(/(?:mg|ml|iu)$/, '') === query)) return true;
+  const canonical = key(product.name);
+  return (product.components ?? []).some(row => canonical.includes(key(row.name + row.nominal + row.unit)) && key(row.name + row.nominal) === query);
+}
 
 function unitSKU(product, sku, query) {
   const parts = Array.isArray(product.components) ? product.components : [];
@@ -45,6 +52,8 @@ export function filterProducts(products, value) {
   if (family.length) return family;
   const fullName = products.filter(product => fullNames(product).some(name => key(name) === query));
   if (fullName.length) return fullName;
+  const nameDose = products.filter(product => exactNameDose(product, query));
+  if (nameDose.length) return nameDose;
   const knownName = products.some(product => aliases(product, 'names').some(name => key(name) === query));
   // Unknown SKU-like inputs never fall back to a partial product/dose match.
   if (!knownName && (/^[a-z]{1,5}\d+[a-z]{0,3}$/.test(query) || /^\d+[a-z]{1,3}\d*$/.test(query) || /^\d+$/.test(query) || /^[a-z]$/.test(query))) return [];
