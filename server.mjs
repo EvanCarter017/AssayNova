@@ -10,6 +10,11 @@ import { resolvePageRoute } from './dist/routes.js';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
 const conferenceEnabled = process.argv.includes('--conference-reports');
 const adminEnabled = process.argv.includes('--admin');
+const proxyOptions = process.argv.filter(argument => argument === '--admin-proxy' || argument.startsWith('--admin-proxy='));
+const proxyOriginOptions = process.argv.filter(argument => argument === '--admin-proxy-origin' || argument.startsWith('--admin-proxy-origin='));
+const proxyEnabled = proxyOptions.length > 0 || proxyOriginOptions.length > 0;
+if (proxyEnabled && (proxyOptions.length !== 1 || proxyOriginOptions.length !== 1 || !proxyOptions[0].startsWith('--admin-proxy=') || !proxyOriginOptions[0].startsWith('--admin-proxy-origin='))) throw new Error('Supply both --admin-proxy and --admin-proxy-origin once.');
+if (proxyEnabled && (!conferenceEnabled || adminEnabled || process.argv.includes('--watch'))) throw new Error('Admin proxy requires --conference-reports, without --admin or --watch.');
 if (adminEnabled && !conferenceEnabled) throw new Error('--admin requires --conference-reports.');
 if (conferenceEnabled && process.env.NODE_ENV === 'production') throw new Error('Temporary reports are disabled in production.');
 const conference = conferenceEnabled ? await import('./conference/reader.mjs') : null;
@@ -43,6 +48,9 @@ const admin = adminEnabled ? await (await import('./conference/admin.mjs')).crea
   images: process.argv.find(argument => argument.startsWith('--admin-images='))?.slice('--admin-images='.length),
   publicOrigin: process.argv.find(argument => argument.startsWith('--admin-public-origin='))?.slice('--admin-public-origin='.length) ?? `http://${localHost}:${port}`
 }) : null;
+const adminProxy = proxyEnabled ? (await import('./conference/admin-proxy.mjs')).createAdminProxy({
+  upstream: proxyOptions[0].slice('--admin-proxy='.length), externalOrigin: proxyOriginOptions[0].slice('--admin-proxy-origin='.length), port, bindAddress
+}) : null;
 const mime = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -58,6 +66,7 @@ const server = http.createServer(async (request, response) => {
   const adminPath = value => value === '/admin' || value.startsWith('/admin/');
   if (adminPath(pathname) || adminPath(rawPathname)) {
     if (admin && await admin.handle(request, response)) return;
+    if (adminProxy && await adminProxy.handle(request, response)) return;
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); response.end(request.method === 'HEAD' ? undefined : 'Not found'); return;
   }
   if (['/api/session', '/api/history', '/api/generate', '/images', '/bundles'].includes(pathname) || pathname.startsWith('/images/') || pathname.startsWith('/bundles/')) {
@@ -152,7 +161,7 @@ const server = http.createServer(async (request, response) => {
     response.end('Not found');
   }
 });
-if (adminEnabled) { server.requestTimeout = 10000; server.headersTimeout = 10000; }
+if (adminEnabled || proxyEnabled) { server.requestTimeout = 10000; server.headersTimeout = 10000; }
 server.on('error', (error) => {
   console.error(error.code === 'EADDRINUSE'
     ? `Port ${port} is in use. Try: node server.mjs --port=${port + 1}` : error.message);

@@ -49,7 +49,16 @@ node server.mjs --host=0.0.0.0 --port=4318
 
 ## 当前功能
 
-管理后台基础页面位于本机 `/admin`，Reports 是首个实际模块：按产品原图生成 PDF/SVG、查看已发布记录，再通过普通 Verify COA 向客户展示。使用 `conference/start.ps1` 启动集成的本机 4317 服务，或显式传入 `--conference-reports --admin`；客户页面没有管理入口，LAN 4318 仅开放只读查找。后台只允许本机绑定与非生产模式；首次进入由管理员直接设置一个密码，此后需输入该密码解锁，无用户名或注册。私有接口、图片和下载也受服务端会话保护。未来生产 TLS、角色、订单与客户管理另行建设。现阶段随机示例数据的说明只保留在私有管理区；清理生成数据不会移除后台页面。已忽略的 `work/report-studio` 保留原有 LC/PDF，重启不变。详见 [管理与报告模块说明](docs/conference-studio.md)。现有两个公开样例的披露保持原样。
+管理后台基础页面位于 `/admin`，Reports 是首个实际模块：按产品原图生成 PDF/SVG、查看已发布记录，再通过普通 Verify COA 向客户展示。使用 `conference/start.ps1` 启动集成的本机 4317 服务，或显式传入 `--conference-reports --admin`；4317 是唯一报告写入进程及密码/会话管理进程。首次由管理员在本机页面设置一个密码，之后输入该密码解锁，无用户名或注册。客户页面没有管理入口。LAN 4318 可显式启用受限代理，让局域网设备在 `http://192.168.0.60:4318/admin` 使用相同密码登录；代理不建立第二个写入进程，且不能设置首个密码。登录页固定英文，进入 Reports 后可切换中英文。私有接口、图片和下载也受服务端会话保护。未来生产 TLS、角色、订单与客户管理另行建设。现阶段随机示例数据的说明只保留在私有管理区；清理生成数据不会移除后台页面。已忽略的 `work/report-studio` 保留原有 LC/PDF，重启不变。详见 [管理与报告模块说明](docs/conference-studio.md)。现有两个公开样例的披露保持原样。
+
+在项目目录分别启动两个进程，使用当前机器的实际局域网 IPv4 地址：
+
+```powershell
+node server.mjs --watch --port=4317 --conference-reports --admin --admin-public-origin=http://192.168.0.60:4318
+node server.mjs --host=0.0.0.0 --port=4318 --conference-reports --admin-proxy=http://127.0.0.1:4317 --admin-proxy-origin=http://192.168.0.60:4318
+```
+
+代理仅接受配置的私有 IPv4 Host 和本机 `127.0.0.1:4318`，保留原有密码、CSRF 与会话保护，并使用独立端口名的 Cookie，避免覆盖本机登录。两个代理参数必须同时提供，且要求非生产模式、`--conference-reports`，不得与 `--admin` 或 `--watch` 混用。去掉代理参数后，4318 的全部 `/admin` 路径恢复 404。此 HTTP 启动方式仅用于可信私有局域网预览；不用于生产或互联网部署。
 
 - 英文品牌首页，沿用现有的 AssayNova Logo、海军蓝与青绿色。
 - 响应式布局、手机导航、服务介绍、送检步骤、FAQ。
