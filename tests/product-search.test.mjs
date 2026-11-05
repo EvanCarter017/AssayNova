@@ -88,7 +88,7 @@ test('curated data are unique, price-free and additive without changing catalog 
 });
 
 const operatorSource = await readFile(new URL('../conference/operator.js', import.meta.url), 'utf8');
-function photoUI() {
+function selectionUI() {
   const nodes = new Map(), buttons = [{ disabled: false }, { disabled: false }];
   function node(id) {
     if (nodes.has(id)) return nodes.get(id);
@@ -102,19 +102,19 @@ function photoUI() {
   const prefix = operatorSource.slice(operatorSource.indexOf('const $='), operatorSource.indexOf('function showResult'));
   const context = { document, filterProducts, Date };
   // Capture actual UI functions in a persistent object shared with the VM.
-  const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};globalThis.ui={filter,selectProduct,selected:()=>selected};', holder);
+  const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};globalThis.ui={filter,selectProduct,selected:()=>selected,setBusy:value=>{busy=value}};', holder);
   return { nodes, node, buttons, ui: holder.ui };
 }
-test('actual selection/photo handlers clear no-results, reject stale image events and expose load failures', () => {
-  const app = photoUI(), search = value => { app.node('search').value = value; app.ui.filter(); };
+test('actual selection handlers preserve exact recipes, no-results/busy guards and the last report', () => {
+  const app = selectionUI(), search = value => { app.node('search').value = value; app.ui.filter(); };
   app.node('paper').src = '/admin/bundles/published/AN-OLD0-0001/report.svg';
-  search('TR10'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg'); let image = app.node('photo'); assert.equal(image.width, 140); assert.equal(image.height, 170); assert.match(image.alt, /Tirzepatide 10mg/); image.events.get('load')(); assert.equal(image.hidden, false);
+  search('TR10'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg'); assert.equal(app.node('selected-name').textContent, 'Tirzepatide 10mg'); assert.match(app.node('components').innerHTML, /Tirzepatide/); assert.ok(app.buttons.every(button => !button.disabled));
   search('TR'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg');
-  search('SM'); assert.equal(app.ui.selected(), undefined); assert.equal(app.node('photo').src, undefined); assert.ok(app.buttons.every(button => button.disabled));
-  app.node('product').value = products.find(row => row.name === 'Semaglutide 10mg').id; app.ui.selectProduct(); const next = app.node('photo'); image.events.get('error')(); assert.match(next.src, /^\/admin\/images\//); assert.match(next.alt, /Semaglutide 10mg/);
-  next.events.get('error')(); assert.equal(next.hidden, true); assert.equal(next.src, undefined); assert.match(app.node('photo-status').textContent, /could not be loaded/);
-  search('SM2'); assert.equal(app.ui.selected(), undefined); assert.equal(app.node('components').innerHTML, ''); assert.equal(app.node('photo').src, undefined); assert.match(app.node('status').textContent, /No matching product or dose/); assert.ok(app.buttons.every(button => button.disabled));
-  assert.equal(app.node('paper').src, '/admin/bundles/published/AN-OLD0-0001/report.svg');
+  search('SM'); assert.equal(app.ui.selected(), undefined); assert.equal(app.node('components').innerHTML, ''); assert.ok(app.buttons.every(button => button.disabled));
+  app.node('product').value = products.find(row => row.name === 'Semaglutide 10mg').id; app.ui.selectProduct(); assert.match(app.node('components').innerHTML, /Semaglutide/); assert.doesNotMatch(app.node('components').innerHTML, /Tirzepatide/);
+  app.ui.setBusy(true); app.ui.selectProduct(); assert.ok(app.buttons.every(button => button.disabled)); app.ui.setBusy(false); app.ui.selectProduct(); assert.ok(app.buttons.every(button => !button.disabled));
+  search('SM2'); assert.equal(app.ui.selected(), undefined); assert.equal(app.node('components').innerHTML, ''); assert.match(app.node('status').textContent, /No matching product or dose/); assert.ok(app.buttons.every(button => button.disabled));
+  assert.equal(app.node('paper').src, '/admin/bundles/published/AN-OLD0-0001/report.svg'); assert.equal(app.nodes.has('photo'), false);
   search(''); assert.equal(app.ui.selected(), undefined); assert.match(app.node('product').innerHTML, /Choose a matching product/);
 });
 

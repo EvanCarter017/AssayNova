@@ -39,6 +39,7 @@ const localHost = isIP(localAddress) === 6 ? `[${localAddress}]` : localAddress;
 if (adminEnabled && !['127.0.0.1', '::1'].includes(bindAddress)) throw new Error('--admin requires a loopback bind (127.0.0.1 or ::1).');
 const admin = adminEnabled ? await (await import('./conference/admin.mjs')).createAdmin({
   origin: `http://${localHost}:${port}`, store: conferenceStore,
+  authStore: process.argv.find(argument => argument.startsWith('--admin-auth-store='))?.slice('--admin-auth-store='.length),
   images: process.argv.find(argument => argument.startsWith('--admin-images='))?.slice('--admin-images='.length),
   publicOrigin: process.argv.find(argument => argument.startsWith('--admin-public-origin='))?.slice('--admin-public-origin='.length) ?? `http://${localHost}:${port}`
 }) : null;
