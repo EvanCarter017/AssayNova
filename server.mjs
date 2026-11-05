@@ -9,6 +9,8 @@ import { resolvePageRoute } from './dist/routes.js';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
 const conferenceEnabled = process.argv.includes('--conference-reports');
+const adminEnabled = process.argv.includes('--admin');
+if (adminEnabled && !conferenceEnabled) throw new Error('--admin requires --conference-reports.');
 if (conferenceEnabled && process.env.NODE_ENV === 'production') throw new Error('Temporary reports are disabled in production.');
 const conference = conferenceEnabled ? await import('./conference/reader.mjs') : null;
 const conferenceStore = conferenceEnabled ? path.resolve(process.argv.find(argument => argument.startsWith('--conference-store='))?.slice('--conference-store='.length) ?? conference.DEFAULT_STORE) : null;
@@ -34,6 +36,12 @@ const bindAddress = hostOption?.slice('--host='.length) ?? '127.0.0.1';
 if (!isIP(bindAddress)) throw new Error('Choose a literal IPv4 or IPv6 address for --host.');
 const localAddress = bindAddress === '0.0.0.0' ? '127.0.0.1' : bindAddress === '::' ? '::1' : bindAddress;
 const localHost = isIP(localAddress) === 6 ? `[${localAddress}]` : localAddress;
+if (adminEnabled && !['127.0.0.1', '::1'].includes(bindAddress)) throw new Error('--admin requires a loopback bind (127.0.0.1 or ::1).');
+const admin = adminEnabled ? await (await import('./conference/admin.mjs')).createAdmin({
+  origin: `http://${localHost}:${port}`, store: conferenceStore,
+  images: process.argv.find(argument => argument.startsWith('--admin-images='))?.slice('--admin-images='.length),
+  publicOrigin: process.argv.find(argument => argument.startsWith('--admin-public-origin='))?.slice('--admin-public-origin='.length) ?? `http://${localHost}:${port}`
+}) : null;
 const mime = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -41,15 +49,24 @@ const mime = {
 };
 
 const server = http.createServer(async (request, response) => {
+  let pathname;
+  let encodedPathname;
+  try { encodedPathname = new URL(request.url, 'http://localhost').pathname; pathname = decodeURIComponent(encodedPathname); }
+  catch { response.writeHead(400); response.end('Bad request'); return; }
+  const rawPathname = request.url.split('?')[0];
+  const adminPath = value => value === '/admin' || value.startsWith('/admin/');
+  if (adminPath(pathname) || adminPath(rawPathname)) {
+    if (admin && await admin.handle(request, response)) return;
+    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); response.end(request.method === 'HEAD' ? undefined : 'Not found'); return;
+  }
+  if (['/api/session', '/api/history', '/api/generate', '/images', '/bundles'].includes(pathname) || pathname.startsWith('/images/') || pathname.startsWith('/bundles/')) {
+    response.writeHead(404, { 'Cache-Control': 'no-store' }); response.end(request.method === 'HEAD' ? undefined : 'Not found'); return;
+  }
   if (!['GET', 'HEAD'].includes(request.method)) {
     response.writeHead(405, { Allow: 'GET, HEAD' });
     response.end('Method not allowed');
     return;
   }
-  let pathname;
-  let encodedPathname;
-  try { encodedPathname = new URL(request.url, 'http://localhost').pathname; pathname = decodeURIComponent(encodedPathname); }
-  catch { response.writeHead(400); response.end('Bad request'); return; }
   if (conference && await conference.handlePublicReport(request, response, pathname, conferenceStore)) return;
   if (pathname === '/privacy/signals') {
     response.writeHead(200, {
@@ -134,6 +151,7 @@ const server = http.createServer(async (request, response) => {
     response.end('Not found');
   }
 });
+if (adminEnabled) { server.requestTimeout = 10000; server.headersTimeout = 10000; }
 server.on('error', (error) => {
   console.error(error.code === 'EADDRINUSE'
     ? `Port ${port} is in use. Try: node server.mjs --port=${port + 1}` : error.message);

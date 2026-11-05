@@ -71,16 +71,16 @@ test('loopback studio enforces exact Host/Origin, run token, JSON/body bounds an
   const root=await temporary(t), images=path.join(root,'images');await mkdir(images);await writeFile(path.join(images,'BPC-157 10mg.png'),png);
   const studio=await createStudio({images,store:path.join(root,'store'),port:0,render:mockRenderer});t.after(()=>{studio.server.closeAllConnections();return new Promise(resolve=>studio.server.close(resolve));});
   assert.equal(studio.server.address().address,'127.0.0.1');const origin=studio.origin;
-  const session=await (await fetch(origin+'/api/session')).json();const input={productId:session.products[0].id,fields:{},publish:true};
-  const post=(changes={},headers={})=>fetch(origin+'/api/generate',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Studio-Token':session.token,...headers},body:JSON.stringify({...input,...changes})});
-  const hostileHost=await new Promise((resolve,reject)=>{const request=http.get(origin+'/api/session',{headers:{Host:'localhost:'+new URL(origin).port}},response=>{response.resume();resolve(response.statusCode);});request.on('error',reject);});assert.equal(hostileHost,403);
-  assert.equal((await fetch(origin+'/api/session',{headers:{Origin:'http://evil.invalid'}})).status,403);
+  const session=await (await fetch(origin+'/admin/api/session')).json();const input={productId:session.products[0].id,fields:{},publish:true};
+  const post=(changes={},headers={})=>fetch(origin+'/admin/api/generate',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Studio-Token':session.token,...headers},body:JSON.stringify({...input,...changes})});
+  const hostileHost=await new Promise((resolve,reject)=>{const request=http.get(origin+'/admin/api/session',{headers:{Host:'localhost:'+new URL(origin).port}},response=>{response.resume();resolve(response.statusCode);});request.on('error',reject);});assert.equal(hostileHost,403);
+  assert.equal((await fetch(origin+'/admin/api/session',{headers:{Origin:'http://evil.invalid'}})).status,403);
   assert.equal((await post({}, {'X-Studio-Token':'bad'})).status,403);assert.equal((await post({}, {Origin:'http://evil.invalid'})).status,403);assert.equal((await post({}, {'Content-Type':'text/plain'})).status,415);
-  assert.equal((await post({}, {'X-Studio-Token':'é'.repeat(64)})).status,403);assert.equal((await fetch(origin+'/api/session')).status,200);
+  assert.equal((await post({}, {'X-Studio-Token':'é'.repeat(64)})).status,403);assert.equal((await fetch(origin+'/admin/api/session')).status,200);
   assert.equal((await post({fields:{client:'x'.repeat(9000)}})).status,413);assert.equal((await post({productId:'../secret'})).status,400);assert.equal((await post({fields:{purity1:98}})).status,400);
-  const response=await post();assert.equal(response.status,201);const bundle=await response.json();assert.equal(bundle.published,true);assert.equal((await fetch(origin+bundle.previewURL)).status,200);assert.equal((await (await fetch(origin+'/api/history')).json()).length,1);
-  assert.equal((await fetch(origin+'/api/generate')).status,404);assert.equal((await fetch(origin+'/images/'+encodeURIComponent('../secret'))).status,404);assert.equal((await fetch(origin+'/bundles/published/'+bundle.report.lookupCode+'/private.json')).status,404);
-  assert.equal((await fetch(origin+'/api/session')).headers.get('access-control-allow-origin'),null);
+  const response=await post();assert.equal(response.status,201);const bundle=await response.json();assert.equal(bundle.published,true);assert.equal((await fetch(origin+bundle.previewURL)).status,200);assert.equal((await (await fetch(origin+'/admin/api/history')).json()).length,1);
+  assert.equal((await fetch(origin+'/admin/api/generate')).status,404);assert.equal((await fetch(origin+'/admin/images/'+encodeURIComponent('../secret'))).status,400);assert.equal((await fetch(origin+'/admin/bundles/published/'+bundle.report.lookupCode+'/private.json')).status,404);
+  assert.equal((await fetch(origin+'/admin/api/session')).headers.get('access-control-allow-origin'),null);
 });
 
 test('public reader opt-in serves only exact immutable DTO/PDF/SVG and default/production expose no studio',async t=>{
@@ -108,10 +108,10 @@ test('real Python closed loop publishes distinct products and repeated runs, pre
   const photo=await readFile(path.join(project,'templates','coa','assets','sample-vial-product.png'));
   await Promise.all(['BPC-157 10mg','HCG 5000IU','0.9% Benzyl Alcohol 10ml','Tesamorelin 10mg + Ipamorelin 5mg'].map(name=>writeFile(path.join(images,name+'.png'),photo)));
   const studio=await createStudio({images,store,port:0});t.after(()=>{studio.server.closeAllConnections();return new Promise(resolve=>studio.server.close(resolve));});
-  const origin=await publicServer(t,store),session=await (await fetch(studio.origin+'/api/session')).json();const snapshots=[];
+  const origin=await publicServer(t,store),session=await (await fetch(studio.origin+'/admin/api/session')).json();const snapshots=[];
   for(const name of ['BPC-157 10mg','HCG 5000IU','0.9% Benzyl Alcohol 10ml','Tesamorelin 10mg + Ipamorelin 5mg','BPC-157 10mg']){
     const selected=session.products.find(row=>row.name===name),fields={client:'Integration QA',lot:'QA-ONLY',received:'2026-11-05',reported:'2026-11-05',...(snapshots.length===4?{purity1:99.41,purity2:99.43}:{})};
-    const response=await fetch(studio.origin+'/api/generate',{method:'POST',headers:{Origin:studio.origin,'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify({productId:selected.id,fields,publish:true})});const generated=await response.json();assert.equal(response.status,201,generated.error);
+    const response=await fetch(studio.origin+'/admin/api/generate',{method:'POST',headers:{Origin:studio.origin,'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify({productId:selected.id,fields,publish:true})});const generated=await response.json();assert.equal(response.status,201,generated.error);
     const dto=await (await fetch(origin+'/__reports/'+generated.report.lookupCode)).json();assert.equal(dto.label,name);assert.equal(dto.record.contentUnit,selected.unit);assert.equal(dto.record.composition.length,selected.components.length);
     assert.equal((Math.round((Math.round(Number(dto.record.purity[0])*100)+Math.round(Number(dto.record.purity[1])*100))/2)/100).toFixed(2),dto.record.purity[2]);assert.ok(Math.abs(dto.record.chromatogram.reduce((sum,row)=>sum+row.area,0)-100)<1e-5);assert.ok(Math.abs(dto.record.chromatogram.filter(row=>row.kind==='target').reduce((sum,row)=>sum+row.area,0)-Number(dto.record.purity[2]))<1e-5);
     const pdf=Buffer.from(await (await fetch(origin+dto.assets.pdf)).arrayBuffer()),svg=await (await fetch(origin+dto.assets.svg)).text();assert.equal(pdf.subarray(0,5).toString(),'%PDF-');assert.match(svg,/<svg/);assert.doesNotMatch(svg,/<text\b|(?:href|src)="(?:https?:|file:)/i);assert.equal((await fetch(origin+'/coa/'+dto.report.lookupCode)).status,200);

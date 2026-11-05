@@ -49,7 +49,7 @@ node server.mjs --host=0.0.0.0 --port=4318
 
 ## 当前功能
 
-临时私有产品报告工作台可按提供的产品原图生成独立 PDF/SVG，并通过普通 Verify COA 查找。该工具需显式启动，只监听 `127.0.0.1:4320`；客户预览服务器需加 `--conference-reports` 才能只读查询。默认与生产模式不开放入口。数据保存在已忽略的 `work/report-studio`，重启保留；详细启动、字段规则与关闭/归档步骤见 [私有工作台说明](docs/conference-studio.md)。现有两个公开样例的披露保持原样。
+管理后台基础页面位于本机 `/admin`，Reports 是首个实际模块：按产品原图生成 PDF/SVG、查看已发布记录，再通过普通 Verify COA 向客户展示。使用 `conference/start.ps1` 启动集成的本机 4317 服务，或显式传入 `--conference-reports --admin`；客户页面没有管理入口，LAN 4318 仅开放只读查找。后台只允许本机绑定与非生产模式，未来的生产认证、角色、订单与客户管理另行建设。现阶段随机示例数据的说明只保留在私有管理区；清理生成数据不会移除后台页面。已忽略的 `work/report-studio` 保留原有 LC/PDF，重启不变。详见 [管理与报告模块说明](docs/conference-studio.md)。现有两个公开样例的披露保持原样。
 
 - 英文品牌首页，沿用现有的 AssayNova Logo、海军蓝与青绿色。
 - 响应式布局、手机导航、服务介绍、送检步骤、FAQ。

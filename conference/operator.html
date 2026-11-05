@@ -1,3 +1,58 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AssayNova · Private report studio</title><link rel="stylesheet" href="/operator.css"><script type="module" src="/operator.js"></script></head>
-<body><header><a href="/">AssayNova <span>Private report studio</span></a><p>Loopback only · operator workspace</p></header><main><aside><h1>Prepare a report</h1><p class="notice">Temporary synthetic data. Generated values are examples, not instrument measurements. Public reports use the normal customer experience. Review the selected photo and recipe before publishing.</p><label for="search">Search products</label><input id="search" type="search" placeholder="Name, dose or unit" autocomplete="off"><label for="product">Product <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select><p id="product-help" class="hint">One original photo per product; duplicate photos are grouped.</p><div class="selection"><img id="photo" alt="Selected product photo" width="112" height="112"><strong id="selected-name"></strong></div><form id="generate"><fieldset><legend>Composition recipe</legend><div id="components"></div><p class="hint">Nominal content is separate from HPLC area purity. Preserve IU / ml units.</p></fieldset><div class="grid"><label>Client<input name="client" maxlength="64" placeholder="Research client"></label><label>Lot<input name="lot" maxlength="40" placeholder="Automatic"></label><label>Received<input name="received" type="date"></label><label>Reported<input name="reported" type="date"></label><label>Purity replicate 1 (%)<input name="purity1" type="number" min="99.05" max="99.95" step="0.01" placeholder="Random 99.05–99.95"></label><label>Purity replicate 2 (%)<input name="purity2" type="number" min="99.05" max="99.95" step="0.01" placeholder="Random 99.05–99.95"></label></div><p class="hint">Empty fields use context defaults. Net content varies within ±2%; purity is independent. Every generation creates a new immutable snapshot and Lookup Code.</p><div class="buttons"><button type="submit" value="preview">Preview only</button><button class="primary" type="submit" value="publish">Generate &amp; publish</button></div></form><p id="status" role="status" tabindex="-1">Loading catalog…</p><section><h2>Published history</h2><div id="history"></div></section></aside><section class="preview"><div id="result" hidden><p id="result-state"></p><h2 id="code" tabindex="-1"></h2><p id="result-name"></p><div class="buttons"><button id="copy-code">Copy LC</button><a id="public-link" target="_blank" rel="noopener">Open customer report</a><a id="pdf" target="_blank" rel="noopener">Download PDF</a></div><label id="manual-label" hidden>Manual copy<input id="manual-copy" readonly></label></div><div id="empty"><h2>Your portrait report appears here.</h2><p>Choose a product, check the recipe and preview or publish.</p></div><img id="paper" alt="Report preview" width="595" height="842" hidden></section></main></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Reports · AssayNova Admin</title>
+  <link rel="stylesheet" href="/admin/operator.css"><script type="module" src="/admin/operator.js"></script>
+</head>
+<body>
+  <a class="skip" href="#create-report">Skip to report controls</a>
+  <div class="admin-shell">
+    <nav class="admin-nav" aria-label="Administration">
+      <a class="brand" href="/admin">AssayNova<span>ADMIN</span></a>
+      <p class="nav-label">WORKSPACE</p>
+      <a class="module active" href="/admin" aria-current="page"><span aria-hidden="true">▤</span> Reports</a>
+      <a class="subnav" href="/admin#create-report">Create report</a>
+      <a class="subnav" href="/admin#published-reports">Published reports</a>
+      <p class="nav-foot"><span class="dot"></span> Local administration</p>
+    </nav>
+    <div class="admin-workspace">
+      <header class="workspace-header"><div><p class="eyebrow">ASSAYNOVA / MANAGEMENT</p><h1>Reports</h1><p class="subtitle">Create product reports and manage published snapshots.</p></div><span class="workspace-badge">Local workspace</span></header>
+      <main class="reports-layout">
+        <aside id="create-report" aria-labelledby="create-title">
+          <div class="section-heading"><h2 id="create-title">Create report</h2><span class="data-badge">Synthetic data</span></div>
+          <p class="notice">Generated values are examples, not instrument measurements. Review the original product photo and composition before publishing. Customer reports use the normal COA experience.</p>
+          <label for="search">Search products</label><input id="search" type="search" placeholder="Name, dose or unit" autocomplete="off">
+          <label for="product">Product <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
+          <p id="product-help" class="hint">Original photos are grouped by product.</p>
+          <div class="selection"><img id="photo" alt="Selected product photo" width="96" height="112"><strong id="selected-name"></strong></div>
+          <form id="generate">
+            <fieldset><legend>Composition recipe</legend><div id="components"></div><p class="hint">Nominal content is separate from HPLC area purity. Preserve IU / ml units.</p></fieldset>
+            <div class="grid">
+              <label>Client<input name="client" maxlength="64" placeholder="Research client"></label>
+              <label>Lot<input name="lot" maxlength="40" placeholder="Automatic"></label>
+              <label>Received<input name="received" type="date"></label>
+              <label>Reported<input name="reported" type="date"></label>
+              <label>Purity replicate 1 (%)<input name="purity1" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
+              <label>Purity replicate 2 (%)<input name="purity2" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
+            </div>
+            <p class="hint">Empty fields use context defaults. Purity is 99.05–99.95%; net content varies within ±2%. Each generation creates a new immutable snapshot and Lookup Code.</p>
+            <div class="buttons"><button type="submit" value="preview">Preview only</button><button class="primary" type="submit" value="publish">Generate &amp; publish</button></div>
+          </form>
+          <p id="status" role="status" tabindex="-1">Loading catalog…</p>
+        </aside>
+        <section class="preview" aria-label="Report preview">
+          <div id="result" hidden>
+            <p id="result-state"></p><h2 id="code" tabindex="-1"></h2><p id="result-name"></p>
+            <div class="buttons"><button id="copy-code">Copy LC</button><a id="public-link" target="_blank" rel="noopener">Open customer report</a><a id="pdf" target="_blank" rel="noopener">Download PDF</a></div>
+            <label id="manual-label" hidden>Manual copy<input id="manual-copy" readonly></label>
+          </div>
+          <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2>Review your report here</h2><p>Choose a product and check the recipe.<br>Preview privately or generate and publish.</p></div>
+          <img id="paper" alt="Report preview" width="595" height="842" hidden>
+        </section>
+        <section id="published-reports" class="history-panel" aria-labelledby="history-title"><div class="section-heading"><div><p class="eyebrow">REPORT LIBRARY</p><h2 id="history-title">Published reports</h2></div><p class="hint">Stable Lookup Codes · preserved across restart</p></div><div id="history"></div></section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
