@@ -36,19 +36,23 @@ Both figures share one 7.5-second timeout. Rotation runs only when Our Testing
 and the document are visible, at least one figure intersects the viewport, and
 the user has requested playback. Intersection starts unknown and therefore off.
 Hover temporarily stops rotation. Focus entry pauses until explicit Start
-rotation; focus departure never restarts it. Manual Previous/Next pauses and
-announces the paired change politely, without moving focus or recreating controls.
+rotation; focus departure never restarts it. A small icon-only Pause/Start button
+beside each caption controls the pair without moving focus or recreating its SVG
+icons. There is no dashboard, visible run metadata, counter or manual slide navigation.
 Automatic updates do not announce slides. Buttons are bound before being enabled.
 
 Reduced motion starts in manual mode, and a change to reduced motion pauses.
 Explicit Start rotation can enable instant, static frame changes even with this
-preference; there are no transitions or animated paths. Missing lifecycle
-observers disable autoplay while leaving manual controls usable. One idempotent
-controller owns observers/listeners/timer and releases them on destroy.
+preference; there are no transitions or animated paths. If lifecycle observers or
+the media query are unavailable, the accessible plot stays static and its playback
+control remains hidden and disabled. One idempotent controller owns observers,
+listeners and timer, and releases them on destroy.
 
 SVG width follows the actual plot width through ResizeObserver, keeping 11px
 numeric labels at their CSS size instead of shrinking a desktop viewBox. Plot
-height is fixed and metadata reserves two lines so the controls and plot do not
-move between runs. Accessible SVG titles/descriptions summarize each record.
+height follows the original compact figure footprint: the measured width times
+235/520 plus 62.4px, with a 160px minimum. Figure padding and brief captions keep
+their original proportions. Height is invariant across runs at the same width.
+Accessible SVG titles/descriptions retain the analyte, numerical context and position.
 Carousel behavior follows the [WAI carousel pattern](https://www.w3.org/WAI/ARIA/apg/patterns/carousel/);
 all data-generation, rendering and controller code is original to this project.

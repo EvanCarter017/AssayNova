@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { METHOD_ANALYTES, PROTON_MASS, CARBON13_SPACING, ROTATION_MS, generateMethodSamples, renderMethodPlot, createMethodCharts } from '../dist/method-charts.js';
 
 class Target {
-  constructor() { this.listeners = new Map(); this.attributes = new Map(); this.textContent = ''; this.innerHTML = ''; this.disabled = true; this.hidden = false; this.clientWidth = 520; }
+  constructor() { this.listeners = new Map(); this.attributes = new Map(); this.dataset = {}; this.textContent = ''; this.innerHTML = ''; this.disabled = true; this.hidden = false; this.clientWidth = 520; }
   addEventListener(type, listener) { if (!this.listeners.has(type)) this.listeners.set(type, new Set()); this.listeners.get(type).add(listener); }
   removeEventListener(type, listener) { this.listeners.get(type)?.delete(listener); }
   fire(type, values = {}) { for (const listener of [...(this.listeners.get(type) || [])]) listener({ target: this, ...values }); }
@@ -21,7 +21,8 @@ function fixture({ reduced = false, missing = false, width = 520 } = {}) {
   document.defaultView = { setTimeout: scheduler.setTimeout, clearTimeout: scheduler.clearTimeout, matchMedia: () => media, ...(missing ? {} : { IntersectionObserver: observer('intersection'), MutationObserver: observer('mutation'), ResizeObserver: observer('resize') }) };
   const figures = ['hplc', 'mass'].map(kind => {
     const figure = new Target(); figure.dataset = { methodChart: kind };
-    const elements = Object.fromEntries(['.methods-chart', '.methods-run-name', '.methods-run-stats', '.methods-chart-frame', '.methods-carousel-controls', '.methods-run-count', '.methods-announcement', '[data-chart-action="play"]', '[data-chart-action="previous"]', '[data-chart-action="next"]'].map(selector => [selector, new Target()]));
+    const elements = Object.fromEntries(['.methods-chart', '.methods-chart-frame', '.methods-carousel-controls', '[data-chart-action="play"]'].map(selector => [selector, new Target()]));
+    elements['[data-chart-action="play"]'].innerHTML = '<svg class="methods-play-icon"></svg><svg class="methods-pause-icon"></svg>';
     elements['.methods-chart'].clientWidth = width;
     for (const element of Object.values(elements)) element.focus = () => { document.activeElement = element; figure.fire('focusin'); };
     figure.querySelector = selector => elements[selector]; figure.nodes = elements; return figure;
@@ -63,9 +64,9 @@ test('ion model matches local primary chemistry, charge spacing, ppm and natural
 });
 
 test('responsive instrument renderer keeps pixel labels, units, safe text and finite coordinates', () => {
-  for (const width of [218, 300, 520, 680]) for (const kind of ['hplc', 'mass']) {
+  for (const [width, height] of [[218, 161], [300, 198], [520, 297], [680, 370]]) for (const kind of ['hplc', 'mass']) {
     const sample = generateMethodSamples(92)[0], svg = renderMethodPlot(kind, sample, width);
-    assert.ok(svg.includes(`viewBox="0 0 ${width} 236"`)); assert.ok(svg.includes('font-size="11"')); assert.ok(svg.includes('<title>') && svg.includes('<desc>')); assert.ok(!/NaN|Infinity|undefined/.test(svg)); assert.ok(svg.includes(kind === 'hplc' ? 'Response (mAU)' : 'Intensity (counts)'));
+    assert.ok(svg.includes(`viewBox="0 0 ${width} ${height}"`)); assert.ok(svg.includes('font-size="11"')); assert.ok(svg.includes('<title>') && svg.includes('<desc>')); assert.ok(!/NaN|Infinity|undefined/.test(svg)); assert.ok(svg.includes(kind === 'hplc' ? 'Response (mAU)' : 'Intensity (counts)'));
   }
   const hostile = structuredClone(generateMethodSamples(2)[0]); hostile.analyte.name = '<img onerror="bad">';
   assert.ok(renderMethodPlot('hplc', hostile).includes('&lt;img')); assert.ok(!renderMethodPlot('mass', hostile).includes('<img'));
@@ -75,14 +76,16 @@ test('responsive instrument renderer keeps pixel labels, units, safe text and fi
   assert.throws(() => renderMethodPlot('unknown', invalid), /Unknown/);
 });
 
-test('paired controls wrap both ways, preserve exact data and focused button nodes across resize', () => {
+test('automatic paired cycle restores exact data and preserves focused icon controls across resize', () => {
   const f = fixture(), start = f.controller.getState().sample, play = f.button('play');
-  assert.equal(createMethodCharts(f.root), f.controller); assert.equal(f.button('next').listeners.get('click').size, 1);
-  f.button('previous', 1).focus(); f.button('previous', 1).fire('click'); assert.equal(f.controller.getState().index, 2);
-  for (const figure of f.figures) { assert.ok(figure.nodes['.methods-run-name'].textContent.includes('Thymosin Beta-4')); assert.equal(figure.nodes['.methods-run-count'].textContent, '03 / 03'); assert.ok(figure.nodes['.methods-announcement'].textContent.includes('Both method views updated')); }
-  f.button('next').fire('click'); assert.equal(f.controller.getState().sample, start);
+  assert.equal(createMethodCharts(f.root), f.controller); assert.equal(play.listeners.get('click').size, 1);
+  const plots = f.figures.map(figure => figure.nodes['.methods-chart'].innerHTML), icon = play.innerHTML;
+  f.visible(); play.focus(); play.fire('click'); f.advance(15000); assert.equal(f.controller.getState().index, 2);
+  for (const figure of f.figures) { assert.equal(figure.nodes['.methods-chart-frame'].getAttribute('aria-label'), 'Thymosin Beta-4, 3 of 3'); assert.ok(figure.nodes['.methods-chart'].innerHTML.includes('Thymosin Beta-4')); }
+  f.advance(7500); assert.equal(f.controller.getState().sample, start); assert.deepEqual(f.figures.map(figure => figure.nodes['.methods-chart'].innerHTML), plots);
+  assert.equal(play.getAttribute('aria-label'), 'Pause rotation'); assert.equal(play.getAttribute('title'), 'Pause rotation'); assert.equal(play.dataset.state, 'playing'); assert.equal(play.innerHTML, icon);
   f.figures[0].nodes['.methods-chart'].clientWidth = 218; f.observation.resize.emit([]);
-  assert.equal(f.controller.getState().sample, start); assert.equal(f.button('play'), play); assert.equal(f.document.activeElement, f.button('previous', 1)); assert.ok(f.figures[0].nodes['.methods-chart'].innerHTML.includes('0 0 218 236'));
+  assert.equal(f.controller.getState().sample, start); assert.equal(f.button('play'), play); assert.equal(f.document.activeElement, play); assert.ok(f.figures[0].nodes['.methods-chart'].innerHTML.includes('0 0 218 161')); assert.equal(play.innerHTML, icon);
 });
 
 test('HPLC response units and retention annotation occupy separate header lines at narrow widths', () => {
@@ -99,14 +102,14 @@ test('one paired 7.5-second timer starts only after visible intersection and pau
   const f = fixture(); assert.equal(f.tasks.size, 0); f.advance(30000); assert.equal(f.controller.getState().index, 0);
   f.visible(); assert.equal(f.tasks.size, 1); assert.equal([...f.tasks.values()][0].delay, ROTATION_MS);
   f.advance(7499); assert.equal(f.controller.getState().index, 0); f.advance(1); assert.equal(f.controller.getState().index, 1); assert.equal(f.tasks.size, 1);
-  f.figures.forEach(figure => assert.equal(figure.nodes['.methods-announcement'].textContent, ''));
+  f.figures.forEach(figure => assert.equal(figure.nodes['.methods-chart-frame'].getAttribute('aria-live'), 'off'));
   f.button('play').fire('click'); assert.equal(f.tasks.size, 0); f.advance(15000); assert.equal(f.controller.getState().index, 1);
   f.button('play', 1).fire('click'); assert.equal(f.tasks.size, 1); f.advance(7500); assert.equal(f.controller.getState().index, 2);
 });
 
 test('focus entry requires explicit restart; hover release alone resumes only requested playback', () => {
-  const f = fixture(); f.visible(); f.button('next').focus(); assert.equal(f.tasks.size, 0); f.figures[0].fire('focusout'); assert.equal(f.tasks.size, 0);
-  f.figures[0].fire('pointerenter'); f.button('play').fire('click'); assert.equal(f.controller.getState().wanted, true); assert.equal(f.tasks.size, 0); assert.equal(f.button('play').textContent, 'Pause rotation');
+  const f = fixture(); f.visible(); f.button('play').focus(); assert.equal(f.tasks.size, 0); f.figures[0].fire('focusout'); assert.equal(f.tasks.size, 0);
+  f.figures[0].fire('pointerenter'); f.button('play').fire('click'); assert.equal(f.controller.getState().wanted, true); assert.equal(f.tasks.size, 0); assert.equal(f.button('play').getAttribute('aria-label'), 'Pause rotation');
   f.figures[0].fire('pointerleave'); assert.equal(f.tasks.size, 1); f.figures[1].fire('pointerenter'); assert.equal(f.tasks.size, 0); f.figures[1].fire('pointerleave'); assert.equal(f.tasks.size, 1);
   f.button('play').fire('click'); f.figures[0].fire('pointerenter'); f.figures[0].fire('pointerleave'); assert.equal(f.tasks.size, 0);
 });
@@ -114,7 +117,7 @@ test('focus entry requires explicit restart; hover release alone resumes only re
 test('pointerdown then focusin then click pauses the requested rotation; keyboard restart still works', () => {
   const f = fixture(); f.visible(); const play = f.button('play');
   f.figures[0].fire('pointerenter'); play.fire('pointerdown'); play.focus(); play.fire('pointerup'); play.fire('click', { detail: 1 });
-  assert.equal(f.controller.getState().wanted, false); assert.equal(play.textContent, 'Start rotation'); f.figures[0].fire('pointerleave'); assert.equal(f.tasks.size, 0);
+  assert.equal(f.controller.getState().wanted, false); assert.equal(play.getAttribute('aria-label'), 'Start rotation'); f.figures[0].fire('pointerleave'); assert.equal(f.tasks.size, 0);
   f.figures[0].fire('pointerenter'); play.fire('pointerdown'); play.focus(); play.fire('click', { detail: 1 }); assert.equal(f.controller.getState().wanted, true); f.figures[0].fire('pointerleave'); assert.equal(f.tasks.size, 1);
   play.focus(); assert.equal(f.controller.getState().wanted, false); play.fire('click', { detail: 0 }); assert.equal(f.controller.getState().wanted, true);
   play.fire('pointerdown'); play.fire('pointercancel'); play.focus(); play.fire('click', { detail: 0 }); assert.equal(f.controller.getState().wanted, true);
@@ -133,11 +136,12 @@ test('reduced motion defaults manual, changes pause, explicit Play permits stati
   f.media.fire('change', { matches: true }); assert.equal(f.tasks.size, 0); f.media.fire('change', { matches: false }); assert.equal(f.tasks.size, 0); f.button('play').fire('click'); f.advance(7500); assert.equal(f.controller.getState().index, 1);
 });
 
-test('missing observers fail safe to usable manual controls, destroy cleans every callback', () => {
-  const missing = fixture({ missing: true }); missing.button('play').fire('click'); missing.advance(30000); assert.equal(missing.tasks.size, 0); missing.button('next').fire('click'); assert.equal(missing.controller.getState().index, 1);
+test('missing observers show a static plot without a dead control, destroy cleans every callback', () => {
+  const missing = fixture({ missing: true }); missing.advance(30000); assert.equal(missing.tasks.size, 0); assert.equal(missing.controller.getState().index, 0);
+  for (const figure of missing.figures) { assert.ok(figure.nodes['.methods-chart'].innerHTML.includes('role="img"')); assert.equal(figure.nodes['.methods-carousel-controls'].hidden, true); assert.equal(figure.nodes['[data-chart-action="play"]'].disabled, true); }
   const f = fixture(); f.visible(); f.controller.destroy(); f.controller.destroy(); assert.equal(f.tasks.size, 0); assert.ok(Object.values(f.observation).every(observer => observer.disconnected)); assert.equal(f.media.listeners.get('change').size, 0); assert.equal(f.document.listeners.get('visibilitychange').size, 0);
   for (const figure of f.figures) { assert.equal(figure.listeners.get('focusin').size, 0); assert.equal(figure.nodes['.methods-carousel-controls'].hidden, true); }
-  assert.equal(f.button('next').listeners.get('click').size, 0); const before = f.controller.getState().index; f.advance(30000); assert.equal(f.controller.getState().index, before);
+  assert.equal(f.button('play').listeners.get('click').size, 0); const before = f.controller.getState().index; f.advance(30000); assert.equal(f.controller.getState().index, before);
 });
 
 test('queued old observers and media callbacks cannot overwrite a rebound controller', () => {
@@ -146,13 +150,13 @@ test('queued old observers and media callbacks cannot overwrite a rebound contro
   f.controller.destroy();
   const rebound = createMethodCharts(f.root, { seed: 752 });
   f.button('play').focus();
-  assert.equal(f.button('play').textContent, 'Start rotation');
+  assert.equal(f.button('play').getAttribute('aria-label'), 'Start rotation');
   const plot = f.figures[0].nodes['.methods-chart'].innerHTML;
   oldObservers.intersection.emit([{ target: f.figures[0], isIntersecting: true }]); oldObservers.mutation.emit([]); oldObservers.resize.emit([]);
-  assert.equal(f.button('play').textContent, 'Start rotation'); assert.equal(f.figures[0].nodes['.methods-chart'].innerHTML, plot); assert.equal(f.tasks.size, 0);
+  assert.equal(f.button('play').getAttribute('aria-label'), 'Start rotation'); assert.equal(f.figures[0].nodes['.methods-chart'].innerHTML, plot); assert.equal(f.tasks.size, 0);
   f.visible(); f.button('play').fire('click'); assert.equal(f.tasks.size, 1); assert.equal(rebound.getState().wanted, true);
   oldMotion({ matches: true }); oldObservers.mutation.emit([]);
-  assert.equal(f.button('play').textContent, 'Pause rotation'); assert.equal(f.tasks.size, 1); assert.equal(rebound.getState().wanted, true);
+  assert.equal(f.button('play').getAttribute('aria-label'), 'Pause rotation'); assert.equal(f.tasks.size, 1); assert.equal(rebound.getState().wanted, true);
 });
 
 test('pure import performs no DOM, timers, storage, network or clipboard work', () => {

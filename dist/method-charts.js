@@ -46,7 +46,7 @@ export function generateMethodSamples(seed) {
 export function renderMethodPlot(kind, sample, measuredWidth = 520) {
   if (!['hplc', 'mass'].includes(kind)) throw new TypeError('Unknown method chart');
   if (!Number.isInteger(sample.analyte.charge) || sample.analyte.charge < 1) throw new TypeError('Invalid ion charge');
-  const width = Math.max(160, Math.round(Number(measuredWidth) || 520)), height = 236;
+  const width = Math.max(160, Math.round(Number(measuredWidth) || 520)), height = Math.max(160, Math.round(width * 235 / 520 + 62.4));
   const left = 47, right = width - 13, top = 33, bottom = height - 40;
   const data = kind === 'hplc' ? sample.hplc : sample.mass;
   const minX = kind === 'hplc' ? 0 : data.min, maxX = kind === 'hplc' ? 15 : data.max, maxY = kind === 'hplc' ? data.max : data.maxCounts;
@@ -74,7 +74,7 @@ export function createMethodCharts(root, options = {}) {
   if (!samples.length) throw new TypeError('Chart samples are required');
   const figures = [...root.querySelectorAll('.methods-figure[data-method-chart]')];
   if (figures.length !== 2) return null;
-  const nodes = figures.map(figure => ({ figure, kind: figure.dataset.methodChart, plot: figure.querySelector('.methods-chart'), name: figure.querySelector('.methods-run-name'), stats: figure.querySelector('.methods-run-stats'), frame: figure.querySelector('.methods-chart-frame'), controls: figure.querySelector('.methods-carousel-controls'), counter: figure.querySelector('.methods-run-count'), live: figure.querySelector('.methods-announcement'), play: figure.querySelector('[data-chart-action="play"]'), previous: figure.querySelector('[data-chart-action="previous"]'), next: figure.querySelector('[data-chart-action="next"]') }));
+  const nodes = figures.map(figure => ({ figure, kind: figure.dataset.methodChart, plot: figure.querySelector('.methods-chart'), frame: figure.querySelector('.methods-chart-frame'), controls: figure.querySelector('.methods-carousel-controls'), play: figure.querySelector('[data-chart-action="play"]') }));
   if (nodes.some(node => Object.values(node).some(value => !value))) throw new TypeError('Method chart controls are incomplete');
   const scheduler = options.scheduler || { setTimeout: (callback, delay) => window.setTimeout(callback, delay), clearTimeout: id => window.clearTimeout(id) };
   const IO = options.IntersectionObserver ?? window.IntersectionObserver, MO = options.MutationObserver ?? window.MutationObserver, RO = options.ResizeObserver ?? window.ResizeObserver;
@@ -84,33 +84,27 @@ export function createMethodCharts(root, options = {}) {
   const canObserve = Boolean(IO && MO && RO && media);
   const eligible = () => !destroyed && wanted && canObserve && !root.hidden && !document.hidden && intersecting.size > 0 && hovering.size === 0;
   const listen = (target, event, handler) => { target.addEventListener(event, handler); cleanups.push(() => target.removeEventListener(event, handler)); };
-  function paint(announce = false) {
+  function paint() {
     if (destroyed) return;
     const sample = samples[index];
     for (const node of nodes) {
       node.plot.innerHTML = renderMethodPlot(node.kind, sample, node.plot.clientWidth || 520);
-      node.name.textContent = `${sample.run} / ${sample.analyte.name}`;
-      node.stats.textContent = node.kind === 'hplc' ? `${sample.hplc.purity.toFixed(2)}% area · ${sample.hplc.rt.toFixed(2)} min · ${sample.hplc.peaks.length} peaks` : `Selected-ion region · ${sample.analyte.charge}+ · mono m/z ${sample.mass.ions[0].mz.toFixed(4)}`;
       node.frame.setAttribute('aria-label', `${sample.analyte.name}, ${index + 1} of ${samples.length}`);
-      node.frame.setAttribute('aria-live', wanted ? 'off' : 'polite');
-      node.counter.textContent = `${String(index + 1).padStart(2, '0')} / ${String(samples.length).padStart(2, '0')}`;
-      node.live.textContent = announce ? `${sample.analyte.name}, run ${index + 1} of ${samples.length}. Both method views updated.` : '';
+      node.frame.setAttribute('aria-live', 'off');
     }
   }
   function schedule() {
     if (destroyed) return;
     if (timer !== null) { scheduler.clearTimeout(timer); timer = null; }
-    for (const node of nodes) { node.play.textContent = wanted ? 'Pause rotation' : 'Start rotation'; node.frame.setAttribute('aria-live', 'off'); }
+    for (const node of nodes) { const label = wanted ? 'Pause rotation' : 'Start rotation'; node.play.setAttribute('aria-label', label); node.play.setAttribute('title', label); node.play.dataset.state = wanted ? 'playing' : 'paused'; }
     if (eligible()) timer = scheduler.setTimeout(() => { timer = null; if (eligible()) { index = (index + 1) % samples.length; paint(); } schedule(); }, ROTATION_MS);
   }
-  const change = direction => { wanted = false; index = (index + direction + samples.length) % samples.length; paint(true); schedule(); };
   for (const node of nodes) {
     // Pointer focus pauses first; retain the rotation action the pointer selected.
     let pointerIntent = null;
     listen(node.play, 'pointerdown', () => { pointerIntent = !wanted; });
     listen(node.play, 'pointercancel', () => { pointerIntent = null; });
     listen(node.play, 'click', event => { wanted = event.detail > 0 && pointerIntent !== null ? pointerIntent : !wanted; pointerIntent = null; schedule(); });
-    listen(node.previous, 'click', () => change(-1)); listen(node.next, 'click', () => change(1));
     listen(node.figure, 'focusin', () => { wanted = false; schedule(); });
     listen(node.figure, 'pointerenter', () => { hovering.add(node.figure); schedule(); });
     listen(node.figure, 'pointerleave', () => { hovering.delete(node.figure); schedule(); });
@@ -126,9 +120,9 @@ export function createMethodCharts(root, options = {}) {
     const resize = new RO(() => paint()); nodes.forEach(node => resize.observe(node.plot)); observers.push(resize);
   }
   paint();
-  for (const node of nodes) { node.controls.hidden = false; for (const control of [node.play, node.previous, node.next]) control.disabled = false; }
+  for (const node of nodes) { node.controls.hidden = !canObserve; node.play.disabled = !canObserve; }
   schedule();
-  const controller = Object.freeze({ getState: () => ({ index, wanted, timerActive: timer !== null, sample: samples[index] }), destroy() { if (destroyed) return; destroyed = true; if (timer !== null) scheduler.clearTimeout(timer); timer = null; cleanups.forEach(cleanup => cleanup()); observers.forEach(observer => observer.disconnect()); for (const node of nodes) { node.controls.hidden = true; for (const control of [node.play, node.previous, node.next]) control.disabled = true; } bindings.delete(root); } });
+  const controller = Object.freeze({ getState: () => ({ index, wanted, timerActive: timer !== null, sample: samples[index] }), destroy() { if (destroyed) return; destroyed = true; if (timer !== null) scheduler.clearTimeout(timer); timer = null; cleanups.forEach(cleanup => cleanup()); observers.forEach(observer => observer.disconnect()); for (const node of nodes) { node.controls.hidden = true; node.play.disabled = true; } bindings.delete(root); } });
   bindings.set(root, controller);
   return controller;
 }
