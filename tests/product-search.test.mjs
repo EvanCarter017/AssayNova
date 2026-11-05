@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { parseProduct, catalogDTO, loadCatalog, DEFAULT_IMAGES } from '../conference/catalog.mjs';
 import { normalizeProductQuery, filterProducts, matchesProduct } from '../conference/product-search.mjs';
+import { createAdminI18n } from '../conference/admin-i18n.mjs';
 
 const data = JSON.parse(await readFile(new URL('../conference/product-aliases.json', import.meta.url), 'utf8'));
 const products = [...data.map(row => row.canonicalName), 'Kisspeptin 10mg', 'Oxytocin 10mg'].map(name => {
@@ -100,7 +101,7 @@ function selectionUI() {
   }
   const document = { getElementById: node, createElement: () => ({ ...node('new-image-' + nodes.size), events: new Map() }), querySelectorAll: () => buttons };
   const prefix = operatorSource.slice(operatorSource.indexOf('const $='), operatorSource.indexOf('function showResult'));
-  const context = { document, filterProducts, Date };
+  const context = { document, filterProducts, createAdminI18n, navigator: { language: 'en' }, Date };
   // Capture actual UI functions in a persistent object shared with the VM.
   const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};globalThis.ui={filter,selectProduct,selected:()=>selected,setBusy:value=>{busy=value}};', holder);
   return { nodes, node, buttons, ui: holder.ui };

@@ -6,52 +6,52 @@
   <link rel="stylesheet" href="/admin/operator.css"><script type="module" src="/admin/operator.js"></script>
 </head>
 <body>
-  <a class="skip" href="#create-report">Skip to report controls</a>
+  <a class="skip" href="#create-report" data-i18n="skip">Skip to report controls</a>
   <div class="admin-shell">
-    <nav class="admin-nav" aria-label="Administration">
+    <nav class="admin-nav" aria-label="Administration" data-i18n-aria-label="administration">
       <a class="brand" href="/admin">AssayNova<span>ADMIN</span></a>
-      <p class="nav-label">WORKSPACE</p>
-      <a class="module active" href="/admin" aria-current="page"><span aria-hidden="true">▤</span> Reports</a>
-      <a class="subnav" href="/admin#create-report">Create report</a>
-      <a class="subnav" href="/admin#published-reports">Published reports</a>
-      <p class="nav-foot"><span class="dot"></span> Local administration</p>
+      <p class="nav-label" data-i18n="workspace">WORKSPACE</p>
+      <a class="module active" href="/admin" aria-current="page"><span aria-hidden="true">▤</span> <span data-i18n="reports">Reports</span></a>
+      <a class="subnav" href="/admin#create-report" data-i18n="createReport">Create report</a>
+      <a class="subnav" href="/admin#published-reports" data-i18n="publishedReports">Published reports</a>
+      <p class="nav-foot"><span class="dot"></span> <span data-i18n="localAdministration">Local administration</span></p>
     </nav>
     <div class="admin-workspace">
-      <header class="workspace-header"><div><p class="eyebrow">ASSAYNOVA / MANAGEMENT</p><h1>Reports</h1><p class="subtitle">Create product reports and manage published snapshots.</p></div><div class="workspace-actions"><span class="workspace-badge">Local workspace</span><button id="logout" type="button">Log out</button></div></header>
+      <header class="workspace-header"><div><p class="eyebrow" data-i18n="management">ASSAYNOVA / MANAGEMENT</p><h1 data-i18n="reports">Reports</h1><p class="subtitle" data-i18n="reportsIntro">Create product reports and manage published snapshots.</p></div><div class="workspace-actions"><span class="workspace-badge" data-i18n="localWorkspace">Local workspace</span><select id="admin-language" class="admin-language" aria-label="Admin language" data-i18n-aria-label="language"><option value="en">English</option><option value="zh-CN">中文</option></select><button id="logout" type="button" data-i18n="logout">Log out</button></div></header>
       <main class="reports-layout">
         <aside id="create-report" aria-labelledby="create-title">
-          <div class="section-heading"><h2 id="create-title">Create report</h2><span class="data-badge">Synthetic data</span></div>
-          <p class="notice">Generated values are examples, not instrument measurements. Choose a product and review the full report preview before publishing. Customer reports use the normal COA experience.</p>
-          <label for="search">Search products by name or SKU</label><input id="search" type="search" placeholder="e.g. TR10, BC10, sema, NAD+" autocomplete="off" aria-describedby="product-help">
-          <label for="product">Product <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
-          <p id="product-help" class="hint">Use a full SKU for an exact dose, or a family such as TR / SM. Only products with original photos are listed.</p>
-          <div class="selected-summary"><span class="eyebrow">SELECTED PRODUCT</span><strong id="selected-name">Choose a product</strong></div>
+          <div class="section-heading"><h2 id="create-title" data-i18n="createReport">Create report</h2><span class="data-badge" data-i18n="synthetic">Synthetic data</span></div>
+          <p class="notice" data-i18n="syntheticNotice">Generated values are examples, not instrument measurements. Choose a product and review the full report preview before publishing. Customer reports use the normal COA experience.</p>
+          <label for="search" data-i18n="searchLabel">Search products by name or SKU</label><input id="search" data-i18n-placeholder="searchPlaceholder" type="search" placeholder="e.g. TR10, BC10, sema, NAD+" autocomplete="off" aria-describedby="product-help">
+          <label for="product"><span data-i18n="product">Product</span> <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
+          <p id="product-help" class="hint" data-i18n="productHelp">Use a full SKU for an exact dose, or a family such as TR / SM. Only products with original photos are listed.</p>
+          <div class="selected-summary"><span class="eyebrow" data-i18n="selectedProduct">SELECTED PRODUCT</span><strong id="selected-name">Choose a product</strong></div>
           <form id="generate">
 
             <div class="grid">
-              <label>Client<input name="client" maxlength="64" placeholder="Research client"></label>
-              <label>Lot<input name="lot" maxlength="40" placeholder="Automatic"></label>
-              <label>Received<input name="received" type="date"></label>
-              <label>Reported<input name="reported" type="date"></label>
-              <label>Purity replicate 1 (%)<input name="purity1" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
-              <label>Purity replicate 2 (%)<input name="purity2" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
+              <label><span data-i18n="client">Client</span><input data-i18n-placeholder="clientPlaceholder" name="client" maxlength="64" placeholder="Research client"></label>
+              <label><span data-i18n="lot">Lot</span><input data-i18n-placeholder="automatic" name="lot" maxlength="40" placeholder="Automatic"></label>
+              <label><span data-i18n="received">Received</span><input name="received" type="date"></label>
+              <label><span data-i18n="reported">Reported</span><input name="reported" type="date"></label>
+              <label><span data-i18n="purity1">Purity replicate 1 (%)</span><input data-i18n-placeholder="automatic" name="purity1" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
+              <label><span data-i18n="purity2">Purity replicate 2 (%)</span><input data-i18n-placeholder="automatic" name="purity2" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
             </div>
-            <p class="hint">Empty fields use context defaults. Purity is 99.05–99.95%; net content varies within ±2%. Each generation creates a new immutable snapshot and Lookup Code.</p>
-            <div class="buttons"><button type="submit" value="preview">Preview only</button><button class="primary" type="submit" value="publish">Generate &amp; publish</button></div>
+            <p class="hint" data-i18n="defaultsHint">Empty fields use context defaults. Purity is 99.05–99.95%; net content varies within ±2%. Each generation creates a new immutable snapshot and Lookup Code.</p>
+            <div class="buttons"><button type="submit" value="preview" data-i18n="previewOnly">Preview only</button><button class="primary" type="submit" value="publish" data-i18n="publish">Generate &amp; publish</button></div>
           </form>
           <p id="status" role="status" tabindex="-1">Loading catalog…</p>
         </aside>
-        <section class="preview" aria-label="Report preview">
+        <section class="preview" aria-label="Report preview" data-i18n-aria-label="reportPreview">
           <div id="result" hidden>
-            <p class="eyebrow">LAST GENERATED REPORT · SAVED SNAPSHOT</p>
+            <p class="eyebrow" data-i18n="lastReport">LAST GENERATED REPORT · SAVED SNAPSHOT</p>
             <p id="result-state"></p><h2 id="code" tabindex="-1"></h2><p id="result-name"></p>
-            <div class="buttons"><button id="copy-code">Copy LC</button><a id="public-link" target="_blank" rel="noopener">Open customer report</a><a id="pdf" target="_blank" rel="noopener">Download PDF</a></div>
-            <label id="manual-label" hidden>Manual copy<input id="manual-copy" readonly></label>
+            <div class="buttons"><button id="copy-code" data-i18n="copyLC">Copy LC</button><a data-i18n="openCustomer" id="public-link" target="_blank" rel="noopener">Open customer report</a><a data-i18n="downloadPDF" id="pdf" target="_blank" rel="noopener">Download PDF</a></div>
+            <label id="manual-label" hidden><span data-i18n="manualCopy">Manual copy</span><input id="manual-copy" readonly></label>
           </div>
-          <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2>Review your report here</h2><p>Choose a product to preview its report.<br>Preview privately or generate and publish.</p></div>
-          <img id="paper" alt="Report preview" width="595" height="842" hidden>
+          <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2 data-i18n="reviewTitle">Review your report here</h2><p><span data-i18n="reviewIntro">Choose a product to preview its report.</span><br><span data-i18n="reviewActions">Preview privately or generate and publish.</span></p></div>
+          <img id="paper" alt="Report preview" data-i18n-alt="reportPreview" width="595" height="842" hidden>
         </section>
-        <section id="published-reports" class="history-panel" aria-labelledby="history-title"><div class="section-heading"><div><p class="eyebrow">REPORT LIBRARY</p><h2 id="history-title">Published reports</h2></div><p class="hint">Stable Lookup Codes · preserved across restart</p></div><div id="history"></div></section>
+        <section id="published-reports" class="history-panel" aria-labelledby="history-title"><div class="section-heading"><div><p class="eyebrow" data-i18n="reportLibrary">REPORT LIBRARY</p><h2 id="history-title" data-i18n="publishedReports">Published reports</h2></div><p class="hint" data-i18n="stableCodes">Stable Lookup Codes · preserved across restart</p></div><div id="history"></div></section>
       </main>
     </div>
   </div>

@@ -6,3 +6,5 @@
 .workspace-actions{display:flex;align-items:center;gap:12px}.workspace-actions button{min-height:44px;white-space:nowrap}
 
 .selected-summary{display:grid;gap:6px;padding:12px 14px;margin:16px 0;background:#f1f7f8;border-left:3px solid #53a4aa;border-radius:4px}.selected-summary .eyebrow{margin:0}.selected-summary strong{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+
+:root{font-family:Segoe UI,"Microsoft YaHei","PingFang SC",Arial,sans-serif}.workspace-header{flex-wrap:wrap}.workspace-actions{flex-wrap:wrap}.workspace-actions .admin-language{width:auto;min-width:108px;max-width:150px;min-height:44px;margin:0;padding:9px 12px;font-size:12px}.admin-language option{padding:4px}@media(max-width:560px){.workspace-actions{width:100%;justify-content:flex-end}.workspace-header{gap:14px}.workspace-actions .admin-language{max-width:140px}}

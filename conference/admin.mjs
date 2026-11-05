@@ -72,7 +72,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
     if (encodedPath !== pathname || pathname.includes('\\') || /[\x00-\x20]/.test(pathname) || pathname.includes('//') || pathname.split('/').some(segment => segment === '.' || segment === '..')) {
       send(response, 400, { error: 'Invalid admin path.' }, undefined, head); return true;
     }
-    if (['/admin/login.js', '/admin/login.css'].includes(pathname) && ['GET', 'HEAD'].includes(request.method)) {
+    if (['/admin/login.js', '/admin/login.css', '/admin/admin-i18n.mjs'].includes(pathname) && ['GET', 'HEAD'].includes(request.method)) {
       const file = pathname.slice('/admin/'.length);
       send(response, 200, await readFile(new URL(file, import.meta.url)), file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8', head); return true;
     }

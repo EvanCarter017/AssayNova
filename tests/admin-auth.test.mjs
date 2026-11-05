@@ -39,7 +39,8 @@ test('anonymous admin offers exactly one password input and protects every priva
   const files = await fixture(t), origin = files.studio.origin, page = await loginPage(origin);
   assert.equal(page.response.status, 200); assert.equal(page.mode, 'setup'); assert.match(page.html, /Set administrator password/); assert.match(page.html, /autocomplete="new-password"/);
   assert.equal([...page.html.matchAll(/<input\b/g)].length, 1); assert.doesNotMatch(page.html, /username|registration|recovery|operator\.js|product-search|api\/session|BPC-157/i); assert.match(page.csrf, /^[a-f0-9]{64}$/);
-  for (const asset of ['/admin/login.js', '/admin/login.css']) assert.equal((await fetch(origin + asset)).status, 200);
+  for (const asset of ['/admin/login.js', '/admin/login.css', '/admin/admin-i18n.mjs']) for (const method of ['GET', 'HEAD']) assert.equal((await fetch(origin + asset, { method })).status, 200);
+  assert.equal((await fetch(origin + '/admin/admin-i18n.mjs', { method: 'POST' })).status, 401);
   for (const pathname of ['/admin/operator.js', '/admin/operator.css', '/admin/product-search.mjs', '/admin/api/session', '/admin/api/history', '/admin/api/generate', '/admin/images/opaque', '/admin/bundles/previews/AN-TEST-0001/report.svg', '/admin/bundles/published/AN-TEST-0001/report.pdf', '/admin/auth/credential.json']) {
     for (const method of ['GET', 'HEAD', 'POST']) { const response = await fetch(origin + pathname, { method }); assert.equal(response.status, 401, method + ' ' + pathname); assert.equal(response.headers.get('cache-control'), 'no-store'); }
   }
@@ -62,7 +63,9 @@ test('setup requires exact CSRF/Origin/JSON/password bounds and persists only th
   assert.deepEqual(Object.keys(record).sort(), ['hash', 'salt', 'version']); assert.equal(record.version, 1); assert.match(record.salt, /^[a-f0-9]{32}$/); assert.match(record.hash, /^[a-f0-9]{64}$/); assert.ok(!raw.includes(PASSWORD));
   const expected = await promisify(scrypt)(Buffer.from(PASSWORD), Buffer.from(record.salt, 'hex'), 32, { N: 16384, r: 8, p: 5, maxmem: 64 * 1024 * 1024 }); assert.equal(record.hash, expected.toString('hex'));
   assert.equal((await secured(origin, cookie, '/admin/api/session')).status, 200); assert.equal((await attempt(origin, csrf, 'setup', 'another synthetic password')).status, 409); assert.equal(await readFile(path.join(files.authStore, 'credential.json'), 'utf8'), raw);
-  const page = await loginPage(origin); assert.equal(page.mode, 'login'); assert.match(page.html, /autocomplete="current-password"/); assert.doesNotMatch(await (await fetch(origin + '/admin/login.js')).text(), /localStorage|sessionStorage/);
+  const page = await loginPage(origin); assert.equal(page.mode, 'login'); assert.match(page.html, /autocomplete="current-password"/);
+  const loginScript = await (await fetch(origin + '/admin/login.js')).text();
+  assert.match(loginScript, /createAdminI18n/); assert.doesNotMatch(loginScript, /setItem|getItem|sessionStorage/);
   assert.equal(validPassword(' '.repeat(10)), true); assert.equal(validPassword('😀'.repeat(128)), true);
 });
 
