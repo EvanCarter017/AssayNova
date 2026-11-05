@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { isIP } from 'node:net';
 import { readFile, stat } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import path from 'node:path';
@@ -24,6 +25,11 @@ let watcher;
 const portOption = process.argv.find((argument) => argument.startsWith('--port='));
 const port = Number(portOption?.split('=')[1] ?? process.env.PORT ?? 4317);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Choose a port between 1 and 65535.');
+const hostOption = process.argv.find((argument) => argument.startsWith('--host='));
+const bindAddress = hostOption?.slice('--host='.length) ?? '127.0.0.1';
+if (!isIP(bindAddress)) throw new Error('Choose a literal IPv4 or IPv6 address for --host.');
+const localAddress = bindAddress === '0.0.0.0' ? '127.0.0.1' : bindAddress === '::' ? '::1' : bindAddress;
+const localHost = isIP(localAddress) === 6 ? `[${localAddress}]` : localAddress;
 const mime = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -126,8 +132,8 @@ server.on('error', (error) => {
     ? `Port ${port} is in use. Try: node server.mjs --port=${port + 1}` : error.message);
   process.exitCode = 1;
 });
-server.listen(port, '127.0.0.1', () => {
-  console.log(`AssayNova ready\nLocal: http://127.0.0.1:${port}\nProject: ${path.dirname(root)}\nLive reload: ${liveReload ? 'ON — CSS updates in place; HTML/JS changes reload the page' : 'OFF (add --watch to enable)'}\nPress Ctrl+C to stop.`);
+server.listen(port, bindAddress, () => {
+  console.log(`AssayNova ready\nLocal: http://${localHost}:${port}\nBind: ${bindAddress}\nProject: ${path.dirname(root)}\nLive reload: ${liveReload ? 'ON — CSS updates in place; HTML/JS changes reload the page' : 'OFF (add --watch to enable)'}\nPress Ctrl+C to stop.`);
   if (liveReload) {
     watcher = watch(root, { recursive: true }, (event, filename) => {
       if (!filename) return;

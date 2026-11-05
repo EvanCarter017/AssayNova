@@ -148,7 +148,7 @@ async function freePort() {
   return port;
 }
 
-async function withServer(mode, callback) {
+async function withServer(mode, callback, host) {
   const fixture = await mkdtemp(path.join(tmpdir(), 'assaynova-dev-test-'));
   let child;
   let exit;
@@ -157,7 +157,7 @@ async function withServer(mode, callback) {
     for (const file of ['server.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, file), path.join(fixture, file), { recursive: true });
     const port = await freePort();
     assert.notEqual(port, 4317);
-    child = spawn(process.execPath, ['server.mjs', `--port=${port}`, ...(mode === 'default' ? [] : ['--watch'])], {
+    child = spawn(process.execPath, ['server.mjs', `--port=${port}`, ...(host === undefined ? [] : [`--host=${host}`]), ...(mode === 'default' ? [] : ['--watch'])], {
       cwd: fixture, env: { ...process.env, NODE_ENV: mode === 'production' ? 'production' : 'test' }, stdio: ['ignore', 'pipe', 'pipe']
     });
     exit = new Promise((resolve) => child.once('exit', (code, signal) => resolve({ code, signal })));
@@ -184,7 +184,8 @@ async function withServer(mode, callback) {
 
 for (const mode of ['default', 'production', 'watch']) {
   test(`HTTP ${mode}: dev isolation, static routes, methods, HEAD and CSP`, async () => {
-    await withServer(mode, async ({ base, fixture }) => {
+    await withServer(mode, async ({ base, fixture, output }) => {
+      assert.match(output(), /Bind: 127\.0\.0\.1/);
       const response = await fetch(base);
       const html = await response.text();
       assert.equal(response.status, 200);
@@ -216,6 +217,43 @@ for (const mode of ['default', 'production', 'watch']) {
     });
   });
 }
+
+test('explicit LAN binding serves normal SPA, reports and privacy without exposing development routes', async () => {
+  await withServer('default', async ({ base, fixture, output }) => {
+    assert.match(output(), /Bind: 0\.0\.0\.0/);
+    assert.match(output(), /Local: http:\/\/127\.0\.0\.1:/);
+    const expectedCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+    for (const route of ['/testing-methods', '/about', '/verify', '/contact', '/coa/AN-7K9Q-2M4X']) {
+      const response = await fetch(base + route);
+      assert.equal(response.status, 200, route); assert.equal(await response.text(), privacyHTML, route);
+      assert.equal(response.headers.get('content-security-policy'), expectedCSP);
+      const head = await fetch(base + route, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(await head.text(), '');
+    }
+    for (const route of ['/styles.css', '/app.js', '/reports/sample-a.pdf', '/privacy/consent.js']) {
+      const response = await fetch(base + route); assert.equal(response.status, 200, route);
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()), await readFile(path.join(fixture, 'dist', route)));
+      assert.equal((await fetch(base + route, { method: 'HEAD' })).status, 200);
+    }
+    for (const route of ['client.js', 'locator.js', 'prompt.js', 'context', 'status', 'events']) {
+      assert.equal((await fetch(`${base}/__dev/${route}`)).status, 404, route);
+      assert.equal((await fetch(`${base}/__dev/${route}`, { method: 'HEAD' })).status, 404, route);
+    }
+    assert.deepEqual(await (await fetch(base + '/privacy/signals')).json(), { gpc: false });
+    assert.deepEqual(await (await fetch(base + '/privacy/signals', { headers: { 'Sec-GPC': '1' } })).json(), { gpc: true });
+  }, '0.0.0.0');
+});
+
+test('empty, hostname and malformed host arguments exit before listening', async () => {
+  for (const host of ['', 'localhost', '300.1.2.3', '[::1]']) {
+    await assert.rejects(withServer('default', () => assert.fail('Invalid host must not listen'), host), error => {
+      assert.match(error.message, /Server exited during startup:/);
+      assert.match(error.message, /Choose a literal IPv4 or IPv6 address for --host/);
+      assert.ok(!error.message.includes('Press Ctrl+C to stop.'));
+      assert.ok(!error.message.includes('timed out'));
+      return true;
+    });
+  }
+});
 
 test('dev file read failures return 503 and leave the server running', async () => {
   await withServer('watch', async ({ base, fixture }) => {
