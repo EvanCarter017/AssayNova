@@ -102,7 +102,7 @@ class ReportRendererTests(unittest.TestCase):
     def test_colliding_retention_regression_is_bounded_and_axis_safe(self):
         request = copy.deepcopy(self.request)
         request["seed"] = "0"
-        request["product"].update(id="test", name="Custom blend", components=[{"name": name, "nominal": 10, "unit": "mg"} for name in ("Component44", "Component138", "Component225")])
+        request["product"].update(id="test", name="Custom blend", components=[{"name": name, "nominal": 10, "unit": "mg"} for name in ("Component 44", "Component 138", "Component 225")])
         # Run the exact previously oscillating request in a bounded child, so a
         # future regression fails this test instead of hanging the entire suite.
         script = "import json,runpy,sys; r=runpy.run_path(sys.argv[1]); print(json.dumps(r['make_bundle'](r['validate_request'](json.load(sys.stdin)))))"
