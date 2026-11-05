@@ -57,7 +57,7 @@ test('default, production and read-only servers reserve all /admin methods witho
   const files = await fixture(t);
   for (const options of [{ enabled: false }, { enabled: false, production: true }, { enabled: false, readonly: true }]) {
     const server = await launch(t, files, options);
-    for (const pathname of ['/admin', '/admin/', '/admin/operator.js', '/admin/operator.css', '/admin/api/session', '/admin/api/history', '/admin/api/generate', '/admin/images/opaque', '/admin/bundles/published/AN-TEST-0001/report.pdf']) {
+    for (const pathname of ['/admin', '/admin/', '/admin/operator.js', '/admin/operator.css', '/admin/product-search.mjs', '/admin/api/session', '/admin/api/history', '/admin/api/generate', '/admin/images/opaque', '/admin/bundles/published/AN-TEST-0001/report.pdf']) {
       for (const method of ['GET', 'HEAD', 'POST']) assert.equal((await fetch(server.origin + pathname, { method })).status, 404, method + ' ' + pathname);
     }
     await server.stop();
@@ -84,7 +84,7 @@ test('admin startup refuses missing reader, production, LAN binds and nonabsolut
 test('mounted admin serves its shell/assets and enforces peer/Host/Origin/token/method/body/path guards', async t => {
   const files = await fixture(t), server = await launch(t, files), origin = server.origin;
   assert.match(server.output(), /TIMEOUT_PROOF:\[10000,10000\]/);
-  for (const pathname of ['/admin', '/admin/', '/admin/operator.css', '/admin/operator.js']) {
+  for (const pathname of ['/admin', '/admin/', '/admin/operator.css', '/admin/operator.js', '/admin/product-search.mjs']) {
     for (const method of ['GET', 'HEAD']) {
       const response = await fetch(origin + pathname, { method }); assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store'); assert.equal(response.headers.get('x-content-type-options'), 'nosniff'); assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/);
       if (method === 'HEAD') assert.equal(await response.text(), '');
@@ -92,6 +92,10 @@ test('mounted admin serves its shell/assets and enforces peer/Host/Origin/token/
   }
   const html = await (await fetch(origin + '/admin')).text(); assert.match(html, /AssayNova<span>ADMIN/); assert.match(html, /id="published-reports"/); assert.doesNotMatch(html, /Coming soon|Users|Orders|Temporary private/);
   const session = await (await fetch(origin + '/admin/api/session')).json(), id = session.products[0].id;
+  assert.deepEqual(session.products[0].aliases.skus, ['BC10']);
+  assert.deepEqual(session.products[0].aliases.families, ['BC']);
+  assert.equal((await fetch(origin + '/product-search.mjs')).status, 404);
+  assert.equal((await fetch(origin + '/admin/product-aliases.json')).status, 404);
   assert.equal(session.products.length, 1); assert.equal(session.products[0].imageURL, '/admin/images/' + id); assert.doesNotMatch(JSON.stringify(session.products), /imagePath|[A-Z]:\\|source|private-fixture/);
   assert.equal((await fetch(origin + session.products[0].imageURL)).status, 200);
   assert.equal((await raw(origin, '/admin/api/session', { headers: { Host: 'localhost:' + new URL(origin).port } })).status, 403);

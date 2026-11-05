@@ -1,6 +1,9 @@
 import { readdir, realpath } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+
+const productAliases = new Map(JSON.parse(readFileSync(new URL('./product-aliases.json', import.meta.url), 'utf8')).map(row => [row.canonicalName, row]));
 
 export const DEFAULT_IMAGES = 'C:\\Users\\Administrator\\Desktop\\COAs_西林瓶图片_按品名剂量';
 export function parseProduct(name) {
@@ -36,5 +39,7 @@ export async function loadCatalog(directory) {
 }
 
 export function catalogDTO(product) {
-  return { id: product.id, name: product.name, components: product.components, unit: product.unit, imageURL: '/images/' + product.id };
+  const entry = productAliases.get(product.name);
+  return { id: product.id, name: product.name, components: product.components, unit: product.unit, imageURL: '/images/' + product.id,
+    aliases: { skus: [...(entry?.skus ?? [])], families: [...(entry?.families ?? [])], names: [...(entry?.names ?? [])] } };
 }

@@ -22,10 +22,10 @@
         <aside id="create-report" aria-labelledby="create-title">
           <div class="section-heading"><h2 id="create-title">Create report</h2><span class="data-badge">Synthetic data</span></div>
           <p class="notice">Generated values are examples, not instrument measurements. Review the original product photo and composition before publishing. Customer reports use the normal COA experience.</p>
-          <label for="search">Search products</label><input id="search" type="search" placeholder="Name, dose or unit" autocomplete="off">
+          <label for="search">Search products by name or SKU</label><input id="search" type="search" placeholder="e.g. TR10, BC10, sema, NAD+" autocomplete="off" aria-describedby="product-help">
           <label for="product">Product <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
-          <p id="product-help" class="hint">Original photos are grouped by product.</p>
-          <div class="selection"><img id="photo" alt="Selected product photo" width="96" height="112"><strong id="selected-name"></strong></div>
+          <p id="product-help" class="hint">Use a full SKU for an exact dose, or a family such as TR / SM. Only products with original photos are listed.</p>
+          <figure class="selection"><figcaption><span class="eyebrow">SELECTED PRODUCT</span><strong id="selected-name">Choose a product</strong></figcaption><img id="photo" alt="" width="140" height="170" hidden><p id="photo-status" role="status">Choose a product to view its original photo.</p></figure>
           <form id="generate">
             <fieldset><legend>Composition recipe</legend><div id="components"></div><p class="hint">Nominal content is separate from HPLC area purity. Preserve IU / ml units.</p></fieldset>
             <div class="grid">
@@ -43,6 +43,7 @@
         </aside>
         <section class="preview" aria-label="Report preview">
           <div id="result" hidden>
+            <p class="eyebrow">LAST GENERATED REPORT · SAVED SNAPSHOT</p>
             <p id="result-state"></p><h2 id="code" tabindex="-1"></h2><p id="result-name"></p>
             <div class="buttons"><button id="copy-code">Copy LC</button><a id="public-link" target="_blank" rel="noopener">Open customer report</a><a id="pdf" target="_blank" rel="noopener">Download PDF</a></div>
             <label id="manual-label" hidden>Manual copy<input id="manual-copy" readonly></label>

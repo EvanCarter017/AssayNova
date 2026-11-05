@@ -1,17 +1,44 @@
+import { filterProducts } from './product-search.mjs';
 const $=id=>document.getElementById(id);
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let session,selected,result,busy=false;
 const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 for(const name of ['received','reported']) $('generate').elements.namedItem(name).value=today;
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
+function clearSelectedPhoto(message){
+  const photo=$('photo');photo.hidden=true;photo.removeAttribute('src');photo.alt='';
+  $('photo-status').textContent=message;
+}
 function selectProduct(){
   selected=session.products.find(product=>product.id===$('product').value);
-  if(!selected){$('photo').removeAttribute('src');$('photo').hidden=true;$('selected-name').textContent='No matching product';$('components').innerHTML='';for(const button of document.querySelectorAll('#generate button'))button.disabled=true;return;}
-  $('photo').hidden=false;for(const button of document.querySelectorAll('#generate button'))button.disabled=busy;
-  $('photo').src=selected.imageURL;$('selected-name').textContent=selected.name;
+  if(!selected){
+    const noResults=$('product').options.length===0;
+    clearSelectedPhoto(noResults?'No original photo to show. Try another name or SKU.':'Choose a product to view its original photo.');
+    $('selected-name').textContent=noResults?'No matching product':'Choose a product';
+    $('components').innerHTML='';
+    for(const button of document.querySelectorAll('#generate button'))button.disabled=true;
+    return;
+  }
+  clearSelectedPhoto('Loading original product photo…');
+  $('selected-name').textContent=selected.name;
+  const image=document.createElement('img'),productId=selected.id;
+  image.id='photo';image.width=140;image.height=170;image.hidden=true;
+  image.alt='Original product photo: '+selected.name;
+  image.addEventListener('load',()=>{if($('photo')!==image||selected?.id!==productId)return;image.hidden=false;$('photo-status').textContent='Original product photo';});
+  image.addEventListener('error',()=>{if($('photo')!==image||selected?.id!==productId)return;clearSelectedPhoto('The original photo could not be loaded. Select this product again to retry.');});
+  $('photo').replaceWith(image);image.src=selected.imageURL;
+  for(const button of document.querySelectorAll('#generate button'))button.disabled=busy;
   $('components').innerHTML=selected.components.map((row,index)=>`<div class="component"><label>Component ${index+1}<input data-key="name" value="${escape(row.name)}" maxlength="64" required aria-label="Component ${index+1} name"></label><label>Nominal<input data-key="nominal" type="number" value="${row.nominal}" min="0.001" max="100000" step="any" required aria-label="Component ${index+1} nominal content"></label><label>Unit<select data-key="unit" aria-label="Component ${index+1} unit">${['mg','ml','IU'].map(unit=>`<option${unit===row.unit?' selected':''}>${unit}</option>`).join('')}</select></label></div>`).join('');
 }
-function filter(){const query=$('search').value.trim().toLowerCase(),previous=$('product').value;const products=session.products.filter(product=>product.name.toLowerCase().includes(query));$('product').innerHTML=products.map(product=>`<option value="${product.id}">${escape(product.name)}</option>`).join('');$('count').textContent=`(${products.length}/${session.products.length})`;if(products.some(product=>product.id===previous))$('product').value=previous;selectProduct();}
+function filter(){
+  const previous=$('product').value,products=filterProducts(session.products,$('search').value);
+  const chosen=products.some(product=>product.id===previous)?previous:products.length===1?products[0].id:'';
+  $('product').innerHTML=(products.length>1&&!chosen?'<option value="" disabled selected>Choose a matching product</option>':'')+products.map(product=>`<option value="${product.id}">${escape(product.name)}</option>`).join('');
+  $('product').value=chosen;
+  $('count').textContent=`(${products.length}/${session.products.length})`;
+  selectProduct();
+  status(!products.length?'No matching product or dose. Check the name / SKU, or clear the search.':chosen?'Product selected. Review the photo and composition before publishing.':'Choose a matching product below.');
+}
 function showResult(value){result=value;$('empty').hidden=true;$('result').hidden=false;$('code').textContent=value.report.lookupCode;$('result-name').textContent=value.label;$('result-state').textContent=value.published?'Published · immutable snapshot':'Preview only · not available to customer lookup';$('paper').src=value.previewURL;$('paper').hidden=false;$('pdf').href=value.pdfURL;$('public-link').href=value.publicURL;$('public-link').hidden=!value.published;$('copy-code').hidden=!value.published;$('manual-label').hidden=true;$('code').focus();}
 async function history(){const response=await fetch('/admin/api/history',{cache:'no-store'});if(!response.ok)throw new Error('History could not be loaded.');const rows=await response.json();$('history').innerHTML=rows.map(row=>`<button data-code="${row.lookupCode}">${escape(row.label)}<br><strong>${row.lookupCode}</strong> · ${escape(row.reported)}</button>`).join('')||'<p class="hint">Published reports will stay here after restart.</p>';}
 $('history').addEventListener('click',event=>{const button=event.target.closest('[data-code]');if(!button)return;const code=button.dataset.code;showResult({published:true,report:{lookupCode:code},label:button.textContent.split(code)[0],previewURL:'/admin/bundles/published/'+code+'/report.svg',pdfURL:'/admin/bundles/published/'+code+'/report.pdf',publicURL:session.publicOrigin+'/coa/'+code});});
