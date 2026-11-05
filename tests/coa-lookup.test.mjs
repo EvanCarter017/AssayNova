@@ -678,7 +678,7 @@ test('request navigation uses its own page while saved-draft dialogs and mobile 
     assert.equal(app.networkCalls.length, 0);
   }
   const verify = bootApp('/verify');
-  verify.nodes.get('#demo-lookup').events.get('click')();
+  verify.submitLookup('  an-7k9q-2m4x  ', false);
   assert.equal(verify.location.pathname, '/coa/AN-7K9Q-2M4X');
   assert.match(verify.nodes.get('#coa-view').innerHTML, /src="\/reports\/sample-a\.svg"/);
   assert.match(verify.nodes.get('#coa-view').innerHTML, /href="\/reports\/sample-a\.pdf" download/);

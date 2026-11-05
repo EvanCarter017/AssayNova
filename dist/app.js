@@ -405,11 +405,6 @@ document.addEventListener('input', (event) => {
   if (error) error.textContent = '';
   event.target.removeAttribute('aria-invalid');
 });
-document.querySelector('#demo-lookup').addEventListener('click', () => {
-  document.querySelector('#report-id').value = DEMO_REPORT.lookupCode;
-  document.querySelector('#verify-form').requestSubmit();
-});
-
 const menuButton = document.querySelector('.menu-toggle');
 const mobileNavigation = document.querySelector('#mobile-nav');
 function closeMobileNavigation() {
