@@ -169,10 +169,12 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
     }
     try {
       if (pathname === '/admin/api/session') {
-        const profiles = await customers.list(), defaultCustomerId = profiles[0].id;
-        let initial;
-        try { initial = catalogResponse(await customers.scan(defaultCustomerId)); }
-        catch (error) { initial = { customer: profiles[0], products: [], catalogError: error.message }; }
+        const profiles = await customers.list(), defaultCustomerId = profiles[0]?.id || '';
+        let initial = { customer: null, products: [] };
+        if (defaultCustomerId) {
+          try { initial = catalogResponse(await customers.scan(defaultCustomerId)); }
+          catch (error) { initial = { customer: profiles[0], products: [], catalogError: error.message }; }
+        }
         send(response, 200, { token, customers: profiles, defaultCustomerId, ...initial, publicOrigin: publicURL }, undefined, head); return true;
       }
       if (pathname === '/admin/api/catalog') {

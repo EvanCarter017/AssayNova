@@ -40,6 +40,19 @@ async function stubRenderer(requestFile, output) {
   ]);
 }
 
+test('an explicit empty registry survives reopen without seeding and accepts the first saved customer', async t => {
+  const files = await fixture(t); await mkdir(path.dirname(configFile(files)), { recursive: true });
+  const empty = JSON.stringify({ version: 1, customers: [] }); await writeFile(configFile(files), empty);
+  const registry = await createCustomerCatalog({ store: files.store, images: path.join(files.root, 'missing-default') });
+  assert.deepEqual(await registry.list(), []); assert.equal(await readFile(configFile(files), 'utf8'), empty);
+  const reopened = await createCustomerCatalog({ store: files.store, images: files.a });
+  assert.deepEqual(await reopened.list(), []); assert.equal(await readFile(configFile(files), 'utf8'), empty);
+  await assert.rejects(reopened.scan('a'.repeat(20)), /Choose a saved customer/); await assert.rejects(reopened.snapshot('a'.repeat(20)), /Choose a saved customer/);
+  await assert.rejects(reopened.save({ customerId: 'a'.repeat(20), name: 'Unknown update', directory: files.a }), /Choose a saved customer/);
+  const first = await reopened.save({ name: 'First customer', directory: files.a }); assert.equal(first.customers.length, 1); assert.equal(first.customer.name, 'First customer');
+  assert.equal((await (await createCustomerCatalog({ store: files.store, images: files.b })).list())[0].id, first.customer.id);
+});
+
 test('customer registry persists stable profiles, serializes writes, validates names/directories and never overwrites failed/corrupt saves', async t => {
   const files = await fixture(t), registry = await createCustomerCatalog({ store: files.store, images: files.a });
   const initial = (await registry.list())[0]; assert.equal(initial.name, 'Research Client'); assert.match(initial.id, /^[a-f0-9]{20}$/);

@@ -125,6 +125,26 @@ test('real HTTP import endpoints keep authentication, exact chunk bounds, offset
   assert.equal((await (await app.request('/admin/api/session')).json()).customers.length, 1);
 });
 
+test('empty authenticated registry imports the first VialCove customer without reseeding or changing earlier reports', async t => {
+  const files = await fixture(t), app = await server(t, files);
+  const old = await app.api('/admin/api/generate', { customerId: app.session.defaultCustomerId, productId: app.session.products[0].id, fields: {}, publish: true }); assert.equal(old.status, 201);
+  const oldPDF = Buffer.from(await (await app.request(old.value.pdfURL)).arrayBuffer()), oldBundlePath = path.join(files.store, 'published', old.value.report.lookupCode, 'bundle.json'), oldBundle = await readFile(oldBundlePath);
+  const filename = path.join(files.store, 'customers/profiles.json'), empty = JSON.stringify({ version: 1, customers: [] }); await writeFile(filename, empty);
+  const sessionResponse = await app.request('/admin/api/session'); assert.equal(sessionResponse.status, 200); const emptySession = await sessionResponse.json();
+  assert.deepEqual(emptySession.customers, []); assert.equal(emptySession.defaultCustomerId, ''); assert.equal(emptySession.customer, null); assert.deepEqual(emptySession.products, []); assert.equal(emptySession.token, app.session.token); assert.equal(Object.hasOwn(emptySession, 'catalogError'), false);
+  assert.equal((await (await app.request('/admin/api/history')).json())[0].lookupCode, old.value.report.lookupCode);
+  assert.equal((await app.api('/admin/api/imports', { customerId: app.session.defaultCustomerId })).status, 400);
+  const registry = await createCustomerCatalog({ store: files.store, images: files.images }); assert.deepEqual(await registry.list(), []); assert.equal(await readFile(filename, 'utf8'), empty);
+  const job = (await app.api('/admin/api/imports', { name: 'VialCove' })).value.id;
+  await upload(app.api, job, 'image', 'pictures/ADA10.png', files.photo); await upload(app.api, job, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nADA10,Adamax 10mg\n'));
+  assert.equal((await app.api('/admin/api/imports/' + job + '/preview', options)).value.canConfirm, true);
+  const saved = await app.api('/admin/api/imports/' + job + '/confirm'); assert.equal(saved.status, 200, saved.value.error); assert.equal(saved.value.customers.length, 1); assert.equal(saved.value.customer.name, 'VialCove');
+  const current = await (await app.request('/admin/api/session')).json(); assert.equal(current.defaultCustomerId, saved.value.customer.id); assert.equal(current.customers.length, 1);
+  assert.equal(filterProducts(current.products, 'ADA10')[0].name, 'Adamax 10mg'); assert.equal(filterProducts(current.products, 'Adamax 10mg')[0].id, current.products[0].id);
+  assert.equal((await app.request(current.products[0].imageURL)).status, 200);
+  assert.deepEqual(await readFile(oldBundlePath), oldBundle); assert.deepEqual(Buffer.from(await (await app.request(old.value.pdfURL)).arrayBuffer()), oldPDF);
+});
+
 test('new folder/table, SKU-only, folder-only and two customers activate atomically and preserve snapshots and migrated managed paths', async t => {
   const files = await fixture(t), app = await server(t, files);
   const old = await app.api('/admin/api/generate', { customerId: app.session.defaultCustomerId, productId: app.session.products[0].id, fields: {}, publish: true }); assert.equal(old.status, 201);

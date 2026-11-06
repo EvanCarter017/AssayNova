@@ -2,7 +2,7 @@
 const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export function createImportUI({ document, request, context, setPending, onConfirmed, language, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), chunkSize = 256 * 1024 }) {
   const $ = id => document.getElementById('import-' + id), t = (key, values) => language.t(key, values);
-  let job, captured, preview, phase = '', epoch = 0, controller, creating, hasSheet = false, feedback = { key: 'importIdle' };
+  let job, captured, preview, phase = '', epoch = 0, controller, creating, hasSheet = false, forcedNew = false, feedback = { key: 'importIdle' };
   function render() {
     $('status').textContent = feedback.message !== undefined ? language.error(feedback.message, 'importError') : t(feedback.key, feedback.values);
     $('status').classList.toggle('error', Boolean(feedback.error));
@@ -14,8 +14,11 @@ export function createImportUI({ document, request, context, setPending, onConfi
     } else { $('counts').textContent = ''; $('rows').innerHTML = ''; }
   }
   function update() {
-    const pending = Boolean(job || creating), working = Boolean(phase);
-    for (const id of ['target', 'name', 'folder', 'sheet', 'upload']) $(id).disabled = pending || working;
+    const pending = Boolean(job || creating), working = Boolean(phase), current = context(), ready = Boolean(current?.token), empty = ready && !current.customerId;
+    for (const option of $('target').options) if (option.value === 'current') option.disabled = empty;
+    if (empty) { $('target').value = 'new'; forcedNew = true; }
+    else if (ready && forcedNew && !pending && !working) { $('target').value = 'current'; forcedNew = false; }
+    for (const id of ['target', 'name', 'folder', 'sheet', 'upload']) $(id).disabled = pending || working || !ready;
     for (const id of ['sheet-name', 'header', 'sku', 'product', 'dose', 'read']) $(id).disabled = !job || !hasSheet || working;
     $('preview').disabled = !job || working;
     $('confirm').disabled = !preview?.canConfirm || working;
@@ -110,5 +113,5 @@ export function createImportUI({ document, request, context, setPending, onConfi
   $('target').addEventListener('change', render);
   for (const id of ['sheet-name', 'header', 'sku', 'product', 'dose']) $(id).addEventListener('change', () => { preview = null; update(); });
   update();
-  return { applyLanguage: render, owns: control => typeof control.id === 'string' && control.id.startsWith('import-'), start, cancel, perform };
+  return { applyLanguage: render, refresh: update, owns: control => typeof control.id === 'string' && control.id.startsWith('import-'), start, cancel, perform };
 }

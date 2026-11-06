@@ -16,12 +16,34 @@ function fixture(request, extra = {}) {
     if (!nodes.has(id)) nodes.set(id, { id: 'import-' + id, value: '', files: [], disabled: false, hidden: false, innerHTML: '', textContent: '', events: new Map(), classList: { toggle() {} }, addEventListener(type, callback) { this.events.set(type, callback); }, focus() { this.focused = true; } });
     return nodes.get(id);
   };
-  node('target').value = 'current';
+  node('target').value = 'current'; node('target').options = [{ value: 'current', disabled: false }, { value: 'new', disabled: false }];
   const language = createAdminI18n({ browserLanguage: 'en' });
-  const ui = createImportUI({ document: { getElementById: id => node(id.slice(7)) }, request, context: () => current, setPending: value => pending.push(value), onConfirmed: value => confirmed.push(value), language, wait: async () => {}, ...extra });
+  const ui = createImportUI({ document: { getElementById: id => node(id.slice(7)) }, request, context: () => current, setPending: value => pending.push(value), onConfirmed: value => { confirmed.push(value); current = { ...current, customerId: value.customer.id }; }, language, wait: async () => {}, ...extra });
   language.subscribe(() => ui.applyLanguage());
   return { ui, node, nodes, pending, confirmed, language, context: value => current = value };
 }
+
+test('empty authenticated context forces New while pre-session context stays locked, then first confirmation enables Current', async () => {
+  const calls = []; let number = 0;
+  const app = fixture(async (url, settings) => {
+    calls.push([url, settings]);
+    if (url === '/admin/api/imports') return ok({ id: jobId });
+    if (url.endsWith('/files')) return ok({ id: (++number).toString(16).padStart(32, '0') });
+    if (settings.method === 'PUT') return ok({});
+    if (url.endsWith('/inspect')) return ok(inspection);
+    if (url.endsWith('/preview')) return ok(matching);
+    if (url.endsWith('/confirm')) return ok({ customer: { id: 'first', name: 'VialCove' }, customers: [{ id: 'first', name: 'VialCove' }], products: [{ id: 'adamax' }] });
+    throw new Error('Unexpected request');
+  });
+  app.context(null); app.ui.refresh(); assert.equal(app.node('upload').disabled, true); assert.equal(app.node('target').value, 'current');
+  app.context({ customerId: '', token: 'empty-session-token' }); app.ui.refresh();
+  assert.equal(app.node('target').value, 'new'); assert.equal(app.node('target').options[0].disabled, true); assert.equal(app.node('target').disabled, false);
+  for (const id of ['name', 'folder', 'sheet', 'upload']) assert.equal(app.node(id).disabled, false);
+  app.node('name').value = 'VialCove'; app.node('folder').files = [file('ADA10.png', 'fixture')]; app.node('sheet').files = [file('codes.csv', 'SKU,Product\nADA10,Adamax 10mg\n')];
+  const input = app.node('folder').files; app.language.setLocale('zh-CN'); assert.equal(app.node('folder').files, input); assert.equal(app.node('name').value, 'VialCove'); assert.equal(calls.length, 0);
+  await app.ui.start(); assert.deepEqual(JSON.parse(calls[0][1].body), { name: 'VialCove' }); await app.ui.perform('preview'); assert.equal(app.node('confirm').disabled, false);
+  await app.ui.perform('confirm'); assert.equal(app.confirmed.length, 1); assert.equal(app.node('target').options[0].disabled, false); assert.equal(app.node('target').value, 'current'); assert.equal(app.node('upload').disabled, false); assert.deepEqual(app.pending, [true, false]);
+});
 
 test('actual importer chunks files, captures only two mapped columns, and preserves file/mapping/progress state across locale changes', async () => {
   const calls = [], chunks = []; let fileNumber = 0, previewResolve;

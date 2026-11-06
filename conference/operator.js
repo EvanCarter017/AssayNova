@@ -17,7 +17,7 @@ function renderStatus(){
 function status(key,error=false,values={}){statusState={key,error,values};renderStatus();}
 function statusError(message,fallback){statusState={message,fallback,error:true};renderStatus();}
 function renderSelectionLanguage(){
-  $('selected-name').textContent=selected?selected.name:t($('product').options.length===0?'noProduct':'chooseProduct');
+  $('selected-name').textContent=selected?selected.name:t(session&&!currentCustomerId?'noCustomers':$('product').options.length===0?'noProduct':'chooseProduct');
 }
 function renderResultLanguage(){if(result)$('result-state').textContent=t(result.published?'publishedSnapshot':'privateSnapshot');}
 function renderHistoryLanguage(){
@@ -35,8 +35,10 @@ function applyLanguage(){
 }
 function updateControls(){
   for(const control of document.querySelectorAll('main input,main select,main button'))if(!importer?.owns(control))control.disabled=busy||catalogLoading||importing||!session;
-  $('customer').disabled=busy||importing||!session;
+  $('customer').disabled=busy||importing||!session||!currentCustomerId;
+  for(const id of ['reload-products','search','product'])$(id).disabled=busy||catalogLoading||importing||!session||!currentCustomerId;
   for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||catalogLoading||importing||!selected||!currentCustomerId;
+  importer?.refresh();
 }
 function selectProduct(){
   selected=session.products.find(product=>product.id===$('product').value);
@@ -44,6 +46,7 @@ function selectProduct(){
   updateControls();
 }
 function filter(preferredId){
+  if(!currentCustomerId){selected=undefined;$('product').innerHTML='';$('product').value='';$('search').value='';$('count').textContent='(0/0)';renderSelectionLanguage();updateControls();status('emptyCustomers');return;}
   const previous=typeof preferredId==='string'?preferredId:$('product').value,products=filterProducts(session.products,$('search').value);
   const chosen=products.some(product=>product.id===previous)?previous:products.length===1?products[0].id:'';
   $('product').innerHTML=(products.length>1&&!chosen?'<option value="" disabled selected data-i18n="chooseMatching">'+escape(t('chooseMatching'))+'</option>':'')+products.map(product=>`<option value="${product.id}">${escape(product.name)}</option>`).join('');
@@ -52,11 +55,11 @@ function filter(preferredId){
   selectProduct();status(!products.length?'noMatches':chosen?'selectedReady':'chooseBelow');
 }
 function renderCustomers(){
-  $('customer').innerHTML=session.customers.map(customer=>`<option value="${customer.id}">${escape(customer.name)}</option>`).join('');
+  $('customer').innerHTML=session.customers.map(customer=>`<option value="${customer.id}">${escape(customer.name)}</option>`).join('')||'<option value="" data-i18n="noCustomers">'+escape(t('noCustomers'))+'</option>';
   $('customer').value=currentCustomerId;
 }
 async function loadCustomer(id,reload=false){
-  if(busy||importing||!session)return;
+  if(busy||importing||!session||!id)return;
   const revision=++catalogRevision,previous=reload?$('product').value:'',query=reload?$('search').value:'';
   currentCustomerId=id;$('customer').value=id;catalogLoading=true;session.products=[];selected=undefined;
   $('product').innerHTML='';$('product').value='';$('search').value='';$('count').textContent='(0/0)';renderSelectionLanguage();updateControls();status('catalogLoading');
@@ -122,7 +125,7 @@ $('copy-code').addEventListener('click',async()=>{
 try{
   const response=await adminFetch('/admin/api/session',{cache:'no-store'});if(!response.ok)throw new Error('');
   session=await response.json();currentCustomerId=session.defaultCustomerId;renderCustomers();filter();updateControls();
-  if(session.catalogError)statusError(session.catalogError,'catalogFallback');else status('ready');
+  if(session.catalogError)statusError(session.catalogError,'catalogFallback');else status(currentCustomerId?'ready':'emptyCustomers');
   try{await history();}catch(error){statusError(error.message,'historyFallback');}
 }catch(error){statusError(error.message,'sessionFallback');}
 $('logout').addEventListener('click',async()=>{

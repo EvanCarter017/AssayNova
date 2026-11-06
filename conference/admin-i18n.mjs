@@ -2,6 +2,7 @@
 export const LOCALE_KEY = 'assaynova.admin.locale.v1';
 export const LOCALES = Object.freeze(['en', 'zh-CN']);
 const text = {
+  noCustomers: ['No customers yet', '暂无客户'], emptyCustomers: ['No customers yet. Upload a picture folder and SKU table to create your first customer.', '暂无客户，请上传图片文件夹和 SKU 表格以创建首个客户。'],
   importSearchConflict: ['Short codes collide with another product\'s unit-qualified search. Change the marked source codes.', '简称与另一产品的带单位搜索发生冲突，请修改标记源记录中的简称。'],
   admin: ['ADMIN', '管理后台'], language: ['Admin language', '后台语言'], workspace: ['WORKSPACE', '工作区'], administration: ['Administration', '管理后台'],
   reports: ['Reports', '报告管理'], createReport: ['Create report', '创建报告'], publishedReports: ['Published reports', '已发布报告'], localAdministration: ['Local administration', '本机管理'],

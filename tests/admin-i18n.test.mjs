@@ -115,6 +115,44 @@ test('actual Reports locale switch preserves values, selection, snapshot, manual
   assert.ok(app.storage.writes.every(([key,value])=>key===LOCALE_KEY&&['en','zh-CN'].includes(value)));
 });
 
+test('actual empty-customer boot enables a localized first import without bogus catalog requests and preserves report history', async () => {
+  const calls = [], profile = { id: 'first', name: 'VialCove' }, product = catalogDTO({ id: 'adamax', name: 'Adamax 10mg', ...parseProduct('Adamax 10mg') }); let fileNumber = 0;
+  const ok = value => ({ status: 200, ok: true, json: async () => value });
+  const app = await boot(operatorJS, operatorHTML, { fetch: async (url, options) => {
+    calls.push([url, options]);
+    if (url.endsWith('/session')) return ok({ customers: [], defaultCustomerId: '', customer: null, products: [], token: 'empty-token', publicOrigin: 'http://customer.invalid' });
+    if (url.endsWith('/history')) return ok([{ lookupCode: 'AN-OLD0-0001', label: 'Saved report', reported: '2026-11-06' }]);
+    if (url === '/admin/api/imports') return ok({ id: 'a'.repeat(32) });
+    if (url.endsWith('/files')) return ok({ id: (++fileNumber).toString(16).padStart(32, '0') });
+    if (options?.method === 'PUT') return ok({});
+    if (url.endsWith('/inspect')) return ok({ sheets: ['Table'], sheet: 'Table', headerRow: 1, columns: [{ id: 'A', label: 'SKU' }, { id: 'B', label: 'Product' }] });
+    if (url.endsWith('/preview')) return ok({ canConfirm: true, rows: [], imageRows: [], counts: { valid: 1, unmatched: 0, conflict: 0, duplicate: 0, images: 1, unmatchedImages: 0 } });
+    if (url.endsWith('/confirm')) return ok({ customer: profile, customers: [profile], products: [product] });
+    if (url.endsWith('/generate')) return { status: 400, ok: false, json: async () => ({ error: 'Use a valid ISO date.' }) };
+    throw new Error('Unexpected empty-customer request: ' + url);
+  }, extra: 'globalThis.ui={language,loadCustomer,selected:()=>selected};' });
+  const { ui } = app.context;
+  assert.equal(app.node('customer').options.length, 1); assert.equal(app.node('customer').options[0].textContent, 'No customers yet');
+  for (const id of ['customer', 'reload-products', 'search', 'product']) assert.equal(app.node(id).disabled, true, id);
+  assert.ok(app.node('generate').querySelectorAll('#generate button').every(button => button.disabled));
+  assert.equal(app.node('import-target').value, 'new'); assert.equal(app.node('import-target').options.find(option => option.value === 'current').disabled, true);
+  for (const id of ['import-name', 'import-folder', 'import-sheet', 'import-upload', 'logout']) assert.equal(app.node(id).disabled, false, id);
+  assert.match(app.node('history').innerHTML, /AN-OLD0-0001/); assert.match(app.node('status').textContent, /No customers yet/);
+  await ui.loadCustomer(''); await app.node('reload-products').events.get('click')(); assert.equal(calls.length, 2);
+  app.node('history').events.get('click')({ target: { closest: () => ({ dataset: { code: 'AN-OLD0-0001' } }) } });
+  assert.equal(app.node('code').textContent, 'AN-OLD0-0001'); const paper = app.node('paper').src;
+  app.node('import-name').value = 'VialCove'; app.node('import-name').focus(); const focus = app.document.activeElement, before = calls.length;
+  ui.language.setLocale('zh-CN'); assert.equal(calls.length, before); assert.equal(app.document.activeElement, focus); assert.equal(app.node('import-name').value, 'VialCove'); assert.match(app.node('status').textContent, /暂无客户/); assert.equal(app.node('customer').options[0].textContent, '暂无客户');
+  app.node('import-folder').files = [{ name: 'ADA10.png', webkitRelativePath: 'pictures/ADA10.png', size: 1, slice: () => new Blob(['x']) }];
+  app.node('import-sheet').files = [{ name: 'codes.csv', size: 1, slice: () => new Blob(['x']) }];
+  await app.node('import-form').events.get('submit')({ preventDefault() {} }); assert.deepEqual(JSON.parse(calls.find(([url]) => url === '/admin/api/imports')[1].body), { name: 'VialCove' });
+  await app.node('import-preview').events.get('click')(); await app.node('import-confirm').events.get('click')();
+  assert.equal(app.node('customer').value, profile.id); assert.equal(ui.selected().id, product.id); assert.equal(app.node('search').disabled, false); assert.equal(app.node('customer').disabled, false);
+  assert.equal(app.node('import-target').value, 'current'); assert.equal(app.node('import-target').options.find(option => option.value === 'current').disabled, false); assert.equal(app.node('paper').src, paper); assert.equal(app.node('code').textContent, 'AN-OLD0-0001');
+  await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } }); assert.equal(JSON.parse(calls.find(([url]) => url.endsWith('/generate'))[1].body).customerId, profile.id);
+  assert.equal(app.node('paper').src, paper); assert.equal(calls.some(([url]) => url.includes('/catalog?')), false);
+});
+
 test('actual customer handlers preserve reload selection, stale/failure guards, upload fields and snapshots through generation', async () => {
   const product=name=>catalogDTO({id:name,...parseProduct(name),name});
   const bpc=product('BPC-157 10mg'),sema=product('Semaglutide 5mg'),kpv=product('KPV 10mg');

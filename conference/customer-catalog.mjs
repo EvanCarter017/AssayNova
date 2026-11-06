@@ -33,7 +33,7 @@ export async function createCustomerCatalog({ store, images = DEFAULT_IMAGES, re
       const bytes = Buffer.alloc(65537), result = await file.read(bytes, 0, bytes.length, 0);
       if (result.bytesRead < 1 || result.bytesRead > 65536) throw new Error();
       const config = JSON.parse(bytes.subarray(0, result.bytesRead));
-      if (!config || Object.keys(config).sort().join(',') !== 'customers,version' || config.version !== 1 || !Array.isArray(config.customers) || config.customers.length < 1 || config.customers.length > 32) throw new Error();
+      if (!config || Object.keys(config).sort().join(',') !== 'customers,version' || config.version !== 1 || !Array.isArray(config.customers) || config.customers.length > 32) throw new Error();
       const ids = new Set(), names = new Set();
       for (const row of config.customers) {
         if (!row || !['id', 'name', 'directory'].every(key => Object.hasOwn(row, key)) || Object.keys(row).some(key => !['id', 'name', 'directory', 'imageRevision', 'aliasRevision'].includes(key)) || ['imageRevision', 'aliasRevision'].some(key => Object.hasOwn(row, key) && !revisionId(row[key])) || !validCustomerId(row.id) || ids.has(row.id) || nameValue(row.name) !== row.name || names.has(row.name.toLowerCase())) throw new Error();
