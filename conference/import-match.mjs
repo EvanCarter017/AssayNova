@@ -3,7 +3,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseProduct, catalogDTO } from './catalog.mjs';
-import { normalizeProductQuery } from './product-search.mjs';
+import { normalizeProductQuery, filterProducts } from './product-search.mjs';
 
 export const codeKey = value => normalizeProductQuery(value).replace(/[\s-]/g, '');
 const knownFullNames = new Map(JSON.parse(readFileSync(new URL('./product-aliases.json', import.meta.url), 'utf8')).map(row => [codeKey(row.canonicalName), row.canonicalName]));
@@ -60,6 +60,31 @@ export function productIdentity(value, dose = '', existing = []) {
   return { id: productId(name), name, ...parseProduct(name) };
 }
 
+export function searchableCatalog(products, aliases = products.flatMap(product => (product.importSkus || []).map(sku => ({ sku, productId: product.id })))) {
+  const claimed = new Map(aliases.map(row => [codeKey(row.sku), row.productId]));
+  return products.map(product => {
+    const dto = catalogDTO(product);
+    dto.aliases.skus = [...new Set([...dto.aliases.skus.filter(sku => !claimed.has(codeKey(sku)) || claimed.get(codeKey(sku)) === product.id), ...aliases.filter(row => row.productId === product.id).map(row => row.sku)])];
+    return dto;
+  });
+}
+function searchConflicts(products, aliases) {
+  const catalog = searchableCatalog(products, aliases), explicit = new Map(), imported = new Set(aliases.map(row => codeKey(row.sku))), conflicts = new Set();
+  for (const product of catalog) for (const sku of product.aliases.skus) {
+    const key = codeKey(sku); if (!explicit.has(key)) explicit.set(key, []); explicit.get(key).push({ sku, product });
+  }
+  for (const [key, sources] of explicit) for (const source of sources) for (const unit of ['mg', 'ml', 'iu']) {
+    const targetKey = key + unit, targets = explicit.get(targetKey);
+    if (!targets?.some(target => target.product.id !== source.product.id) || (!imported.has(key) && !imported.has(targetKey))) continue;
+    // Use the existing search implementation to test its synthesized unit-SKU
+    // rule. Empty names prevent a probe from falling through to full-name text.
+    const probe = { ...source.product, name: '', aliases: { skus: [source.sku], names: [], families: [] } };
+    if (!filterProducts([probe], targetKey).length) continue;
+    if (imported.has(key)) conflicts.add(key);
+    if (imported.has(targetKey)) conflicts.add(targetKey);
+  }
+  return conflicts;
+}
 export function previewIndex(sourceRows, pictures, existing = [], folder = false) {
   const rows = sourceRows.map(row => ({ row: row.row, sku: String(row.sku || '').slice(0, 64), product: String(row.product || '').slice(0, 256), status: 'unmatched', reason: '', identity: null }));
   const index = new Map(), blocked = new Set();
@@ -118,10 +143,15 @@ export function previewIndex(sourceRows, pictures, existing = [], folder = false
     }
   }
   for (const row of rows) if (blocked.has(codeKey(row.sku))) { row.status = 'conflict'; row.reason = 'Short code has conflicting products or pictures.'; }
+  const collisions = searchConflicts(products, aliases);
+  if (collisions.size) {
+    blocking = true;
+    for (const row of rows) if (collisions.has(codeKey(row.sku))) { row.status = 'conflict'; row.reason = 'Short codes collide with another product\'s unit-qualified search. Change the marked source codes.'; }
+  }
   const counts = { total: rows.length, valid: 0, unmatched: 0, conflict: 0, duplicate: 0, images: imageRows.length };
   counts.unmatchedImages = imageRows.filter(row => row.status === 'unmatched').length;
   for (const row of rows) counts[row.status]++;
-  return { rows: rows.map(({ identity, ...row }) => row), imageRows, counts, blocking, aliases, products };
+  return { rows: rows.map(({ identity, ...row }) => row), imageRows, counts, blocking, aliases: aliases.filter(row => !collisions.has(codeKey(row.sku))), products };
 }
 export function savedRows(products) {
   return products.flatMap(product => (product.importSkus ?? catalogDTO(product).aliases.skus).map(sku => ({ row: 0, sku, product: product.name })));

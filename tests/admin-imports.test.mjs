@@ -73,6 +73,31 @@ test('short-code index is explicit, dose-exact, case-safe and preserves one conc
   for (const code of ['CON', '../A', 'A/B', 'A\\B', 'A:1']) assert.throws(() => safeCode(code));
 });
 
+test('cross-product unit-qualified aliases cannot be confirmed, while same-product shortcode synonyms remain searchable', async t => {
+  const files = await fixture(t), app = await server(t, files);
+  const before = await readFile(path.join(files.store, 'customers/profiles.json'));
+  const bad = (await app.api('/admin/api/imports', { name: 'Collision' })).value.id;
+  await upload(app.api, bad, 'image', 'ADA10.png', files.photo);
+  await upload(app.api, bad, 'image', 'ADA10mg.png', files.other);
+  await upload(app.api, bad, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nADA10,Adamax 10mg\nADA10mg,BPC-157 10mg\n'));
+  const rejected = await app.api('/admin/api/imports/' + bad + '/preview', options);
+  assert.equal(rejected.status, 200); assert.equal(rejected.value.canConfirm, false); assert.equal(rejected.value.blocking, true);
+  assert.equal(rejected.value.counts.conflict, 2); assert.equal(rejected.value.counts.valid, 0);
+  assert.deepEqual(rejected.value.rows.map(row => [row.row, row.sku, row.status]), [[2, 'ADA10', 'conflict'], [3, 'ADA10mg', 'conflict']]);
+  assert.ok(rejected.value.rows.every(row => /unit-qualified search/.test(row.reason)));
+  assert.equal((await app.api('/admin/api/imports/' + bad + '/confirm')).status, 400);
+  assert.deepEqual(await readFile(path.join(files.store, 'customers/profiles.json')), before);
+  await app.api('/admin/api/imports/' + bad, {}, 'DELETE');
+  const good = (await app.api('/admin/api/imports', { name: 'Same Product' })).value.id;
+  await upload(app.api, good, 'image', 'ADA10.png', files.photo);
+  await upload(app.api, good, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nADA10,Adamax 10mg\nADA10mg,Adamax 10mg\n'));
+  const accepted = await app.api('/admin/api/imports/' + good + '/preview', options);
+  assert.equal(accepted.value.canConfirm, true); assert.equal(accepted.value.blocking, false); assert.equal(accepted.value.counts.valid, 2);
+  const confirmed = await app.api('/admin/api/imports/' + good + '/confirm'); assert.equal(confirmed.status, 200, confirmed.value.error);
+  assert.equal(confirmed.value.products.length, 1);
+  for (const code of ['ADA10', 'ADA10mg', 'Adamax 10mg']) assert.deepEqual(filterProducts(confirmed.value.products, code).map(row => row.id), [confirmed.value.products[0].id]);
+});
+
 test('real HTTP import endpoints keep authentication, exact chunk bounds, offsets, safe paths and cancellation without partial appends', async t => {
   const files = await fixture(t), app = await server(t, files), staging = path.join(files.store, 'customer-imports/staging');
   for (const target of ['/admin/api/imports', '/admin/import-ui.mjs']) { assert.equal((await fetch(app.origin + target)).status, 401); }

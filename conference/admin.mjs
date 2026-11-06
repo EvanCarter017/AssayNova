@@ -1,11 +1,11 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { DEFAULT_IMAGES, catalogDTO } from './catalog.mjs';
+import { DEFAULT_IMAGES } from './catalog.mjs';
 import { createCustomerCatalog } from './customer-catalog.mjs';
 import { createImports } from './imports.mjs';
 import { importChunkRoute } from './import-limits.mjs';
-import { codeKey } from './import-match.mjs';
+import { searchableCatalog } from './import-match.mjs';
 import { DEFAULT_STORE, validCode } from './reader.mjs';
 import { createStore, validateFields, validateComponents } from './store.mjs';
 import { createAuth, DEFAULT_AUTH_STORE } from './auth.mjs';
@@ -49,14 +49,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
   const reports = await createStore(store, { render, codeFactory });
   const customers = await createCustomerCatalog({ store: reports.root, images });
   const imports = await createImports({ store: reports.root, customers });
-  const catalogResponse = catalog => {
-    const claimed = new Map(catalog.products.flatMap(product => (product.importSkus || []).map(sku => [codeKey(sku), product.id])));
-    return { customer: catalog.customer, products: catalog.products.map(product => {
-      const dto = catalogDTO(product);
-      dto.aliases.skus = [...new Set([...dto.aliases.skus.filter(sku => !claimed.has(codeKey(sku)) || claimed.get(codeKey(sku)) === product.id), ...(product.importSkus || [])])];
-      return { ...dto, imageURL: '/admin/images/' + catalog.customer.id + '/' + product.id };
-    }) };
-  };
+  const catalogResponse = catalog => ({ customer: catalog.customer, products: searchableCatalog(catalog.products).map(dto => ({ ...dto, imageURL: '/admin/images/' + catalog.customer.id + '/' + dto.id })) });
   const token = randomBytes(32).toString('hex');
   const auth = createAuth({ ...authOptions, store: authStore, origin });
   const validRunToken = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && timingSafeEqual(Buffer.from(value), Buffer.from(token));
