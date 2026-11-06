@@ -220,7 +220,7 @@ const SAMPLE_REPORT_ASSETS = Object.freeze({
 });
 
 function lookupForm() {
-  return `<form id="coa-lookup-form" class="coa-search" novalidate><label for="coa-lookup-code">Find another COA · Lookup Code</label><div class="coa-search-controls"><input id="coa-lookup-code" name="lookupCode" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. AN-8P6R-3N5Y" aria-describedby="coa-lookup-error" required><button class="button button-dark" type="submit">Find report</button></div><p id="coa-lookup-error" class="inline-error" role="status"></p><p class="coa-help">Use a Lookup Code, not a report or submission number.</p></form>`;
+  return `<form id="coa-lookup-form" class="coa-search" novalidate><label for="coa-lookup-code">Find another COA · Lookup Code</label><div class="coa-search-controls"><input id="coa-lookup-code" name="lookupCode" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. AN-XXXX-XXXX" aria-describedby="coa-lookup-error" required><button class="button button-dark" type="submit">Find report</button></div><p id="coa-lookup-error" class="inline-error" role="status"></p><p class="coa-help">Use a Lookup Code, not a report or submission number.</p></form>`;
 }
 
 function renderReport(report) {

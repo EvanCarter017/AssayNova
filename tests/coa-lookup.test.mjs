@@ -374,7 +374,7 @@ test('actual public form handlers clear A on failure, survive refresh/history an
   assert.match(app.nodes.get('#verify-error').textContent, /No COA found/);
 });
 
-test('normal product labels retain sample-report honesty and new drafts preserve old stored references', async () => {
+test('public lookup has no sample shortcuts while sample reports and drafts preserve their disclosures and references', async () => {
   const homeHTML = await readFile(path.join(project, 'dist/index.html'), 'utf8');
   const text = (html) => html.replace(/<[^>]*>/g, ' ');
   assert.ok(!homeHTML.includes('class="preview-bar"'));
@@ -382,10 +382,12 @@ test('normal product labels retain sample-report honesty and new drafts preserve
   assert.equal((homeHTML.match(/data-action="portal">Saved drafts/g) || []).length, 3);
   assert.ok(!/Client portal|CLIENT WORKSPACE|YOUR WORKSPACE/.test(homeHTML));
   const publicReports = homeHTML.match(/<section id="home-reports"[\s\S]*?<\/section>/)[0];
-  assert.match(publicReports, /Sample reports/);
-  for (const code of ['AN-7K9Q-2M4X', 'AN-8P6R-3N5Y']) assert.ok(publicReports.includes(`data-action="report" data-lookup-code="${code}"`));
+  assert.doesNotMatch(homeHTML, /home-report-samples|Sample reports|data-action="report"|methods-report-link|AN-7K9Q-2M4X|AN-8P6R-3N5Y/);
+  assert.match(publicReports, /id="home-reports-title">Your code\.<br>The published report\./);
   assert.match(publicReports, /href="\/verify">Find a COA/);
+  assert.match(homeHTML, /id="report-id"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
   const sample = bootApp('/coa/AN-7K9Q-2M4X');
+  assert.match(sample.nodes.get('#coa-view').innerHTML, /id="coa-lookup-code"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
   assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Sample report/);
   assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Not a valid certificate of analysis/);
   const old = { id: 'AN-DEMO-OLD12345', sample: 'Older saved sample', name: 'Saved name', email: 'saved@example.invalid', service: 'purity', quantity: 1 };
