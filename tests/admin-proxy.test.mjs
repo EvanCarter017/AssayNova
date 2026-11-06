@@ -186,7 +186,7 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
   const studio = await primary(t, files, async (...args) => { if (hold) { enter(); await held; } await renderer(...args); });
   const localCookie = cookie(await unlock(studio.origin, true)), proxy = await bridge(t, studio), bridgeCookie = cookie(await unlock(proxy.origin));
   const session = JSON.parse((await raw(proxy.origin, '/admin/api/session', { headers: { Cookie: bridgeCookie } })).text);
-  const input = { productId: session.products[0].id, fields: { client: 'Proxy QA' }, publish: false };
+  const input = { customerId: session.defaultCustomerId, productId: session.products[0].id, fields: {}, publish: false };
   const generate = (origin, cookieValue, extra = {}, value = input) => raw(origin, '/admin/api/generate', { method: 'POST', headers: { Origin: origin, Cookie: cookieValue, 'Content-Type': 'application/json', 'X-Studio-Token': session.token, ...extra }, body: JSON.stringify(value) });
   assert.equal((await generate(proxy.origin, bridgeCookie, { 'X-Studio-Token': '' })).status, 403);
   const running = generate(proxy.origin, bridgeCookie); await entered;
@@ -199,7 +199,7 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
   assert.deepEqual(JSON.parse((await raw(studio.origin, '/admin/api/history', { headers: { Cookie: localCookie } })).text).map(row => row.lookupCode), [code]);
   const reader = await launch(t, files, ['--conference-reports', '--conference-store=' + files.store]);
   assert.equal((await raw(reader.origin, '/verify')).status, 200);
-  const dto = JSON.parse((await raw(reader.origin, '/__reports/' + code)).text); assert.equal(dto.report.lookupCode, code); assert.equal(dto.record.client, 'Proxy QA');
+  const dto = JSON.parse((await raw(reader.origin, '/__reports/' + code)).text); assert.equal(dto.report.lookupCode, code); assert.equal(dto.record.client, 'Research Client');
   for (const ext of ['pdf', 'svg']) assert.deepEqual((await raw(reader.origin, '/__reports/' + code + '/report.' + ext)).bytes, (await raw(proxy.origin, '/admin/bundles/published/' + code + '/report.' + ext, { headers: { Cookie: bridgeCookie } })).bytes);
   assert.equal((await raw(reader.origin, '/__reports/' + preview.report.lookupCode)).status, 404);
 });

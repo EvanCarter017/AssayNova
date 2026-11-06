@@ -103,7 +103,7 @@ function selectionUI() {
   const prefix = operatorSource.slice(operatorSource.indexOf('const $='), operatorSource.indexOf('function showResult'));
   const context = { document, filterProducts, createAdminI18n, navigator: { language: 'en' }, Date };
   // Capture actual UI functions in a persistent object shared with the VM.
-  const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};globalThis.ui={filter,selectProduct,selected:()=>selected,setBusy:value=>{busy=value}};', holder);
+  const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};currentCustomerId="fixture";globalThis.ui={filter,selectProduct,selected:()=>selected,setBusy:value=>{busy=value}};', holder);
   return { nodes, node, buttons, ui: holder.ui };
 }
 test('actual selection handlers preserve canonical defaults, no-results/busy guards and the last report', () => {

@@ -7,4 +7,6 @@
 
 .selected-summary{display:grid;gap:6px;padding:12px 14px;margin:16px 0;background:#f1f7f8;border-left:3px solid #53a4aa;border-radius:4px}.selected-summary .eyebrow{margin:0}.selected-summary strong{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
 
+.customer-tools{display:flex;margin-top:8px}.customer-tools button{font-size:11px}#customer-config{margin:12px 0 18px;padding:0 12px;border:1px solid #dbe6e9;border-radius:7px;min-width:0}#customer-config summary{min-height:44px;padding:12px 0;line-height:20px;font-size:11px;font-weight:600;cursor:pointer}#customer-config summary:focus-visible{outline:3px solid #179db3;outline-offset:3px}#customer-config .buttons{margin-top:4px}#customer-form{padding-bottom:14px;min-width:0}#customer-form .hint{overflow-wrap:anywhere}#customer-save{margin-top:10px}#customer option{white-space:normal;overflow-wrap:anywhere}
+
 :root{font-family:Segoe UI,"Microsoft YaHei","PingFang SC",Arial,sans-serif}.workspace-header{flex-wrap:wrap}.workspace-actions{flex-wrap:wrap}.workspace-actions .admin-language{width:auto;min-width:108px;max-width:150px;min-height:44px;margin:0;padding:9px 12px;font-size:12px}.admin-language option{padding:4px}@media(max-width:560px){.workspace-actions{width:100%;justify-content:flex-end}.workspace-header{gap:14px}.workspace-actions .admin-language{max-width:140px}}

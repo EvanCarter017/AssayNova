@@ -54,7 +54,9 @@ function documentFixture(html) {
   const all=[], ids=new Map(); let document;
   const decode=value=>value.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
   function make(tag,attributes,parent,text='') {
-    const attrs=new Map(attributes), node={tagName:tag.toUpperCase(),parent,children:[],attributes:attrs,dataset:{},events:new Map(),isConnected:true,hidden:attrs.has('hidden'),disabled:attrs.has('disabled'),value:attrs.get('value')||'',text:decode(text),html:'',focusCalls:0,
+    const attrs=new Map(attributes);let inputValue=attrs.get('value')||'';
+    const node={tagName:tag.toUpperCase(),parent,children:[],attributes:attrs,dataset:{},events:new Map(),isConnected:true,hidden:attrs.has('hidden'),disabled:attrs.has('disabled'),text:decode(text),html:'',focusCalls:0,
+      get value(){return inputValue;},set value(value){inputValue=this.tagName==='SELECT'&&!this.options.some(option=>option.getAttribute('value')===value)?'':value;},
       getAttribute(key){return attrs.get(key)??null;},setAttribute(key,value){attrs.set(key,String(value));},get content(){return attrs.get('content')??'';},addEventListener(type,callback){this.events.set(type,callback);},focus(){document.activeElement=this;this.focusCalls++;},select(){},classList:{toggle(){}},
       get textContent(){return this.text;},set textContent(value){for(const child of this.children)disconnect(child);this.children=[];this.text=String(value);},
       get innerHTML(){return this.html;},set innerHTML(value){for(const child of this.children)disconnect(child);this.children=[];this.html=String(value);parse(this.html,this);},
@@ -97,17 +99,59 @@ async function boot(source,html,{storage=storageFixture(),fetch,language='en',ex
 test('actual Reports locale switch preserves values, selection, snapshot, manual copy, focus and in-flight work', async () => {
   const product={...catalogDTO({id:'klow',name:'KLOW 80mg',...parseProduct('KLOW 80mg')}),imageURL:'/admin/images/klow'};
   const calls=[];let finish;
-  const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options)=>{calls.push([url,options]);if(url.endsWith('/session'))return {status:200,ok:true,json:async()=>({products:[product],token:'synthetic',publicOrigin:'http://customer.invalid'})};if(url.endsWith('/history'))return {status:200,ok:true,json:async()=>[]};return new Promise(resolve=>finish=resolve);},extra:'globalThis.ui={language,filter,showResult,statusError};'});
-  const {ui}=app.context; app.node('generate').elements.namedItem('client').value='Typed client';app.node('search').value='KLOW80';ui.filter();
+  const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options)=>{calls.push([url,options]);if(url.endsWith('/session'))return {status:200,ok:true,json:async()=>({products:[product],customers:[{id:'fixture',name:'Saved Customer',directory:'/srv/products'}],defaultCustomerId:'fixture',token:'synthetic',publicOrigin:'http://customer.invalid'})};if(url.endsWith('/history'))return {status:200,ok:true,json:async()=>[]};return new Promise(resolve=>finish=resolve);},extra:'globalThis.ui={language,filter,showResult,statusError};'});
+  const {ui}=app.context; app.node('customer-name').value='Typed client';app.node('search').value='KLOW80';ui.filter();
   ui.showResult({published:false,label:'KLOW 80mg',report:{lookupCode:'AN-TEST-0001'},previewURL:'/admin/bundles/previews/AN-TEST-0001/report.svg',pdfURL:'/admin/bundles/previews/AN-TEST-0001/report.pdf',publicURL:'http://customer.invalid/coa/AN-TEST-0001'});
-  app.node('manual-copy').value='AN-TEST-0001';app.node('manual-label').hidden=false;const client=app.node('generate').elements.namedItem('client');client.focus();const focusCount=client.focusCalls,before=calls.length;
+  app.node('manual-copy').value='AN-TEST-0001';app.node('manual-label').hidden=false;const client=app.node('customer-name');client.focus();const focusCount=client.focusCalls,before=calls.length;
   ui.language.setLocale('zh-CN');assert.equal(calls.length,before);assert.equal(app.document.documentElement.lang,'zh-CN');assert.match(app.document.title,/报告管理/);assert.equal(app.node('search').getAttribute('placeholder'),DICTIONARIES['zh-CN'].searchPlaceholder);assert.equal(app.node('paper').getAttribute('alt'),'报告预览');
   assert.equal(client.value,'Typed client');assert.equal(client.isConnected,true);assert.equal(app.node('search').value,'KLOW80');assert.equal(app.node('product').value,'klow');assert.equal(app.node('code').textContent,'AN-TEST-0001');assert.match(app.node('paper').src,/AN-TEST-0001/);assert.equal(app.node('manual-copy').value,'AN-TEST-0001');assert.equal(app.node('manual-label').hidden,false);assert.equal(app.document.activeElement,client);assert.equal(client.focusCalls,focusCount);assert.deepEqual(app.navigation,[]);
   const submit=app.node('generate').events.get('submit')({preventDefault(){},submitter:{value:'preview'}});assert.equal(client.disabled,true);assert.match(app.node('status').textContent,/正在/);const pendingCalls=calls.length;
-  const payload=JSON.parse(calls.find(([url])=>url.endsWith('/generate'))[1].body);assert.deepEqual(Object.keys(payload).sort(),['fields','productId','publish']);assert.equal(payload.fields.client,'Typed client');assert.equal(payload.productId,'klow');
+  const payload=JSON.parse(calls.find(([url])=>url.endsWith('/generate'))[1].body);assert.deepEqual(Object.keys(payload).sort(),['customerId','fields','productId','publish']);assert.equal(payload.customerId,'fixture');assert.equal(Object.hasOwn(payload.fields,'client'),false);assert.equal(payload.productId,'klow');
   ui.language.setLocale('en');assert.equal(calls.length,pendingCalls);assert.equal(client.disabled,true);assert.equal(app.node('status').textContent,DICTIONARIES.en.previewing);
   finish({status:400,ok:false,json:async()=>({error:'Use a valid ISO date.'})});await submit;assert.match(app.node('status').textContent,/ISO date/);ui.language.setLocale('zh-CN');assert.match(app.node('status').textContent,/有效日期/);assert.equal(client.disabled,false);assert.equal(app.node('code').textContent,'AN-TEST-0001');
   assert.ok(app.storage.writes.every(([key,value])=>key===LOCALE_KEY&&['en','zh-CN'].includes(value)));
+});
+
+test('actual customer handlers preserve reload selection, reject stale responses, repair the selected profile and keep snapshots through add/edit/generation', async () => {
+  const product=name=>catalogDTO({id:name,...parseProduct(name),name});
+  const bpc=product('BPC-157 10mg'),sema=product('Semaglutide 5mg'),kpv=product('KPV 10mg');
+  const a={id:'a',name:'Aster',directory:'/srv/a'},b={id:'b',name:'Cedar',directory:'/srv/b'};
+  let customers=[a,b],catalogRequests=[],mutationRequests=[],calls=[];
+  const ok=value=>({status:200,ok:true,json:async()=>value});
+  const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options)=>{
+    calls.push([url,options]);if(url.endsWith('/session'))return ok({customers,defaultCustomerId:a.id,products:[bpc,sema],token:'fixture',publicOrigin:'http://customer.invalid'});
+    if(url.endsWith('/history'))return ok([]);
+    return new Promise(resolve=>(url.includes('/catalog?')?catalogRequests:mutationRequests).push({url,options,resolve}));
+  },extra:'globalThis.ui={language,loadCustomer,filter,selectProduct,showResult,selected:()=>selected};'});
+  const {ui}=app.context;
+  app.node('product').value=bpc.id;ui.selectProduct();
+  ui.showResult({published:false,label:'Old report',report:{lookupCode:'AN-OLD0-0001'},previewURL:'/admin/bundles/previews/AN-OLD0-0001/report.svg',pdfURL:'/admin/bundles/previews/AN-OLD0-0001/report.pdf'});
+  const reload=app.node('reload-products').events.get('click')();assert.equal(app.node('product').value,'');assert.equal(app.node('customer').disabled,false);
+  catalogRequests.shift().resolve(ok({customer:a,products:[bpc,sema]}));await reload;assert.equal(app.node('product').value,bpc.id,'native select must regain a still-valid option after rebuilding');
+  const oldB=ui.loadCustomer(b.id),newA=ui.loadCustomer(a.id);assert.equal(app.node('customer-name').value,a.name);
+  const first=catalogRequests.shift(),second=catalogRequests.shift();second.resolve(ok({customer:a,products:[sema]}));await newA;
+  first.resolve(ok({customer:b,products:[kpv]}));await oldB;assert.equal(app.node('customer').value,a.id);assert.equal(ui.selected().id,sema.id);
+  const staleFailure=ui.loadCustomer(b.id),latest=ui.loadCustomer(a.id),oldFailure=catalogRequests.shift(),latestRequest=catalogRequests.shift();
+  latestRequest.resolve(ok({customer:a,products:[sema]}));await latest;const latestStatus=app.node('status').textContent;
+  oldFailure.resolve({status:400,ok:false,json:async()=>({error:'Customer directory could not be read. Check the saved server directory and reload products.'})});await staleFailure;assert.equal(app.node('status').textContent,latestStatus);
+  const failed=ui.loadCustomer(b.id);assert.equal(app.node('customer-name').value,b.name);assert.equal(app.node('customer-directory').value,b.directory);
+  catalogRequests.shift().resolve({status:400,ok:false,json:async()=>({error:'Customer directory could not be read. Check the saved server directory and reload products.'})});await failed;
+  assert.equal(ui.selected(),undefined);assert.equal(app.node('customer-directory').disabled,false);assert.equal(app.node('code').textContent,'AN-OLD0-0001');
+  app.node('customer-name').value='Cedar repaired';app.node('customer-directory').value='/srv/repaired';app.node('customer-directory').focus();
+  const focus=app.document.activeElement,io=calls.length;ui.language.setLocale('zh-CN');assert.equal(calls.length,io);assert.equal(app.document.activeElement,focus);assert.equal(app.node('customer-directory').value,'/srv/repaired');
+  const save=app.node('customer-form').events.get('submit')({preventDefault(){}}),edit=mutationRequests.shift();
+  assert.deepEqual(JSON.parse(edit.options.body),{customerId:b.id,name:'Cedar repaired',directory:'/srv/repaired'});assert.equal(app.node('customer').disabled,true);
+  const inFlightCalls=calls.length;ui.language.setLocale('en');assert.equal(calls.length,inFlightCalls);assert.equal(app.node('customer-directory').disabled,true);assert.equal(app.document.activeElement,focus);
+  const repaired={...b,name:'Cedar repaired',directory:'/srv/repaired'};customers=[a,repaired];edit.resolve(ok({customers,customer:repaired,products:[kpv]}));await save;
+  assert.equal(app.node('customer').value,b.id);assert.equal(ui.selected().id,kpv.id);assert.equal(app.node('code').textContent,'AN-OLD0-0001');
+  app.node('customer-add').events.get('click')();assert.equal(app.node('customer-name').value,'');assert.equal(app.node('customer-directory').value,'');assert.equal(app.node('customer').value,b.id);assert.equal(ui.selected().id,kpv.id);
+  app.node('customer-name').value='Maple';app.node('customer-directory').value='/srv/maple';
+  const add=app.node('customer-form').events.get('submit')({preventDefault(){}}),addition=mutationRequests.shift();assert.equal(Object.hasOwn(JSON.parse(addition.options.body),'customerId'),false);
+  const maple={id:'c',name:'Maple',directory:'/srv/maple'};addition.resolve(ok({customers:[...customers,maple],customer:maple,products:[kpv]}));await add;assert.equal(app.node('customer').value,'c');
+  const generate=app.node('generate').events.get('submit')({preventDefault(){},submitter:{value:'preview'}}),generation=mutationRequests.shift(),payload=JSON.parse(generation.options.body);
+  assert.equal(payload.customerId,'c');assert.equal(payload.productId,kpv.id);assert.equal(Object.hasOwn(payload.fields,'client'),false);assert.equal(app.node('customer').disabled,true);
+  generation.resolve({status:400,ok:false,json:async()=>({error:'Use a valid ISO date.'})});await generate;assert.equal(app.node('code').textContent,'AN-OLD0-0001');assert.equal(app.node('customer').disabled,false);
+  app.node('search').value='SM2';ui.filter();assert.equal(ui.selected(),undefined);assert.equal(app.node('paper').src,'/admin/bundles/previews/AN-OLD0-0001/report.svg');
 });
 
 test('actual login stays English with Chinese saved/browser locales and no locale reads or writes', async () => {

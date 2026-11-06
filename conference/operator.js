@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const language=createAdminI18n({storage:()=>localStorage,browserLanguage:navigator.language});
 const t=(key,values)=>language.t(key,values);
-let session,selected,result,busy=false,historyRows=[];
+let session,selected,result,busy=false,historyRows=[],currentCustomerId='',editingCustomerId,catalogLoading=false,saving=false,catalogRevision=0;
 let statusState={key:'loading',error:false};
 const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 for(const name of ['received','reported']) $('generate').elements.namedItem(name).value=today;
@@ -29,19 +29,49 @@ function applyLanguage(){
   document.querySelector('.brand span').textContent=t('admin');
   $('admin-language').value=language.locale;
   renderSelectionLanguage();renderResultLanguage();renderHistoryLanguage();renderStatus();
+  $('customer-mode').textContent=t(editingCustomerId?'editingCustomer':'addingCustomer');
+}
+function updateControls(){
+  for(const control of document.querySelectorAll('main input,main select,main button'))control.disabled=busy||saving||catalogLoading||!session;
+  $('customer').disabled=busy||saving||!session;
+  for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||saving||catalogLoading||!selected||!currentCustomerId;
 }
 function selectProduct(){
   selected=session.products.find(product=>product.id===$('product').value);
   renderSelectionLanguage();
-  for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||!selected;
+  updateControls();
 }
-function filter(){
-  const previous=$('product').value,products=filterProducts(session.products,$('search').value);
+function filter(preferredId){
+  const previous=typeof preferredId==='string'?preferredId:$('product').value,products=filterProducts(session.products,$('search').value);
   const chosen=products.some(product=>product.id===previous)?previous:products.length===1?products[0].id:'';
   $('product').innerHTML=(products.length>1&&!chosen?'<option value="" disabled selected data-i18n="chooseMatching">'+escape(t('chooseMatching'))+'</option>':'')+products.map(product=>`<option value="${product.id}">${escape(product.name)}</option>`).join('');
   $('product').value=chosen;
   $('count').textContent=`(${products.length}/${session.products.length})`;
   selectProduct();status(!products.length?'noMatches':chosen?'selectedReady':'chooseBelow');
+}
+function renderCustomers(){
+  $('customer').innerHTML=session.customers.map(customer=>`<option value="${customer.id}">${escape(customer.name)}</option>`).join('');
+  $('customer').value=currentCustomerId;
+}
+function configureCustomer(add=false){
+  const customer=!add&&session?.customers.find(row=>row.id===currentCustomerId);
+  editingCustomerId=customer?.id;
+  $('customer-name').value=customer?.name||'';$('customer-directory').value=customer?.directory||'';
+  $('customer-mode').textContent=t(customer?'editingCustomer':'addingCustomer');
+}
+async function loadCustomer(id,reload=false){
+  if(busy||saving||!session)return;
+  const revision=++catalogRevision,previous=reload?$('product').value:'',query=reload?$('search').value:'';
+  currentCustomerId=id;$('customer').value=id;configureCustomer();catalogLoading=true;session.products=[];selected=undefined;
+  $('product').innerHTML='';$('product').value='';$('search').value='';$('count').textContent='(0/0)';renderSelectionLanguage();updateControls();status('catalogLoading');
+  try{
+    const response=await adminFetch('/admin/api/catalog?customerId='+encodeURIComponent(id),{cache:'no-store'}),value=await response.json();
+    if(revision!==catalogRevision)return;
+    if(!response.ok||value.customer?.id!==id)throw new Error(value.error||'');
+    session.products=value.products;session.customers=session.customers.map(row=>row.id===id?value.customer:row);
+    renderCustomers();$('search').value=query;filter(previous);configureCustomer();
+  }catch(error){if(revision===catalogRevision)statusError(error.message,'catalogFallback');}
+  finally{if(revision===catalogRevision){catalogLoading=false;updateControls();}}
 }
 async function adminFetch(url,options){
   const response=await fetch(url,options);
@@ -68,22 +98,38 @@ $('history').addEventListener('click',event=>{
   showResult({published:true,report:{lookupCode:code},label:row.label,previewURL:'/admin/bundles/published/'+code+'/report.svg',pdfURL:'/admin/bundles/published/'+code+'/report.pdf',publicURL:session.publicOrigin+'/coa/'+code});
 });
 $('search').addEventListener('input',filter);$('product').addEventListener('change',selectProduct);
+$('customer').addEventListener('change',()=>loadCustomer($('customer').value));
+$('reload-products').addEventListener('click',()=>loadCustomer(currentCustomerId,true));
+$('customer-add').addEventListener('click',()=>{if(busy||saving||catalogLoading)return;configureCustomer(true);$('customer-name').focus();});
+$('customer-edit').addEventListener('click',()=>{if(busy||saving||catalogLoading)return;configureCustomer();$('customer-name').focus();});
+$('customer-form').addEventListener('submit',async event=>{
+  event.preventDefault();if(busy||saving||catalogLoading||!session)return;
+  saving=true;++catalogRevision;updateControls();status('customerSaving');
+  const input={name:$('customer-name').value,directory:$('customer-directory').value};if(editingCustomerId)input.customerId=editingCustomerId;
+  try{
+    const response=await adminFetch('/admin/api/customers',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify(input)}),value=await response.json();
+    if(!response.ok)throw new Error(value.error||'');
+    session.customers=value.customers;session.products=value.products;currentCustomerId=value.customer.id;renderCustomers();
+    $('search').value='';$('product').value='';filter();configureCustomer();status('customerSaved');
+  }catch(error){statusError(error.message,'customerSaveFallback');$('status').focus();}
+  finally{saving=false;updateControls();}
+});
 $('admin-language').addEventListener('change',event=>language.setLocale(event.target.value));
-language.subscribe(applyLanguage);applyLanguage();
+language.subscribe(applyLanguage);applyLanguage();updateControls();
 $('generate').addEventListener('submit',async event=>{
-  event.preventDefault();if(busy||!selected)return;busy=true;
+  event.preventDefault();if(busy||saving||catalogLoading||!selected||!currentCustomerId)return;busy=true;
   const publish=event.submitter?.value==='publish';
-  for(const control of document.querySelectorAll('main input,main select,main button'))control.disabled=true;
+  updateControls();
   status(publish?'publishing':'previewing');
   const fields={};
-  for(const name of ['client','lot','received','reported','purity1','purity2']){const value=$('generate').elements.namedItem(name).value;fields[name]=name.startsWith('purity')&&value!==''?Number(value):value;}
+  for(const name of ['lot','received','reported','purity1','purity2']){const value=$('generate').elements.namedItem(name).value;fields[name]=name.startsWith('purity')&&value!==''?Number(value):value;}
   try{
-    const response=await adminFetch('/admin/api/generate',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify({productId:selected.id,fields,publish})});
+    const response=await adminFetch('/admin/api/generate',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify({customerId:currentCustomerId,productId:selected.id,fields,publish})});
     const value=await response.json();if(!response.ok)throw new Error(value.error||'');
     showResult(value);status(publish?'publishedReady':'previewReady');
     try{await history();}catch(error){statusError(error.message,'historyFallback');}
   }catch(error){statusError(error.message,'generateFallback');$('status').focus();}
-  finally{busy=false;for(const control of document.querySelectorAll('main input,main select,main button'))control.disabled=false;for(const button of document.querySelectorAll('#generate button'))button.disabled=!selected;}
+  finally{busy=false;updateControls();}
 });
 $('copy-code').addEventListener('click',async()=>{
   if(!result)return;
@@ -92,7 +138,8 @@ $('copy-code').addEventListener('click',async()=>{
 });
 try{
   const response=await adminFetch('/admin/api/session',{cache:'no-store'});if(!response.ok)throw new Error('');
-  session=await response.json();filter();status('ready');
+  session=await response.json();currentCustomerId=session.defaultCustomerId;renderCustomers();configureCustomer();filter();updateControls();
+  if(session.catalogError)statusError(session.catalogError,'catalogFallback');else status('ready');
   try{await history();}catch(error){statusError(error.message,'historyFallback');}
 }catch(error){statusError(error.message,'sessionFallback');}
 $('logout').addEventListener('click',async()=>{

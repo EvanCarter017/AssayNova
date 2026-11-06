@@ -22,6 +22,9 @@
         <aside id="create-report" aria-labelledby="create-title">
           <div class="section-heading"><h2 id="create-title" data-i18n="createReport">Create report</h2><span class="data-badge" data-i18n="synthetic">Synthetic data</span></div>
           <p class="notice" data-i18n="syntheticNotice">Generated values are examples, not instrument measurements. Choose a product and review the full report preview before publishing. Customer reports use the normal COA experience.</p>
+          <label for="customer" data-i18n="customer">Customer</label><select id="customer"></select>
+          <div class="customer-tools"><button id="reload-products" type="button" data-i18n="reloadProducts">Reload products</button></div>
+          <details id="customer-config"><summary data-i18n="customerDirectories">Customer directories</summary><div class="buttons"><button id="customer-add" type="button" data-i18n="addCustomer">Add customer</button><button id="customer-edit" type="button" data-i18n="editCustomer">Edit selected</button></div><form id="customer-form"><p id="customer-mode" class="hint"></p><label for="customer-name" data-i18n="customerName">Customer name on reports</label><input id="customer-name" maxlength="64" autocomplete="off" required><label for="customer-directory" data-i18n="serverDirectory">Absolute server directory</label><input id="customer-directory" placeholder="C:\Products\CustomerA" autocomplete="off" required aria-describedby="directory-help"><p id="directory-help" class="hint" data-i18n="directoryHelp">Use a folder on the server computer, not this browser device. Direct PNG files must include the product and dose, for example BPC-157 10mg.png.</p><button id="customer-save" type="submit" data-i18n="saveCustomer">Save customer</button></form></details>
           <label for="search" data-i18n="searchLabel">Search products by name or SKU</label><input id="search" data-i18n-placeholder="searchPlaceholder" type="search" placeholder="e.g. TR10, BC10, sema, NAD+" autocomplete="off" aria-describedby="product-help">
           <label for="product"><span data-i18n="product">Product</span> <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
           <p id="product-help" class="hint" data-i18n="productHelp">Use a full SKU for an exact dose, or a family such as TR / SM. Only products with original photos are listed.</p>
@@ -29,7 +32,6 @@
           <form id="generate">
 
             <div class="grid">
-              <label><span data-i18n="client">Client</span><input data-i18n-placeholder="clientPlaceholder" name="client" maxlength="64" placeholder="Research client"></label>
               <label><span data-i18n="lot">Lot</span><input data-i18n-placeholder="automatic" name="lot" maxlength="40" placeholder="Automatic"></label>
               <label><span data-i18n="received">Received</span><input name="received" type="date"></label>
               <label><span data-i18n="reported">Reported</span><input name="reported" type="date"></label>

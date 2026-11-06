@@ -1,7 +1,8 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { DEFAULT_IMAGES, loadCatalog, catalogDTO } from './catalog.mjs';
+import { DEFAULT_IMAGES, catalogDTO } from './catalog.mjs';
+import { createCustomerCatalog } from './customer-catalog.mjs';
 import { DEFAULT_STORE, validCode } from './reader.mjs';
 import { createStore, validateFields, validateComponents } from './store.mjs';
 import { createAuth, DEFAULT_AUTH_STORE } from './auth.mjs';
@@ -40,10 +41,11 @@ async function bodyJSON(request) {
 // One catalog/store writer and one security boundary, shared by both HTTP hosts.
 export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEFAULT_STORE, authStore = DEFAULT_AUTH_STORE, authOptions, publicOrigin, render, codeFactory } = {}) {
   if (process.env.NODE_ENV === 'production') throw new Error('Local administration is disabled in production.');
-  if (!path.isAbsolute(images)) throw new Error('Choose an absolute admin image directory.');
+  if (!path.isAbsolute(images) && !/^[a-z]:[\\/]/i.test(images)) throw new Error('Choose an absolute admin image directory.');
   const publicURL = plainOrigin(publicOrigin);
-  const catalog = await loadCatalog(images), products = new Map(catalog.map(product => [product.id, product]));
   const reports = await createStore(store, { render, codeFactory });
+  const customers = await createCustomerCatalog({ store: reports.root, images });
+  const catalogResponse = catalog => ({ customer: catalog.customer, products: catalog.products.map(product => ({ ...catalogDTO(product), imageURL: '/admin/images/' + catalog.customer.id + '/' + product.id })) });
   const token = randomBytes(32).toString('hex');
   const auth = createAuth({ ...authOptions, store: authStore, origin });
   const validRunToken = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && timingSafeEqual(Buffer.from(value), Buffer.from(token));
@@ -108,6 +110,14 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Logout request rejected.' }); return true; }
       response.setHeader('Set-Cookie', auth.logout(request)); send(response, 200, { ok: true }); return true;
     }
+    if (request.method === 'POST' && pathname === '/admin/api/customers') {
+      if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Run token required.' }); return true; }
+      try {
+        const saved = await customers.save(await bodyJSON(request));
+        send(response, 200, { customers: saved.customers, ...catalogResponse(saved) });
+      } catch (error) { send(response, error.status || 400, { error: error.status ? error.message : 'Customer configuration could not be saved.' }); }
+      return true;
+    }
     if (request.method === 'POST' && pathname === '/admin/api/generate') {
       const supplied = request.headers['x-studio-token'];
       if (request.headers.origin !== currentOrigin || !validRunToken(supplied)) {
@@ -115,12 +125,15 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       }
       try {
         const input = await bodyJSON(request);
-        if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['productId', 'fields', 'components', 'publish'].includes(key)) || typeof input.publish !== 'boolean') throw new Error('Choose Preview or Generate and publish.');
-        const selected = products.get(input.productId);
+        if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['customerId', 'productId', 'fields', 'components', 'publish'].includes(key)) || typeof input.publish !== 'boolean') throw new Error('Choose Preview or Generate and publish.');
+        if (input.fields && Object.hasOwn(input.fields, 'client')) throw new Error('Client is determined by the saved customer.');
+        const fields = validateFields(input.fields);
+        const catalog = await customers.scan(input.customerId);
+        const selected = catalog.products.find(product => product.id === input.productId);
         if (!selected) throw new Error('Select a catalog product.');
         const components = validateComponents(input.components, selected.components);
         const product = { ...selected, components, unit: new Set(components.map(row => row.unit)).size === 1 ? components[0].unit : 'mixed' };
-        const result = await reports.generate(product, validateFields(input.fields), input.publish);
+        const result = await reports.generate(product, { ...fields, client: catalog.customer.name }, input.publish);
         send(response, 201, { ...result, previewURL: '/admin' + result.previewURL, pdfURL: '/admin' + result.pdfURL, publicURL: new URL('/coa/' + result.report.lookupCode, publicURL).href });
       } catch (error) { send(response, error.status || 400, { error: error.code ? 'Report operation failed; previous reports are preserved.' : error.message }); }
       return true;
@@ -130,15 +143,27 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
     }
     try {
       if (pathname === '/admin/api/session') {
-        send(response, 200, { token, products: catalog.map(product => { const dto = catalogDTO(product); return { ...dto, imageURL: '/admin' + dto.imageURL }; }), publicOrigin: publicURL }, undefined, head); return true;
+        const profiles = await customers.list(), defaultCustomerId = profiles[0].id;
+        let initial;
+        try { initial = catalogResponse(await customers.scan(defaultCustomerId)); }
+        catch (error) { initial = { customer: profiles[0], products: [], catalogError: error.message }; }
+        send(response, 200, { token, customers: profiles, defaultCustomerId, ...initial, publicOrigin: publicURL }, undefined, head); return true;
+      }
+      if (pathname === '/admin/api/catalog') {
+        const query = new URL(request.url, currentOrigin).searchParams;
+        if ([...query.keys()].length !== 1 || query.getAll('customerId').length !== 1) { send(response, 400, { error: 'Choose a saved customer.' }, undefined, head); return true; }
+        send(response, 200, catalogResponse(await customers.scan(query.get('customerId'))), undefined, head); return true;
       }
       if (pathname === '/admin/api/history') { send(response, 200, await reports.history(), undefined, head); return true; }
       if (files.has(pathname)) {
         const file = files.get(pathname), type = file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8';
         send(response, 200, await readFile(new URL(file, import.meta.url)), type, head); return true;
       }
-      const image = /^\/admin\/images\/([a-f0-9]{20})$/.exec(pathname);
-      if (image && products.has(image[1])) { send(response, 200, await readFile(products.get(image[1]).imagePath), 'image/png', head); return true; }
+      const image = /^\/admin\/images\/([a-f0-9]{20})\/([a-f0-9]{20})$/.exec(pathname);
+      if (image) {
+        const product = (await customers.scan(image[1])).products.find(row => row.id === image[2]);
+        if (product) { send(response, 200, await readFile(product.imagePath), 'image/png', head); return true; }
+      }
       const bundle = /^\/admin\/bundles\/(published|previews)\/(AN-[A-Z0-9]{4}-[A-Z0-9]{4})\/(report\.svg|report\.pdf)$/.exec(pathname);
       if (bundle && validCode(bundle[2])) {
         const base = await realpath(path.join(reports.root, bundle[1]));
@@ -147,7 +172,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
         send(response, 200, await readFile(file), bundle[3].endsWith('.pdf') ? 'application/pdf' : 'image/svg+xml', head); return true;
       }
       send(response, 404, { error: 'Not found.' }, undefined, head);
-    } catch { send(response, 404, { error: 'Not found.' }, undefined, head); }
+    } catch (error) { send(response, error.status || 404, { error: error.status ? error.message : 'Not found.' }, undefined, head); }
     return true;
   }
   return { handle, store: reports.root };
