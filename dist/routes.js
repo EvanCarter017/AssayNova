@@ -5,7 +5,11 @@ export const PAGE_ROUTES = Object.freeze([
   { path: '/about', view: 'about-view', heading: 'about-title', title: 'About us · AssayNova' },
   { path: '/verify', view: 'verify-view', heading: 'verify-page-title', title: 'Verify COA · AssayNova' },
   { path: '/contact', view: 'contact-view', heading: 'contact-title', title: 'Contact us · AssayNova' },
-  { path: '/submit-sample', view: 'request-view', heading: 'request-page-title', title: 'Submit a sample · AssayNova' }
+  { path: '/submit-sample', view: 'request-view', heading: 'request-page-title', title: 'Submit a sample · AssayNova' },
+  { path: '/account', view: 'account-view', heading: 'account-title', title: 'My account · AssayNova' },
+  { path: '/login', view: 'login-view', heading: 'login-title', title: 'Sign in · AssayNova' },
+  { path: '/register', view: 'register-view', heading: 'register-title', title: 'Create account · AssayNova' },
+  { path: '/recover-account', view: 'recover-account-view', heading: 'recover-account-title', title: 'Account recovery · AssayNova' }
 ].map(Object.freeze));
 
 export function resolvePageRoute(pathname) {

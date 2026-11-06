@@ -26,7 +26,7 @@ export function validateCatalog(input) {
     if (!exactKeys(service, ['id', 'purpose', 'label', 'description', 'retention', 'cookies', 'storage', 'start', 'stop']) || !idPattern.test(service.id) || !purposes.some(({ id }) => id === service.purpose) || !text(service.label) || !text(service.description) || !text(service.retention) || typeof service.start !== 'function' || typeof service.stop !== 'function' || !Array.isArray(service.cookies) || !Array.isArray(service.storage)) throw new TypeError('Invalid optional service');
     const cookies = service.cookies.map((cookie) => {
       // Exact names and host-only paths only. No broad regex or domain deletion.
-      if (!exactKeys(cookie, ['name', 'path']) || !/^[a-zA-Z0-9_-]{1,80}$/.test(cookie.name) || cookie.name === POLICY.cookie || typeof cookie.path !== 'string' || !/^\/[a-zA-Z0-9/_-]*$/.test(cookie.path)) throw new TypeError('Invalid optional cookie');
+      if (!exactKeys(cookie, ['name', 'path']) || !/^[a-zA-Z0-9_-]{1,80}$/.test(cookie.name) || cookie.name === POLICY.cookie || cookie.name.startsWith('an_customer_') || typeof cookie.path !== 'string' || !/^\/[a-zA-Z0-9/_-]*$/.test(cookie.path)) throw new TypeError('Invalid optional cookie');
       return Object.freeze({ ...cookie });
     });
     const storage = service.storage.map((item) => {

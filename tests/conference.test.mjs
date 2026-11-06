@@ -27,7 +27,7 @@ async function mockRenderer(requestPath,output) {
 async function freePort(){const server=createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
 async function publicServer(t,store,enabled=true,env={}){
   const port=await freePort();
-  const child=spawn(process.execPath,['server.mjs','--port='+port,...(enabled?['--conference-reports','--conference-store='+store]:[])],{cwd:project,env:{...process.env,...env},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,['server.mjs','--no-accounts','--port='+port,...(enabled?['--conference-reports','--conference-store='+store]:[])],{cwd:project,env:{...process.env,...env},windowsHide:true,stdio:['ignore','pipe','pipe']});
   let output='';child.stdout.on('data',bytes=>output+=bytes);child.stderr.on('data',bytes=>output+=bytes);
   t.after(async()=>{if(child.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}});
   const origin='http://127.0.0.1:'+port;
@@ -104,7 +104,7 @@ test('public reader opt-in serves only exact immutable DTO/PDF/SVG and default/p
   assert.equal((await fetch(origin+'/__reports/AN-DDDD-4444',{method:'POST'})).status,405);
   const normal=await publicServer(t,root,false);assert.equal((await fetch(normal+'/__reports/AN-DDDD-4444')).status,404);assert.equal((await fetch(normal+'/coa/AN-DDDD-4444')).status,404);assert.doesNotMatch(await (await fetch(normal+'/')).text(),/assaynova-report-reader/);
   const production=await publicServer(t,root,false,{NODE_ENV:'production'});assert.equal((await fetch(production+'/__reports/AN-DDDD-4444')).status,404);assert.doesNotMatch(await (await fetch(production+'/')).text(),/assaynova-report-reader/);
-  const denied=spawn(process.execPath,['server.mjs','--conference-reports'],{cwd:project,env:{...process.env,NODE_ENV:'production'},windowsHide:true,stdio:'ignore'});assert.notEqual(await new Promise(resolve=>denied.once('exit',resolve)),0);
+  const denied=spawn(process.execPath,['server.mjs','--no-accounts','--conference-reports'],{cwd:project,env:{...process.env,NODE_ENV:'production'},windowsHide:true,stdio:'ignore'});assert.notEqual(await new Promise(resolve=>denied.once('exit',resolve)),0);
   const previous=process.env.NODE_ENV;process.env.NODE_ENV='production';try{await assert.rejects(createStudio({images:DEFAULT_IMAGES,store:root,port:0}),/disabled in production/);}finally{if(previous===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=previous;}
 });
 

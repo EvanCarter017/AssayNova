@@ -45,6 +45,13 @@ test('current catalog has no invented optional purposes or services; default and
   assert.deepEqual(effectivePermissions(catalog, partial, false), { measurement_test: true, promotion_test: false, sale_test: false, sharing_test: false });
 });
 
+test('necessary customer session and CSRF cookie namespaces cannot be optional cleanup targets', () => {
+  for (const name of ['an_customer_4540', 'an_customer_csrf_4540']) {
+    const input = { purposes: [{ id: 'optional', kind: 'analytics', label: 'Inert', description: 'Inert test' }], services: [{ id: 'optional_test', purpose: 'optional', label: 'Inert', description: 'Inert test', retention: 'test', cookies: [{ name, path: '/api/account' }], storage: [], start() {}, stop() {} }] };
+    assert.throws(() => validateCatalog(input), /Invalid optional cookie/);
+  }
+});
+
 test('GPC overrides older marketing, sale and sharing grants; other optional purposes still need explicit consent', () => {
   const catalog = fixtureCatalog();
   const oldGrant = grant(catalog, undefined, Date.now() - 10000);
@@ -426,7 +433,7 @@ async function withServer(mode, callback) {
     const port = socket.address().port;
     await new Promise((resolve) => socket.close(resolve));
     assert.notEqual(port, 4317);
-    child = spawn(process.execPath, ['server.mjs', `--port=${port}`, ...(mode === 'default' ? [] : ['--watch'])], { cwd: fixture, env: { ...process.env, NODE_ENV: mode === 'production' ? 'production' : 'test' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['server.mjs', '--no-accounts', `--port=${port}`, ...(mode === 'default' ? [] : ['--watch'])], { cwd: fixture, env: { ...process.env, NODE_ENV: mode === 'production' ? 'production' : 'test' }, stdio: ['ignore', 'pipe', 'pipe'] });
     exited = new Promise((resolve) => child.once('exit', resolve));
     await new Promise((resolve, reject) => {
       let output = '';

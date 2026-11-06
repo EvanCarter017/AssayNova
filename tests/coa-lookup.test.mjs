@@ -379,8 +379,9 @@ test('public lookup has no sample shortcuts while sample reports and drafts pres
   const text = (html) => html.replace(/<[^>]*>/g, ' ');
   assert.ok(!homeHTML.includes('class="preview-bar"'));
   assert.ok(!/\b(?:demo|concept|prototype|preview)\b/i.test(text(homeHTML)));
-  assert.equal((homeHTML.match(/data-action="portal">Saved drafts/g) || []).length, 3);
-  assert.ok(!/Client portal|CLIENT WORKSPACE|YOUR WORKSPACE/.test(homeHTML));
+  assert.equal((homeHTML.match(/href="\/account" data-account-entry hidden/g) || []).length, 3);
+  assert.match(homeHTML, /data-action="portal">Device drafts/);
+  assert.ok(!/Client portal|CLIENT WORKSPACE|No account (?:is )?needed/.test(homeHTML));
   const publicReports = homeHTML.match(/<section id="home-reports"[\s\S]*?<\/section>/)[0];
   assert.doesNotMatch(homeHTML, /home-report-samples|Sample reports|data-action="report"|methods-report-link|AN-7K9Q-2M4X|AN-8P6R-3N5Y/);
   assert.match(publicReports, /id="home-reports-title">Your code\.<br>The published report\./);
@@ -525,7 +526,7 @@ test('actual SPA anchors select one view/title/active navigation without replaci
   app.hashEvent();
   assert.equal(app.scrolls.length, scrollCount, 'Back/Forward and its hash event must not force scroll-to-top');
   app.travel(1);
-  assert.deepEqual(app.visibleViews(), ['#request-view']);
+  assert.deepEqual(app.visibleViews(), ['#' + pageData.PAGE_ROUTES.at(-1).view]);
 });
 
 test('actual anchor interception preserves modified, nonprimary, external, target, download, unknown and skip-link defaults', () => {
@@ -706,7 +707,7 @@ async function withCOAServer(mode, callback) {
   try {
     for (const entry of ['server.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, entry), path.join(fixture, entry), { recursive: true });
     const port = await availablePort();
-    child = spawn(process.execPath, ['server.mjs', `--port=${port}`, ...(mode === 'default' ? [] : ['--watch'])], {
+    child = spawn(process.execPath, ['server.mjs', '--no-accounts', `--port=${port}`, ...(mode === 'default' ? [] : ['--watch'])], {
       cwd: fixture, env: { ...process.env, NODE_ENV: mode === 'production' ? 'production' : 'test' }, stdio: ['ignore', 'pipe', 'pipe']
     });
     exited = new Promise((resolve) => child.once('exit', resolve));

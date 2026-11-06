@@ -225,7 +225,7 @@ async function launch(t, files, args, { production = false, reject = false } = {
   const preload = path.join(files.root, 'timeouts.mjs');
   await writeFile(preload, "import http from 'node:http';const create=http.createServer;http.createServer=function(...args){const server=create(...args);server.once('listening',()=>console.log('TIMEOUT_PROOF:'+JSON.stringify([server.requestTimeout,server.headersTimeout])));return server;};");
   const actual = typeof args === 'function' ? args(port) : args;
-  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, 'server.mjs', '--port=' + port, ...actual], { cwd: project, env: { ...process.env, NODE_ENV: production ? 'production' : 'test' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, 'server.mjs', '--no-accounts', '--port=' + port, ...actual], { cwd: project, env: { ...process.env, NODE_ENV: production ? 'production' : 'test' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', bytes => output += bytes); child.stderr.on('data', bytes => output += bytes);
   let stopping;
   const stop = () => stopping ??= child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : new Promise(resolve => { child.once('exit', resolve); child.kill(); });

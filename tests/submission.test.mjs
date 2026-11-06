@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newSubmission, newSample, normalizeSubmission, validateSubmissionState, submissionTotals, duplicateSubmissionSample, createRequestRecord, parseRequestRecord, requestStateFromRecord, readableRequests, prepareRequestSave, effectiveReportRecipient, MAX_REQUEST_RECORD_CHARS } from '../dist/submission.js';
+import { newSubmission, newSample, normalizeSubmission, validateSubmissionState, submissionTotals, duplicateSubmissionSample, createRequestRecord, parseRequestRecord, requestStateFromRecord, readableRequests, prepareRequestSave, effectiveReportRecipient, MAX_REQUEST_RECORD_CHARS, legacyRequestState } from '../dist/submission.js';
 
 const identity = { id: 'AN-REQ-TEST01', createdAt: '2026-11-05T00:00:00.000Z' };
 function valid() { const value = newSubmission('s1', 'purity'); Object.assign(value, { name: 'Synthetic Contact', email: 'qa@example.invalid', company: 'Lab Alpha', notes: '', reportRecipient: '' }); value.samples[0].name = 'Sample Alpha'; return value; }
@@ -66,4 +66,13 @@ test('explicit save preserves legacy values, enforces50, updates the same v2 ID 
   assert.equal(values.length, 50); assert.equal(values.filter(value => value.id === identity.id).length, 1); assert.equal(values[0].createdAt, identity.createdAt); assert.equal(values[0].sample, 'Changed');
   for (const bad of ['', '{', '{}', 'null']) assert.throws(() => prepareRequestSave(bad, record));
   assert.deepEqual(readableRequests(JSON.stringify([legacy[0], { ...record, version: 99 }, { version: 2, ...legacy[1] }])), [legacy[0]]);
+});
+
+
+test('legacy conversion is explicit, strict on known fields and never changes the original record', () => {
+  const old = { id: 'AN-DEMO-OLD', name: 'Legacy person', email: 'legacy@example.invalid', company: 'Historic lab', sample: 'Old sample', service: 'purity', quantity: '2', notes: 'Kept notes', unknown: { untouched: true } };
+  const original = JSON.stringify(old); const state = legacyRequestState(old, 'new-sample');
+  assert.equal(JSON.stringify(old), original); assert.equal(state.samples[0].name, old.sample); assert.equal(state.samples[0].quantity, 2); assert.equal(state.company, old.company);
+  const record = createRequestRecord(state, identity); assert.equal(record.version, 2); assert.equal(record.id, identity.id); assert.ok(!Object.hasOwn(record, 'unknown'));
+  for (const bad of [{ ...old, quantity: 101 }, { ...old, name: {} }, { ...old, email: 'not-email' }, { ...old, sample: 'x'.repeat(161) }]) assert.equal(legacyRequestState(bad, 'new-sample'), null);
 });

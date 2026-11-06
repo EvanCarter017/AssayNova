@@ -113,6 +113,20 @@ export function isLegacyRequest(value) {
   return object(value) && !Object.hasOwn(value, 'version') && typeof value.id === 'string' && typeof value.sample === 'string' && enumValue(value.service, SERVICE_NAMES);
 }
 
+// Explicit user-selected conversion only. The legacy list is never rewritten.
+export function legacyRequestState(value, sampleId) {
+  if (!isLegacyRequest(value)) return null;
+  const state = newSubmission(sampleId, value.service);
+  for (const key of ['name', 'email', 'company', 'notes']) {
+    if (value[key] !== undefined && typeof value[key] !== 'string') return null;
+    state[key] = value[key] ?? '';
+  }
+  state.samples[0].name = value.sample;
+  if (!['string', 'number'].includes(typeof value.quantity)) return null;
+  state.samples[0].quantity = value.quantity;
+  return Object.keys(validateSubmissionState(state)).length ? null : normalizeSubmission(state);
+}
+
 export function decodeRequestList(raw) {
   try {
     if (raw === null || raw === undefined) return [];

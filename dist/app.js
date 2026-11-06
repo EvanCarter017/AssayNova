@@ -3,6 +3,8 @@ import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
 import { SUPPORT_DRAFT_KEY, normalizeSupport, validateSupport, parseSupportDraft, formatSupportRequest } from './support.js';
 import { REQUEST_DRAFT_KEY, readableRequests, effectiveReportRecipient, SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES } from './submission.js';
 import { createRequestPage } from './request-page.js';
+import { createCustomerAccountClient } from './customer-account.js';
+import { createAccountPage } from './account-page.js';
 import { SAMPLE_REPORT_DATA } from './reports/sample-data.js';
 
 const dialog = document.querySelector('#app-dialog');
@@ -18,6 +20,10 @@ let historyFocusRevision = 0;
 let activeReport = null;
 let pendingCopyKind = null;
 const publishedReaderEnabled = document.querySelector('meta[name="assaynova-report-reader"]')?.getAttribute('content') === 'enabled';
+const accountsEnabled = document.querySelector('meta[name="assaynova-accounts"]')?.getAttribute('content') === 'enabled';
+const accountClient = accountsEnabled ? createCustomerAccountClient() : null;
+let accountLoadRevision = 0, accountLoadController = null;
+for (const entry of document.querySelectorAll('[data-account-entry]')) entry.hidden = !accountsEnabled;
 const publishedReports = new Map();
 let lookupRevision = 0;
 let lookupController;
@@ -53,7 +59,9 @@ function makeSampleId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-const requestPage = createRequestPage(document.querySelector('#request-flow'), { storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, makeId: makeSampleId, openSavedDrafts: () => renderPortal() });
+const requestPage = createRequestPage(document.querySelector('#request-flow'), { storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, makeId: makeSampleId, openSavedDrafts: destination => destination === 'account' ? navigateToURL('/account') : renderPortal(), accountEnabled: accountsEnabled, saveAccountDraft: (record, options) => accountClient.saveDraft(record, options), onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/submit-sample')) });
+const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => { if (requestPage.resume(doc.record, { destination: 'account', id: doc.id, revision: doc.revision, ownerId })) navigateToURL('/submit-sample'); }, onNewRequest: () => renderSubmission(undefined, true), onDeviceDrafts: renderPortal }) : null;
+accountClient?.subscribe((user, reason) => requestPage.setAccountSession(user, reason));
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -96,6 +104,14 @@ function renderSubmission(service, reset = false) {
 function resumeRequest(id) {
   const request = readRequests().find(entry => entry.id === id);
   if (requestPage.resume(request)) navigateToURL('/submit-sample');
+}
+
+function copyDeviceRequest(id, destination = 'device') {
+  const request = readRequests().find(entry => entry.id === id);
+  if (!request) return;
+  const opened = request.version === 2 ? requestPage.resume(request, { destination, idempotencyKey: destination === 'account' ? 'device-' + request.id : undefined }) : requestPage.openLegacy(request, { destination });
+  if (opened) navigateToURL('/submit-sample');
+  else showToast('This older draft needs updated details. Start a new request; the original is unchanged.');
 }
 
 function renderRecovery() {
@@ -266,6 +282,9 @@ function renderCurrentRoute(focus = false, legacyError = false) {
   cancelPublishedLookup();
   historyFocusRevision++;
   const current = routeLocation(location.href);
+  accountLoadRevision++; accountLoadController?.abort(); accountLoadController = null;
+  if (renderedURL && new URL(renderedURL, location.href).pathname === '/submit-sample' && current.url.pathname !== '/submit-sample') requestPage.suspend();
+  accountPage?.leave();
   if (current.url.href !== location.href) history.replaceState(null, '', current.url.pathname + current.url.search + current.url.hash);
   activeReport = null;
   clearTimeout(toastTimer);
@@ -300,7 +319,14 @@ function renderCurrentRoute(focus = false, legacyError = false) {
       }
     }
   } else document.title = page.title;
-  if (!current.coa && page.path === '/submit-sample') requestPage.activate();
+  if (!current.coa && page.path === '/submit-sample') {
+    requestPage.activate();
+    if (accountClient) { const ticket = accountLoadRevision; const controller = new AbortController(); accountLoadController = controller; accountClient.getSession({ signal: controller.signal }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) requestPage.setAccountSession(null, 'session'); }); }
+  }
+  if (!current.coa && ['/account', '/login', '/register', '/recover-account'].includes(page.path)) {
+    if (accountPage) void accountPage.activate(page.path, current.url.searchParams.get('next'));
+    else { const content = pageViews[page.path]?.querySelector('[data-account-content]'); if (content) content.innerHTML = '<div class="ac-card"><h2>Accounts are unavailable in this view.</h2><p>You can still prepare a draft on this device and use public COA lookup.</p><a href="/submit-sample">Prepare a request</a></div>'; }
+  }
   const activePath = current.coa ? '/verify' : page.path;
   for (const link of document.querySelectorAll('.desktop-nav a,.mobile-nav a')) {
     if (new URL(link.getAttribute('href'), location.href).pathname === activePath) link.setAttribute('aria-current', 'page');
@@ -317,11 +343,11 @@ function scrollToCurrentHash() {
   if (target && !target.closest('[hidden]')) target.scrollIntoView();
 }
 
-function navigateToURL(address) {
+function navigateToURL(address, { replace = false } = {}) {
   cancelPublishedLookup();
   historyFocusRevision++;
   const current = routeLocation(address);
-  if (current.url.href !== location.href) history.pushState(null, '', current.url.pathname + current.url.search + current.url.hash);
+  if (current.url.href !== location.href) history[replace ? 'replaceState' : 'pushState'](null, '', current.url.pathname + current.url.search + current.url.hash);
   const previous = new URL(renderedURL, location.href);
   if (current.url.hash && previous.pathname === current.url.pathname && previous.search === current.url.search) {
     renderedURL = location.href;
@@ -343,7 +369,7 @@ function renderPortal() {
     const service = multiple && new Set(request.samples.map(entry => entry.service)).size > 1 ? 'Multiple testing services' : SERVICE_NAMES[request.service];
     return `<tr><td><strong>${escape(sample)}</strong><small>${escape(request.id)}</small></td><td>${escape(service)}<small>${escape(request.quantity)} ${multiple ? (Number(request.quantity) === 1 ? 'planned unit' : 'planned units') : `sample${request.quantity === 1 ? '' : 's'}`}</small></td><td><span class="state-tag state-pending">Draft · Not sent</span></td><td><button class="text-button" data-action="request-detail" data-id="${escape(request.id)}">Details ${icon('arrow-up', true)}</button></td></tr>`;
   }).join('');
-  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">ON THIS DEVICE</p><h2 class="dialog-title" id="dialog-title">Saved drafts</h2><p class="dialog-description">No account needed. These drafts are stored only in this browser.</p>
+  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">ON THIS DEVICE</p><h2 class="dialog-title" id="dialog-title">Saved drafts</h2><p class="dialog-description">These drafts are stored only in this browser. Select a draft to open it${accountsEnabled ? ' or save a copy to your account' : ''}.</p>
     <p class="demo-notice">These are saved drafts, not submitted requests. No email is sent when a draft is saved.</p>
     <div class="portal-toolbar"><h3 class="drafts-heading" id="saved-drafts-title">${requests.length} saved draft${requests.length === 1 ? '' : 's'}</h3><button class="button button-dark" data-action="request-new">${icon('plus', true)} New request</button></div>
     <section class="portal-panel" id="panel-requests" aria-labelledby="saved-drafts-title" tabindex="0">${requests.length ? `<table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">REQUESTED SERVICE</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead><tbody>${requestRows}</tbody></table><p class="portal-bottom-note">Drafts stay on this device until you clear this site's data. They have not been sent to the laboratory.</p>` : `<div class="empty-state">${icon('flask')}<h3>No saved drafts yet.</h3><p>Save a request draft to keep its details on this device. Nothing is sent.</p><button class="button button-teal" data-action="request-new">New request ${icon('arrow', true)}</button></div>`}</section></div>`, true);
@@ -353,11 +379,11 @@ function renderRequestDetail(id) {
   const request = readRequests().find((entry) => entry.id === id);
   if (!request) { renderPortal(); return; }
   if (request.version === 2) {
-    openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">Your saved request.</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div><div data-request-private><dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Email</dt><dd>${escape(request.email)}</dd></div><div><dt>Report recipient</dt><dd>${escape(effectiveReportRecipient(request))}</dd></div><div><dt>Context</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl>${request.samples.map((sample, index) => `<section><h3>Sample ${index + 1} · ${escape(sample.name)}</h3><dl class="success-details"><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[sample.service])}</dd></div><div><dt>Planned units</dt><dd>${sample.quantity}</dd></div><div><dt>Form</dt><dd>${escape(SAMPLE_FORMS[sample.form])}</dd></div><div><dt>Product image</dt><dd>${escape(IMAGE_CHOICES[sample.image])}${sample.image === 'include' ? ' · ' + escape(IMAGE_STYLES[sample.imageStyle]) : ''}</dd></div></dl></section>`).join('')}</div><p class="demo-notice">Draft · Not sent. Saved on this device; no request or email has been sent. Image files are not retained.</p><div class="dialog-buttons"><button class="button button-teal" data-action="request-resume" data-id="${escape(request.id)}">Resume editing</button><button class="button button-outline" data-action="request-new">New request</button><button class="text-button" data-action="requests">Back to saved drafts</button></div></div>`, true);
+    openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">Your saved request.</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div><div data-request-private><dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Email</dt><dd>${escape(request.email)}</dd></div><div><dt>Report recipient</dt><dd>${escape(effectiveReportRecipient(request))}</dd></div><div><dt>Context</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl>${request.samples.map((sample, index) => `<section><h3>Sample ${index + 1} · ${escape(sample.name)}</h3><dl class="success-details"><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[sample.service])}</dd></div><div><dt>Planned units</dt><dd>${sample.quantity}</dd></div><div><dt>Form</dt><dd>${escape(SAMPLE_FORMS[sample.form])}</dd></div><div><dt>Product image</dt><dd>${escape(IMAGE_CHOICES[sample.image])}${sample.image === 'include' ? ' · ' + escape(IMAGE_STYLES[sample.imageStyle]) : ''}</dd></div></dl></section>`).join('')}</div><p class="demo-notice">Draft · Not sent. Saved on this device; no request or email has been sent. Image files are not retained.</p><div class="dialog-buttons"><button class="button button-teal" data-action="request-resume" data-id="${escape(request.id)}">Resume editing</button><button class="button button-outline" data-action="request-new">New request</button>${accountsEnabled ? `<button class="button button-outline" data-action="request-account" data-id="${escape(request.id)}">Save to account</button>` : ''}<button class="text-button" data-action="requests">Back to saved drafts</button></div></div>`, true);
     return;
   }
   openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">${escape(request.sample)}</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div>
-    <dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Contact email</dt><dd>${escape(request.email)}</dd></div><div><dt>Organization</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div><div><dt>Notes</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl><p class="demo-notice">Saved on this device. Not sent to the laboratory. No email is sent when a draft is saved.</p><div class="dialog-buttons"><button class="button button-dark" data-action="requests">Back to saved drafts ${icon('arrow', true)}</button></div></div>`);
+    <dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Contact email</dt><dd>${escape(request.email)}</dd></div><div><dt>Organization</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div><div><dt>Notes</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl><p class="demo-notice">Saved on this device. Not sent to the laboratory. No email is sent when a draft is saved.</p><div class="dialog-buttons"><button class="button button-teal" data-action="request-legacy" data-id="${escape(request.id)}">Open as new draft</button>${accountsEnabled ? `<button class="button button-outline" data-action="request-account" data-id="${escape(request.id)}">Save to account</button>` : ''}<button class="button button-dark" data-action="requests">Back to saved drafts ${icon('arrow', true)}</button></div></div>`);
 }
 
 async function copyReportValue(kind) {
@@ -403,6 +429,8 @@ document.addEventListener('click', (event) => {
     submit: () => renderSubmission(target.dataset.service),
     'request-new': () => renderSubmission(target.dataset.service, true),
     'request-resume': () => resumeRequest(target.dataset.id),
+    'request-account': () => copyDeviceRequest(target.dataset.id, 'account'),
+    'request-legacy': () => copyDeviceRequest(target.dataset.id),
     'recover-report': () => renderRecovery(),
     report: () => navigateToReport(target.dataset.lookupCode),
     home: () => navigateToURL('/'),

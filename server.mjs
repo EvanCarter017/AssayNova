@@ -51,6 +51,16 @@ const admin = adminEnabled ? await (await import('./conference/admin.mjs')).crea
 const adminProxy = proxyEnabled ? (await import('./conference/admin-proxy.mjs')).createAdminProxy({
   upstream: proxyOptions[0].slice('--admin-proxy='.length), externalOrigin: proxyOriginOptions[0].slice('--admin-proxy-origin='.length), port, bindAddress
 }) : null;
+if (!process.argv.includes('--no-accounts')) {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major < 24 || (major === 24 && minor < 15)) throw new Error('Customer accounts require Node 24.15 or newer with native SQLite.');
+}
+const accountOptions = process.argv.includes('--no-accounts') ? { mode: 'disabled' } : (await import('./accounts/config.mjs')).accountConfiguration({
+  argv: process.argv.slice(2), env: { NODE_ENV: process.env.NODE_ENV, ASSAYNOVA_ACCOUNT_STORE: process.env.ASSAYNOVA_ACCOUNT_STORE, ASSAYNOVA_ACCOUNT_ORIGIN: process.env.ASSAYNOVA_ACCOUNT_ORIGIN },
+  port, bindAddress, adminProxy: proxyEnabled ? { upstream: proxyOptions[0].slice('--admin-proxy='.length), externalOrigin: proxyOriginOptions[0].slice('--admin-proxy-origin='.length) } : null
+});
+const customerAccounts = accountOptions.mode === 'authority' ? await (await import('./accounts/handler.mjs')).createAccountHandler(accountOptions) : null;
+const customerAccountProxy = accountOptions.mode === 'proxy' ? (await import('./accounts/proxy.mjs')).createAccountProxy(accountOptions) : null;
 const mime = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg',
@@ -63,6 +73,16 @@ const server = http.createServer(async (request, response) => {
   try { encodedPathname = new URL(request.url, 'http://localhost').pathname; pathname = decodeURIComponent(encodedPathname); }
   catch { response.writeHead(400); response.end('Bad request'); return; }
   const rawPathname = request.url.split('?')[0];
+  let decodedRawPathname;
+  try { decodedRawPathname = decodeURIComponent(rawPathname); }
+  catch { response.writeHead(400); response.end('Bad request'); return; }
+  const accountPath = value => value === '/api/account' || value.startsWith('/api/account/');
+  if (accountPath(pathname) || accountPath(rawPathname) || accountPath(decodedRawPathname)) {
+    if (customerAccounts) { await customerAccounts.handle(request, response); return; }
+    if (customerAccountProxy) { await customerAccountProxy.handle(request, response); return; }
+    response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
+    response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ error: { code: 'ACCOUNTS_DISABLED', message: 'Customer accounts are unavailable on this server.' } })); return;
+  }
   const adminPath = value => value === '/admin' || value.startsWith('/admin/');
   if (adminPath(pathname) || adminPath(rawPathname)) {
     if (admin && await admin.handle(request, response)) return;
@@ -147,6 +167,7 @@ const server = http.createServer(async (request, response) => {
         .replace(/<\/head>/i, '<link rel="stylesheet" href="/vendor/cookieconsent-3.2.1/cookieconsent.css"><link rel="stylesheet" href="/privacy/consent.css"></head>')
         .replace(/<\/body>/i, '<script type="module" src="/privacy/consent.js"></script></body>'));
       if (conferenceEnabled) contents = Buffer.from(contents.toString('utf8').replace(/<\/head>/i, '<meta name="assaynova-report-reader" content="enabled"></head>'));
+      if (accountOptions.mode !== 'disabled') contents = Buffer.from(contents.toString('utf8').replace(/<\/head>/i, '<meta name="assaynova-accounts" content="enabled"></head>'));
     }
     response.writeHead(coaRoute && !coaRoute.report && !generatedReport ? 404 : 200, {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',
@@ -161,7 +182,7 @@ const server = http.createServer(async (request, response) => {
     response.end('Not found');
   }
 });
-if (adminEnabled || proxyEnabled) { server.requestTimeout = 10000; server.headersTimeout = 10000; }
+if (adminEnabled || proxyEnabled || accountOptions.mode !== 'disabled') { server.requestTimeout = 10000; server.headersTimeout = 10000; }
 server.on('error', (error) => {
   console.error(error.code === 'EADDRINUSE'
     ? `Port ${port} is in use. Try: node server.mjs --port=${port + 1}` : error.message);
@@ -193,7 +214,7 @@ function shutdown() {
   clearTimeout(changeTimer);
   watcher?.close();
   for (const client of clients) client.end();
-  server.close(() => process.exit(0));
+  server.close(() => { customerAccounts?.close(); process.exit(0); });
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

@@ -29,7 +29,7 @@ async function launch(t, files, { enabled = true, production = false, readonly =
   // Observe real server settings at listen time without changing their values.
   const preload = path.join(files.root, 'inspect-timeouts.mjs');
   await writeFile(preload, "import http from 'node:http';const create=http.createServer;http.createServer=function(...args){const server=create(...args);server.once('listening',()=>console.log('TIMEOUT_PROOF:'+JSON.stringify([server.requestTimeout,server.headersTimeout])));return server;};");
-  const args = ['--import', pathToFileURL(preload).href, 'server.mjs', '--port=' + port, ...(enabled || readonly ? ['--conference-reports', '--conference-store=' + files.store] : []), ...(enabled ? ['--admin', '--admin-images=' + files.images, '--admin-auth-store=' + files.authStore] : [])];
+  const args = ['--import', pathToFileURL(preload).href, 'server.mjs', '--no-accounts', '--port=' + port, ...(enabled || readonly ? ['--conference-reports', '--conference-store=' + files.store] : []), ...(enabled ? ['--admin', '--admin-images=' + files.images, '--admin-auth-store=' + files.authStore] : [])];
   const child = spawn(process.execPath, args, { cwd: project, env: { ...process.env, NODE_ENV: production ? 'production' : 'test' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', bytes => output += bytes); child.stderr.on('data', bytes => output += bytes);
   let stopped;
@@ -86,7 +86,7 @@ test('admin startup refuses missing reader, production, LAN binds and nonabsolut
     [['--admin', '--conference-reports', '--admin-images=relative'], 'test', /absolute admin image directory/],
     [['--admin', '--conference-reports', '--admin-images=' + files.images, '--admin-public-origin=https://example.invalid/path'], 'test', /plain public origin/]
   ]) {
-    const child = spawn(process.execPath, ['server.mjs', ...args, '--port=' + await freePort()], { cwd: project, env: { ...process.env, NODE_ENV: environment }, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(process.execPath, ['server.mjs', '--no-accounts', ...args, '--port=' + await freePort()], { cwd: project, env: { ...process.env, NODE_ENV: environment }, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
     let error = ''; child.stderr.on('data', bytes => error += bytes);
     assert.notEqual(await new Promise(resolve => child.once('exit', resolve)), 0); assert.match(error, expected);
   }

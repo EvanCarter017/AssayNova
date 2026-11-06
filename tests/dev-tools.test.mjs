@@ -157,7 +157,7 @@ async function withServer(mode, callback, host) {
     for (const file of ['server.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, file), path.join(fixture, file), { recursive: true });
     const port = await freePort();
     assert.notEqual(port, 4317);
-    child = spawn(process.execPath, ['server.mjs', `--port=${port}`, ...(host === undefined ? [] : [`--host=${host}`]), ...(mode === 'default' ? [] : ['--watch'])], {
+    child = spawn(process.execPath, ['server.mjs', '--no-accounts', `--port=${port}`, ...(host === undefined ? [] : [`--host=${host}`]), ...(mode === 'default' ? [] : ['--watch'])], {
       cwd: fixture, env: { ...process.env, NODE_ENV: mode === 'production' ? 'production' : 'test' }, stdio: ['ignore', 'pipe', 'pipe']
     });
     exit = new Promise((resolve) => child.once('exit', (code, signal) => resolve({ code, signal })));
@@ -332,4 +332,10 @@ test('live locator masks request summary/review children and ancestors and retur
   assert.equal(hint.precision, 'unavailable'); assert.equal(hint.file, undefined);
   const outer = { closest: () => null, getAttribute: key => key === 'data-an-dev-file' ? 'dist/index.html' : '100' };
   assert.equal(context.actual.sourceHint(outer, {}).line, 100);
+});
+
+
+test('account profile, recovery codes and draft summaries reuse the private markup boundary', () => {
+  const raw = '<section data-request-private><h2>PRIVATE_ACCOUNT_NAME</h2><p>PRIVATE_ACCOUNT_EMAIL</p><ul><li><code>PRIVATE_ACCOUNT_CODE</code></li></ul><textarea>PRIVATE_ACCOUNT_COPY</textarea><button data-id="PRIVATE_ACCOUNT_DRAFT">Resume</button></section>';
+  const clean = sanitizeMarkup(raw); assert.ok(!clean.includes('PRIVATE_ACCOUNT_')); assert.ok(clean.includes('[content omitted]'));
 });
