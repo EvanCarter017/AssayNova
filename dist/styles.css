@@ -76,6 +76,10 @@
 #home-view .home-analysis-flow #process .home-section-intro .home-kicker{color:#8dd3cc}
 #home-view .home-analysis-flow #process .home-section-intro>p{color:#c8d9df}
 
+/* A quiet handoff from the published record to its sample process. */
+#home-view #home-reports>.container.home-section{padding-bottom:28px}#home-view #process{padding-top:40px}#home-view #home-reports .home-report-transition{display:flex;align-items:center;gap:16px;margin-top:40px}#home-view #home-reports .home-report-transition-mark{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border:1px solid #8dd3cc4d;border-radius:50%;color:#8dd3cc;pointer-events:none}#home-view #home-reports .home-report-transition-mark .icon{width:17px;height:17px;transform:rotate(90deg)}#home-view #home-reports .home-report-transition p{min-width:0;color:#b6d6d0;font-size:15px;font-weight:400;line-height:1.5}#home-view #home-reports .home-report-transition:after{content:"";flex:1;min-width:32px;height:1px;background:linear-gradient(90deg,#8dd3cc40,transparent)}
+@media(max-width:760px){#home-view #home-reports>.container.home-section{padding-bottom:20px}#home-view #process{padding-top:28px}#home-view #home-reports .home-report-transition{gap:12px;margin-top:24px}#home-view #home-reports .home-report-transition-mark{flex-basis:32px;width:32px;height:32px}#home-view #home-reports .home-report-transition p{font-size:14.5px}#home-view #home-reports .home-report-transition:after{display:none}}
+
 /* FAQ transitions remain within its existing top and bottom padding. */
 #home-view .home-faq{--home-faq-fade-space:32px;background:linear-gradient(180deg,#fff,#ffffff00) top/100% var(--home-faq-fade-space) no-repeat,linear-gradient(0deg,var(--paper),#fbfcfa00) bottom/100% var(--home-faq-fade-space) no-repeat,#f2f6f3}
 @media(max-width:1100px){#home-view .home-faq{--home-faq-fade-space:28px}}
