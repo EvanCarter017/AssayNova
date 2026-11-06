@@ -1,4 +1,4 @@
-export const IMPORT_LIMITS = Object.freeze({ chunk: 256 * 1024, json: 8192, file: 8 * 1024 * 1024, folder: 512 * 1024 * 1024, images: 500, jobs: 4, idleMs: 30 * 60 * 1000 });
+export const IMPORT_LIMITS = Object.freeze({ chunk: 256 * 1024, json: 8192, file: 8 * 1024 * 1024, folder: 512 * 1024 * 1024, images: 500, jobs: 4, idleMs: 7 * 24 * 60 * 60 * 1000 });
 export function importChunkRoute(method, target) {
   if (method !== 'PUT' || typeof target !== 'string') return null;
   const match = /^\/admin\/api\/imports\/([a-f0-9]{32})\/files\/([a-f0-9]{32})\?offset=(0|[1-9]\d*)$/.exec(target);

@@ -23,25 +23,27 @@
           <div class="section-heading"><h2 id="create-title" data-i18n="createReport">Create report</h2><span class="data-badge" data-i18n="synthetic">Synthetic data</span></div>
           <p class="notice" data-i18n="syntheticNotice">Generated values are examples, not instrument measurements. Choose a product and review the full report preview before publishing. Customer reports use the normal COA experience.</p>
           <label for="customer" data-i18n="customer">Customer</label><select id="customer"></select>
-          <div class="customer-tools"><button id="reload-products" type="button" data-i18n="reloadProducts">Reload products</button></div>
+          <div class="customer-tools"><button id="reload-products" type="button" data-i18n="reloadProducts">Reload products</button><button id="catalog-manage" type="button" data-i18n="manageProducts">Manage products</button></div>
           <details id="catalog-import"><summary data-i18n="importTitle">Upload folder / SKU table</summary>
             <form id="import-form">
               <label for="import-target" data-i18n="importTarget">Import into</label><select id="import-target"><option value="current" data-i18n="importCurrent">Selected customer</option><option value="new" data-i18n="importNew">New customer</option></select>
               <label id="import-name-label" hidden><span data-i18n="customerName">Customer name on reports</span><input id="import-name" maxlength="64" autocomplete="off"></label>
               <label for="import-folder" data-i18n="importFolder">Product picture folder</label><input id="import-folder" type="file" accept=".png,.jpg,.jpeg,.webp" webkitdirectory multiple>
               <label for="import-sheet" data-i18n="importTable">SKU table (XLSX / CSV / TSV)</label><input id="import-sheet" type="file" accept=".xlsx,.csv,.tsv">
-              <p class="hint" data-i18n="importHelp">ADA10.png ↔ ADA10 ↔ Adamax 10mg. Choose Short code and full Product columns; Dose is optional. A new customer needs pictures and a table.</p>
+              <p class="hint" data-i18n="importHelp">ADA10.png ↔ ADA10 ↔ Adamax 10mg. Choose Short code and full Product columns; Dose is optional. A new customer needs a table; missing images can be added later.</p>
               <div class="buttons"><button id="import-upload" type="submit" data-i18n="importUpload">Upload files</button><button id="import-cancel" type="button" disabled data-i18n="importCancel">Cancel import</button></div>
             </form>
+            <div id="import-pending" hidden><p class="hint" data-i18n="pendingUploads">Previously uploaded files</p><div id="import-pending-list"></div><button id="import-refresh-pending" type="button" data-i18n="refreshPending">Refresh uploads</button></div>
             <progress id="import-progress" max="1" value="0" aria-label="Upload progress" data-i18n-aria-label="importProgress"></progress><p id="import-status" class="hint" role="status" tabindex="-1"></p>
             <div id="import-mapping" hidden><label for="import-sheet-name" data-i18n="importSheet">Sheet</label><select id="import-sheet-name"></select><label for="import-header" data-i18n="importHeader">Header row</label><input id="import-header" type="number" min="1" max="10000" value="1"><button id="import-read" type="button" data-i18n="importRead">Read columns</button>
               <div class="grid"><label><span data-i18n="importSKU">Short code / SKU</span><select id="import-sku"></select></label><label><span data-i18n="importProduct">Full product name</span><select id="import-product"></select></label></div><label><span data-i18n="importDose">Dose (optional)</span><select id="import-dose"></select></label>
             </div>
-            <div class="buttons"><button id="import-preview" type="button" disabled data-i18n="importPreview">Preview matches</button><button id="import-confirm" type="button" class="primary" disabled data-i18n="importConfirm">Confirm import</button></div><p id="import-counts" class="hint"></p><ul id="import-rows"></ul>
+            <div class="buttons"><button id="import-preview" type="button" disabled data-i18n="importPreview">Preview matches</button><button id="import-confirm" type="button" class="primary" disabled data-i18n="importConfirm">Confirm import</button></div><p id="import-confirm-reason" class="hint"></p><p id="import-counts" class="hint"></p><ul id="import-rows"></ul><div id="import-pages" class="catalog-pagination" hidden><button id="import-prev" type="button" data-i18n="previousPage">Previous</button><span id="import-page"></span><button id="import-next" type="button" data-i18n="nextPage">Next</button></div>
           </details>
           <label for="search" data-i18n="searchLabel">Search products by name or SKU</label><input id="search" data-i18n-placeholder="searchPlaceholder" type="search" placeholder="e.g. TR10, BC10, sema, NAD+" autocomplete="off" aria-describedby="product-help">
           <label for="product"><span data-i18n="product">Product</span> <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
-          <p id="product-help" class="hint" data-i18n="productHelp">Use a full SKU for an exact dose, or a family such as TR / SM. Only products with original photos are listed.</p>
+          <p id="product-help" class="hint" data-i18n="productHelp">Use a full SKU for an exact dose, or a family such as TR / SM. Unavailable entries are marked below and can be corrected in Manage products.</p>
+          <section id="catalog-blocked" class="catalog-blocked" hidden aria-labelledby="catalog-blocked-title"><h3 id="catalog-blocked-title" data-i18n="blockedProducts">Needs correction · unavailable for reports</h3><p id="catalog-blocked-count" class="hint"></p><ul id="catalog-blocked-list"></ul><div class="catalog-pagination"><button id="catalog-blocked-prev" type="button" data-i18n="previousPage">Previous</button><span id="catalog-blocked-page"></span><button id="catalog-blocked-next" type="button" data-i18n="nextPage">Next</button></div></section>
           <div class="selected-summary"><span class="eyebrow" data-i18n="selectedProduct">SELECTED PRODUCT</span><strong id="selected-name">Choose a product</strong></div>
           <form id="generate">
 
@@ -71,5 +73,28 @@
       </main>
     </div>
   </div>
+  <dialog id="catalog-dialog" class="catalog-dialog" aria-labelledby="catalog-dialog-title" aria-describedby="catalog-dialog-intro">
+    <header class="catalog-dialog-header"><div><p class="eyebrow" data-i18n="catalogWorkspace">CATALOG WORKSPACE</p><h2 id="catalog-dialog-title" data-i18n="manageProducts">Manage products</h2></div><div class="catalog-dialog-actions"><select id="catalog-language" aria-label="Admin language" data-i18n-aria-label="language"><option value="en">English</option><option value="zh-CN">中文</option></select><button id="catalog-close" type="button" data-i18n="closeCatalog">Close</button></div></header>
+    <p id="catalog-dialog-intro" class="hint" data-i18n="catalogIntro">Keep every source row. Correct its details and image before using it in a report.</p><button id="catalog-cleanup" type="button" data-i18n="catalogCleanup" hidden>Retry image upload cleanup</button>
+    <div class="catalog-dialog-layout"><section class="catalog-record-picker" aria-label="Catalog entries" data-i18n-aria-label="catalogEntries">
+      <label for="catalog-search" data-i18n="catalogSearch">Search SKU or product</label><input id="catalog-search" type="search" autocomplete="off">
+      <label for="catalog-filter" data-i18n="catalogFilter">Show</label><select id="catalog-filter"><option value="all" data-i18n="catalogAll">All entries</option><option value="blocked" data-i18n="catalogBlocked">Needs correction</option><option value="ready" data-i18n="catalogReady">Ready</option></select>
+      <p id="catalog-record-count" class="hint"></p><ul id="catalog-record-list"></ul><div class="catalog-pagination"><button id="catalog-prev" type="button" data-i18n="previousPage">Previous</button><span id="catalog-page"></span><button id="catalog-next" type="button" data-i18n="nextPage">Next</button></div>
+    </section><section class="catalog-entry-editor"><p id="catalog-message" class="catalog-message" role="status" tabindex="-1"></p><p id="catalog-choose" data-i18n="catalogChooseEntry">Select an entry to review its source and corrections.</p>
+      <form id="catalog-form" hidden novalidate>
+        <div class="catalog-source"><h3 data-i18n="catalogSource">Original source</h3><p id="catalog-source-line" class="hint"></p><dl><div><dt data-i18n="importSKU">Short code / SKU</dt><dd id="catalog-raw-sku"></dd></div><div><dt data-i18n="importProduct">Full product name</dt><dd id="catalog-raw-product"></dd></div><div><dt data-i18n="importDose">Dose</dt><dd id="catalog-raw-dose"></dd></div></dl></div>
+        <div id="catalog-entry-state" class="catalog-entry-state"></div><ul id="catalog-issues" class="catalog-issues"></ul><div id="catalog-related" class="catalog-related" hidden></div>
+        <fieldset id="catalog-fields"><legend data-i18n="catalogCorrections">Corrections</legend>
+          <label for="catalog-sku" data-i18n="importSKU">Short code / SKU</label><input id="catalog-sku" maxlength="64" autocomplete="off">
+          <label for="catalog-product" data-i18n="importProduct">Full product name</label><input id="catalog-product" maxlength="256" autocomplete="off">
+          <label for="catalog-dose" data-i18n="catalogDose">Per-vial dose / unit</label><input id="catalog-dose" maxlength="256" autocomplete="off"><p class="hint" data-i18n="catalogDoseHelp">For blends, enter every component and its dose in the full name. Do not infer values from a SKU.</p>
+          <label class="catalog-check"><input id="catalog-hold" type="checkbox"><span data-i18n="catalogHold">Keep this entry on hold</span></label><p class="hint" data-i18n="catalogHoldHelp">The source row stays visible. A held entry cannot be used for a report or claim a selectable SKU.</p>
+          <label for="catalog-image" data-i18n="catalogImage">Product image</label><select id="catalog-image"></select><div class="catalog-image-preview"><img id="catalog-image-preview" width="220" height="220" alt="Selected product image" data-i18n-alt="catalogImagePreview" hidden><span id="catalog-image-name" class="hint"></span></div>
+          <label for="catalog-image-upload" data-i18n="catalogImageUpload">Add or replace an image</label><input id="catalog-image-upload" type="file" accept=".png,.jpg,.jpeg,.webp"><p class="hint" data-i18n="catalogImageHelp">PNG, JPEG or WebP, up to 8 MiB. Choose an existing upload or add one explicitly.</p><div class="buttons"><button id="catalog-clear-upload" type="button" data-i18n="catalogClearUpload">Clear new image</button><button id="catalog-remove-image" type="button" data-i18n="catalogRemoveImage">Remove image</button></div>
+        </fieldset><div class="catalog-save-actions"><button id="catalog-save" type="submit" class="primary" data-i18n="catalogSave">Save and recheck</button><button id="catalog-reload" type="button" data-i18n="catalogReload" hidden>Read latest version</button></div>
+        <details id="catalog-unsaved" hidden><summary data-i18n="catalogUnsaved">Previous unsaved edits</summary><pre id="catalog-unsaved-values"></pre><button id="catalog-restore-edits" type="button" data-i18n="catalogRestoreEdits">Restore these edits</button></details>
+      </form>
+    </section></div>
+  </dialog>
 </body>
 </html>

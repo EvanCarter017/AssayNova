@@ -3,6 +3,7 @@ import { mkdir, open, realpath, rename, link, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_IMAGES, loadCatalog } from './catalog.mjs';
 import { revisionId, loadManagedCatalog, loadImportedAliases } from './import-match.mjs';
+import { readCatalogRecords } from './catalog-records.mjs';
 
 export const validCustomerId = value => typeof value === 'string' && /^[a-f0-9]{20}$/.test(value);
 export const customerFingerprint = row => createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(row).sort(([a], [b]) => a.localeCompare(b))))).digest('hex');
@@ -36,7 +37,7 @@ export async function createCustomerCatalog({ store, images = DEFAULT_IMAGES, re
       if (!config || Object.keys(config).sort().join(',') !== 'customers,version' || config.version !== 1 || !Array.isArray(config.customers) || config.customers.length > 32) throw new Error();
       const ids = new Set(), names = new Set();
       for (const row of config.customers) {
-        if (!row || !['id', 'name', 'directory'].every(key => Object.hasOwn(row, key)) || Object.keys(row).some(key => !['id', 'name', 'directory', 'imageRevision', 'aliasRevision'].includes(key)) || ['imageRevision', 'aliasRevision'].some(key => Object.hasOwn(row, key) && !revisionId(row[key])) || !validCustomerId(row.id) || ids.has(row.id) || nameValue(row.name) !== row.name || names.has(row.name.toLowerCase())) throw new Error();
+        if (!row || !['id', 'name', 'directory'].every(key => Object.hasOwn(row, key)) || Object.keys(row).some(key => !['id', 'name', 'directory', 'imageRevision', 'aliasRevision', 'catalogRevision'].includes(key)) || ['imageRevision', 'aliasRevision', 'catalogRevision'].some(key => Object.hasOwn(row, key) && !revisionId(row[key])) || !validCustomerId(row.id) || ids.has(row.id) || nameValue(row.name) !== row.name || names.has(row.name.toLowerCase())) throw new Error();
         directoryValue(row.directory); ids.add(row.id); names.add(row.name.toLowerCase());
       }
       return config;
@@ -72,7 +73,7 @@ export async function createCustomerCatalog({ store, images = DEFAULT_IMAGES, re
     await write({ version: 1, customers: [{ id: randomBytes(10).toString('hex'), name: path.resolve(images) === path.resolve(DEFAULT_IMAGES) ? 'VialCove' : 'Research Client', directory }] }, true);
   }
   const managedDirectory = id => path.join(path.resolve(store), 'customer-imports', 'revisions', id, 'images');
-  const display = row => row.imageRevision ? { ...row, directory: managedDirectory(row.imageRevision) } : { ...row };
+  const display = row => row.catalogRevision || row.imageRevision ? { ...row, directory: managedDirectory(row.catalogRevision || row.imageRevision) } : { ...row };
   async function records() { const config = await read(); if (!config) throw unavailable(); return config.customers; }
   async function list() { return (await records()).map(display); }
   async function snapshot(id) {
@@ -84,6 +85,11 @@ export async function createCustomerCatalog({ store, images = DEFAULT_IMAGES, re
     const customer = (await records()).find(row => row.id === id);
     if (!validCustomerId(id) || !customer) throw problem(400, 'Choose a saved customer.');
     try {
+      if (customer.catalogRevision) {
+        const catalog = await readCatalogRecords(store, customer.catalogRevision);
+        if (catalog.records.origin.customerId !== customer.id) throw unavailable();
+        return { customer: display(customer), ...catalog };
+      }
       let products = customer.imageRevision ? (await loadManagedCatalog(store, customer.imageRevision)).products : (await scanDirectory(customer.directory)).products;
       if (customer.aliasRevision) products = await loadImportedAliases(store, customer.aliasRevision, products);
       return { customer: display(customer), products };
@@ -102,7 +108,7 @@ export async function createCustomerCatalog({ store, images = DEFAULT_IMAGES, re
       const customer = sameDirectory ? { ...previous, name } : { id: input.customerId ?? randomBytes(10).toString('hex'), name, directory: catalog.directory };
       if (index < 0) customers.push(customer); else customers[index] = customer;
       await write({ version: 1, customers });
-      return { customers: customers.map(display), customer: display(customer), products: catalog.products };
+      return { ...catalog, customers: customers.map(display), customer: display(customer) };
     });
     pending = operation.catch(() => {}); return operation;
   }
@@ -124,5 +130,22 @@ export async function createCustomerCatalog({ store, images = DEFAULT_IMAGES, re
     });
     pending = operation.catch(() => {}); return operation;
   }
-  return { list, scan, save, snapshot, activate };
+  function activateRecords(input) {
+    const operation = pending.then(async () => {
+      if (!validCustomerId(input.customerId) || !revisionId(input.catalogRevision)) throw unavailable();
+      const customers = await records(), index = customers.findIndex(row => row.id === input.customerId), previous = customers[index];
+      if (input.isNew ? previous : !previous || customerFingerprint(previous) !== input.fingerprint) throw problem(409, 'Catalog changed. Reload products before saving corrections.');
+      const name = nameValue(input.name ?? previous?.name);
+      if (customers.some(row => row.id !== input.customerId && row.name.toLowerCase() === name.toLowerCase())) throw problem(409, 'A customer with that name already exists.');
+      if (!previous && customers.length >= 32) throw problem(400, 'A maximum of 32 customers can be saved.');
+      const catalog = await readCatalogRecords(store, input.catalogRevision);
+      if (catalog.records.origin.customerId !== input.customerId) throw unavailable();
+      const customer = previous ? { ...previous, name, catalogRevision: input.catalogRevision } : { id: input.customerId, name, directory: managedDirectory(input.catalogRevision), catalogRevision: input.catalogRevision };
+      if (previous) customers[index] = customer; else customers.push(customer);
+      await write({ version: 1, customers });
+      return { customers: customers.map(display), customer: display(customer), ...catalog };
+    });
+    pending = operation.catch(() => {}); return operation;
+  }
+  return { list, scan, save, snapshot, activate, activateRecords };
 }

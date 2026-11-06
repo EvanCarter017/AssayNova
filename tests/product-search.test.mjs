@@ -1,3 +1,4 @@
+import { catalogPickerState, catalogIssueText } from '../conference/catalog-correction-ui.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -101,7 +102,7 @@ function selectionUI() {
   }
   const document = { getElementById: node, createElement: () => ({ ...node('new-image-' + nodes.size), events: new Map() }), querySelectorAll: () => buttons };
   const prefix = operatorSource.slice(operatorSource.indexOf('const $='), operatorSource.indexOf('function showResult'));
-  const context = { document, filterProducts, createAdminI18n, navigator: { language: 'en' }, Date };
+  const context = { document, filterProducts, createAdminI18n, catalogPickerState, catalogIssueText, navigator: { language: 'en' }, Date };
   // Capture actual UI functions in a persistent object shared with the VM.
   const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};currentCustomerId="fixture";globalThis.ui={filter,selectProduct,selected:()=>selected,setBusy:value=>{busy=value}};', holder);
   return { nodes, node, buttons, ui: holder.ui };

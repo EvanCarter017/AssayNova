@@ -13,6 +13,7 @@ import { filterProducts } from '../conference/product-search.mjs';
 import { catalogDTO, parseProduct } from '../conference/catalog.mjs';
 import { createStudio } from '../conference/studio.mjs';
 import { createImportUI } from '../conference/import-ui.mjs';
+import { createCatalogCorrectionUI, catalogPickerState, catalogIssueText } from '../conference/catalog-correction-ui.mjs';
 
 const operatorHTML = await readFile(new URL('../conference/operator.html', import.meta.url), 'utf8');
 const loginHTML = await readFile(new URL('../conference/login.html', import.meta.url), 'utf8');
@@ -93,7 +94,7 @@ function documentFixture(html) {
 function storageFixture(saved) {const writes=[],values=new Map(saved?[[LOCALE_KEY,saved]]:[]);return {writes,values,getItem:key=>values.get(key)??null,setItem(key,value){writes.push([key,value]);values.set(key,value);}};}
 async function boot(source,html,{storage=storageFixture(),fetch,language='en',extra=''}={}) {
   const dom=documentFixture(html),navigation=[],window={addEventListener(){}},location={replace:value=>navigation.push(value),reload:()=>navigation.push('reload')};
-  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,createImportUI,filterProducts};
+  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,createImportUI,createCatalogCorrectionUI,catalogPickerState,catalogIssueText,filterProducts};
   await runInNewContext('(async()=>{'+source.replace(/^import .*;\s*$/gm,'')+'\n'+extra+'})()',context);
   return {...dom,context,storage,navigation};
 }
@@ -101,7 +102,7 @@ async function boot(source,html,{storage=storageFixture(),fetch,language='en',ex
 test('actual Reports locale switch preserves values, selection, snapshot, manual copy, focus and in-flight work', async () => {
   const product={...catalogDTO({id:'klow',name:'KLOW 80mg',...parseProduct('KLOW 80mg')}),imageURL:'/admin/images/klow'};
   const calls=[];let finish;
-  const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options)=>{calls.push([url,options]);if(url.endsWith('/session'))return {status:200,ok:true,json:async()=>({products:[product],customers:[{id:'fixture',name:'Saved Customer',directory:'/srv/products'}],defaultCustomerId:'fixture',token:'synthetic',publicOrigin:'http://customer.invalid'})};if(url.endsWith('/history'))return {status:200,ok:true,json:async()=>[]};return new Promise(resolve=>finish=resolve);},extra:'globalThis.ui={language,filter,showResult,statusError};'});
+  const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options)=>{calls.push([url,options]);if(url==='/admin/api/imports'&&options?.method==='GET')return {status:200,ok:true,json:async()=>({imports:[]})};if(url.endsWith('/session'))return {status:200,ok:true,json:async()=>({products:[product],customers:[{id:'fixture',name:'Saved Customer',directory:'/srv/products'}],defaultCustomerId:'fixture',token:'synthetic',publicOrigin:'http://customer.invalid'})};if(url.endsWith('/history'))return {status:200,ok:true,json:async()=>[]};return new Promise(resolve=>finish=resolve);},extra:'globalThis.ui={language,filter,showResult,statusError};'});
   assert.equal(app.node('customer-config'),undefined);assert.equal(app.node('customer-form'),undefined);assert.equal(app.node('customer-directory'),undefined);assert.equal(app.node('catalog-import').getAttribute('open'),null);assert.equal(app.node('import-folder').getAttribute('type'),'file');assert.notEqual(app.node('import-folder').getAttribute('webkitdirectory'),null);assert.equal(app.node('import-sheet').getAttribute('type'),'file');
   const {ui}=app.context; app.node('generate').elements.namedItem('lot').value='QA-084-LOT';app.node('search').value='KLOW80';ui.filter();
   ui.showResult({published:false,label:'KLOW 80mg',report:{lookupCode:'AN-TEST-0001'},previewURL:'/admin/bundles/previews/AN-TEST-0001/report.svg',pdfURL:'/admin/bundles/previews/AN-TEST-0001/report.pdf',publicURL:'http://customer.invalid/coa/AN-TEST-0001'});
@@ -115,11 +116,29 @@ test('actual Reports locale switch preserves values, selection, snapshot, manual
   assert.ok(app.storage.writes.every(([key,value])=>key===LOCALE_KEY&&['en','zh-CN'].includes(value)));
 });
 
+test('actual v2 chooser cannot select a blocked entry and sends the current catalog revision for ready generation', async () => {
+  const revision = 'c'.repeat(32), ready = { ...catalogDTO({ id: 'adamax', name: 'Adamax 10mg', ...parseProduct('Adamax 10mg') }), sku: 'ADA10', status: 'ready', aliases: { skus: ['ADA10'], families: ['ADA'] } }, entryId = '1'.repeat(20), calls = [];
+  const sameName = ['LC120', 'LC526', 'LC553'].map(sku => ({ ...ready, id: sku.toLowerCase(), name: 'L-Carnitine 120mg', sku, aliases: { skus: [sku], families: ['LC'] } }));
+  const blocked = { id: entryId, raw: { sku: 'ADA10mg', product: 'Unreviewed', dose: '' }, values: { sku: 'ADA10mg', product: 'Unreviewed', dose: '' }, status: 'blocked', hold: false, issues: [{ code: 'MISSING_IMAGE' }] };
+  const ok = value => ({ status: 200, ok: true, json: async () => value });
+  const app = await boot(operatorJS, operatorHTML, { fetch: async (url, options) => {
+    calls.push([url, options]); if (url.endsWith('/session')) return ok({ products: [ready, ...sameName], entries: [blocked], catalogRevision: revision, customers: [{ id: 'fixture', name: 'Customer' }], defaultCustomerId: 'fixture', token: 'synthetic', publicOrigin: 'http://customer.invalid' });
+    if (url.endsWith('/history')) return ok([]); if (url === '/admin/api/imports') return ok({ imports: [] });
+    return { status: 409, ok: false, json: async () => ({ error: 'Catalog changed. Reload products before saving corrections.' }) };
+  }, extra: 'globalThis.ui={filter,selectProduct,selected:()=>selected};' });
+  for (const sku of ['LC120', 'LC526', 'LC553']) assert.match(app.node('product').innerHTML, new RegExp(sku + ' · L-Carnitine 120mg'));
+  app.node('search').value = 'ADA10mg'; app.context.ui.filter(); assert.equal(app.context.ui.selected(), undefined); assert.match(app.node('product').innerHTML, /option disabled class="is-blocked"/); assert.match(app.node('catalog-blocked-list').innerHTML, /data-correct-entry/);
+  app.node('product').value = 'blocked-' + entryId; app.context.ui.selectProduct(); await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } }); assert.equal(calls.some(([url]) => url.endsWith('/generate')), false);
+  app.node('search').value = ''; app.context.ui.filter(); app.node('product').value = 'adamax'; app.context.ui.selectProduct(); await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } });
+  assert.equal(JSON.parse(calls.find(([url]) => url.endsWith('/generate'))[1].body).catalogRevision, revision);
+});
+
 test('actual empty-customer boot enables a localized first import without bogus catalog requests and preserves report history', async () => {
   const calls = [], profile = { id: 'first', name: 'VialCove' }, product = catalogDTO({ id: 'adamax', name: 'Adamax 10mg', ...parseProduct('Adamax 10mg') }); let fileNumber = 0;
   const ok = value => ({ status: 200, ok: true, json: async () => value });
   const app = await boot(operatorJS, operatorHTML, { fetch: async (url, options) => {
     calls.push([url, options]);
+    if(url==='/admin/api/imports'&&options?.method==='GET')return ok({imports:[]});
     if (url.endsWith('/session')) return ok({ customers: [], defaultCustomerId: '', customer: null, products: [], token: 'empty-token', publicOrigin: 'http://customer.invalid' });
     if (url.endsWith('/history')) return ok([{ lookupCode: 'AN-OLD0-0001', label: 'Saved report', reported: '2026-11-06' }]);
     if (url === '/admin/api/imports') return ok({ id: 'a'.repeat(32) });
@@ -138,14 +157,14 @@ test('actual empty-customer boot enables a localized first import without bogus 
   assert.equal(app.node('import-target').value, 'new'); assert.equal(app.node('import-target').options.find(option => option.value === 'current').disabled, true);
   for (const id of ['import-name', 'import-folder', 'import-sheet', 'import-upload', 'logout']) assert.equal(app.node(id).disabled, false, id);
   assert.match(app.node('history').innerHTML, /AN-OLD0-0001/); assert.match(app.node('status').textContent, /No customers yet/);
-  await ui.loadCustomer(''); await app.node('reload-products').events.get('click')(); assert.equal(calls.length, 2);
+  await ui.loadCustomer(''); await app.node('reload-products').events.get('click')(); assert.equal(calls.length, 3);
   app.node('history').events.get('click')({ target: { closest: () => ({ dataset: { code: 'AN-OLD0-0001' } }) } });
   assert.equal(app.node('code').textContent, 'AN-OLD0-0001'); const paper = app.node('paper').src;
   app.node('import-name').value = 'VialCove'; app.node('import-name').focus(); const focus = app.document.activeElement, before = calls.length;
   ui.language.setLocale('zh-CN'); assert.equal(calls.length, before); assert.equal(app.document.activeElement, focus); assert.equal(app.node('import-name').value, 'VialCove'); assert.match(app.node('status').textContent, /暂无客户/); assert.equal(app.node('customer').options[0].textContent, '暂无客户');
   app.node('import-folder').files = [{ name: 'ADA10.png', webkitRelativePath: 'pictures/ADA10.png', size: 1, slice: () => new Blob(['x']) }];
   app.node('import-sheet').files = [{ name: 'codes.csv', size: 1, slice: () => new Blob(['x']) }];
-  await app.node('import-form').events.get('submit')({ preventDefault() {} }); assert.deepEqual(JSON.parse(calls.find(([url]) => url === '/admin/api/imports')[1].body), { name: 'VialCove' });
+  await app.node('import-form').events.get('submit')({ preventDefault() {} }); assert.deepEqual(JSON.parse(calls.find(([url,options]) => url === '/admin/api/imports' && options.method==='POST')[1].body), { name: 'VialCove' });
   await app.node('import-preview').events.get('click')(); await app.node('import-confirm').events.get('click')();
   assert.equal(app.node('customer').value, profile.id); assert.equal(ui.selected().id, product.id); assert.equal(app.node('search').disabled, false); assert.equal(app.node('customer').disabled, false);
   assert.equal(app.node('import-target').value, 'current'); assert.equal(app.node('import-target').options.find(option => option.value === 'current').disabled, false); assert.equal(app.node('paper').src, paper); assert.equal(app.node('code').textContent, 'AN-OLD0-0001');
@@ -160,7 +179,7 @@ test('actual customer handlers preserve reload selection, stale/failure guards, 
   let customers=[a,b],catalogRequests=[],mutationRequests=[],calls=[];
   const ok=value=>({status:200,ok:true,json:async()=>value});
   const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options)=>{
-    calls.push([url,options]);if(url.endsWith('/session'))return ok({customers,defaultCustomerId:a.id,products:[bpc,sema],token:'fixture',publicOrigin:'http://customer.invalid'});
+    calls.push([url,options]);if(url==='/admin/api/imports'&&options?.method==='GET')return {status:200,ok:true,json:async()=>({imports:[]})};if(url.endsWith('/session'))return ok({customers,defaultCustomerId:a.id,products:[bpc,sema],token:'fixture',publicOrigin:'http://customer.invalid'});
     if(url.endsWith('/history'))return ok([]);
     return new Promise(resolve=>(url.includes('/catalog?')?catalogRequests:mutationRequests).push({url,options,resolve}));
   },extra:'globalThis.ui={language,loadCustomer,filter,selectProduct,showResult,selected:()=>selected};'});

@@ -12,6 +12,7 @@ import { createImports } from '../conference/imports.mjs';
 import { IMPORT_LIMITS, importBodyLimit } from '../conference/import-limits.mjs';
 import { previewIndex, productIdentity, productId, loadManagedCatalog, safeCode } from '../conference/import-match.mjs';
 import { filterProducts } from '../conference/product-search.mjs';
+import { readCatalogRecords } from '../conference/catalog-records.mjs';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 const options = { sheet: 'Table', headerRow: 1, columns: { sku: 'A', product: 'B' } };
@@ -73,29 +74,19 @@ test('short-code index is explicit, dose-exact, case-safe and preserves one conc
   for (const code of ['CON', '../A', 'A/B', 'A\\B', 'A:1']) assert.throws(() => safeCode(code));
 });
 
-test('cross-product unit-qualified aliases cannot be confirmed, while same-product shortcode synonyms remain searchable', async t => {
+test('cross-product and blocked literal unit-qualified claims remain retained and cannot be selected', async t => {
   const files = await fixture(t), app = await server(t, files);
-  const before = await readFile(path.join(files.store, 'customers/profiles.json'));
-  const bad = (await app.api('/admin/api/imports', { name: 'Collision' })).value.id;
-  await upload(app.api, bad, 'image', 'ADA10.png', files.photo);
-  await upload(app.api, bad, 'image', 'ADA10mg.png', files.other);
-  await upload(app.api, bad, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nADA10,Adamax 10mg\nADA10mg,BPC-157 10mg\n'));
-  const rejected = await app.api('/admin/api/imports/' + bad + '/preview', options);
-  assert.equal(rejected.status, 200); assert.equal(rejected.value.canConfirm, false); assert.equal(rejected.value.blocking, true);
-  assert.equal(rejected.value.counts.conflict, 2); assert.equal(rejected.value.counts.valid, 0);
-  assert.deepEqual(rejected.value.rows.map(row => [row.row, row.sku, row.status]), [[2, 'ADA10', 'conflict'], [3, 'ADA10mg', 'conflict']]);
-  assert.ok(rejected.value.rows.every(row => /unit-qualified search/.test(row.reason)));
-  assert.equal((await app.api('/admin/api/imports/' + bad + '/confirm')).status, 400);
-  assert.deepEqual(await readFile(path.join(files.store, 'customers/profiles.json')), before);
-  await app.api('/admin/api/imports/' + bad, {}, 'DELETE');
-  const good = (await app.api('/admin/api/imports', { name: 'Same Product' })).value.id;
-  await upload(app.api, good, 'image', 'ADA10.png', files.photo);
-  await upload(app.api, good, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nADA10,Adamax 10mg\nADA10mg,Adamax 10mg\n'));
-  const accepted = await app.api('/admin/api/imports/' + good + '/preview', options);
-  assert.equal(accepted.value.canConfirm, true); assert.equal(accepted.value.blocking, false); assert.equal(accepted.value.counts.valid, 2);
-  const confirmed = await app.api('/admin/api/imports/' + good + '/confirm'); assert.equal(confirmed.status, 200, confirmed.value.error);
-  assert.equal(confirmed.value.products.length, 1);
-  for (const code of ['ADA10', 'ADA10mg', 'Adamax 10mg']) assert.deepEqual(filterProducts(confirmed.value.products, code).map(row => row.id), [confirmed.value.products[0].id]);
+  const job = (await app.api('/admin/api/imports', { name: 'Collision' })).value.id;
+  await upload(app.api, job, 'image', 'ADA10.png', files.photo);
+  await upload(app.api, job, 'image', 'ADA10mg.png', files.other);
+  await upload(app.api, job, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nADA10,Adamax 10mg\nADA10mg,Unresolved mixture\n'));
+  const preview = await app.api('/admin/api/imports/' + job + '/preview', options);
+  assert.equal(preview.status, 200); assert.equal(preview.value.canConfirm, true);
+  assert.deepEqual(preview.value.counts, { total: 2, ready: 0, blocked: 2 });
+  assert.ok(preview.value.entries.every(row => row.issues.some(issue => issue.code === 'SEARCH_COLLISION')));
+  const confirmed = await app.api('/admin/api/imports/' + job + '/confirm', { previewId: preview.value.previewId });
+  assert.equal(confirmed.status, 200); assert.equal(confirmed.value.entries.length, 2); assert.deepEqual(confirmed.value.products, []);
+  assert.equal(confirmed.value.entries[1].raw.product, 'Unresolved mixture');
 });
 
 test('real HTTP import endpoints keep authentication, exact chunk bounds, offsets, safe paths and cancellation without partial appends', async t => {
@@ -106,7 +97,7 @@ test('real HTTP import endpoints keep authentication, exact chunk bounds, offset
   assert.equal((await app.api('/admin/api/imports', { name: 'Aster' }, 'POST', { Origin: 'http://evil.invalid' })).status, 403);
   assert.equal((await app.api('/admin/api/imports', { name: 'Aster' }, 'POST', { 'Content-Type': 'text/plain' })).status, 415);
   assert.equal((await app.api('/admin/api/imports', { name: 'x'.repeat(9000) })).status, 413);
-  assert.equal((await app.request('/admin/api/imports')).status, 405);
+  assert.deepEqual(await (await app.request('/admin/api/imports')).json(), { imports: [] });
   const created = await app.api('/admin/api/imports', { customerId: app.session.defaultCustomerId }); assert.equal(created.status, 200); const job = created.value.id;
   for (const name of ['../escape.png', '/absolute.png', 'C:/absolute.png', 'folder\\A.png', 'folder/../A.png', 'folder//A.png', '／absolute.png']) assert.equal((await app.api('/admin/api/imports/' + job + '/files', { kind: 'image', path: name, size: 1 })).status, 400);
   const file = (await app.api('/admin/api/imports/' + job + '/files', { kind: 'image', path: 'folder/ADA10.png', size: 8 * 1024 * 1024 })).value;
@@ -151,13 +142,17 @@ test('new folder/table, SKU-only, folder-only and two customers activate atomica
   const oldPDF = Buffer.from(await (await app.request(old.value.pdfURL)).arrayBuffer());
   const job = (await app.api('/admin/api/imports', { name: 'Aster' })).value.id;
   await upload(app.api, job, 'image', 'pictures/ADA10.png', files.photo);
+  await upload(app.api, job, 'image', 'pictures/ADX10.png', files.photo);
   await upload(app.api, job, 'sheet', 'reordered.csv', Buffer.from('Title\n\nProductName,Note,ShortCode\nAdamax 10mg,ignored,ADA10\nAdamax 10mg,ignored,ADX10\n'));
   const inspected = await app.api('/admin/api/imports/' + job + '/inspect'); assert.equal(inspected.value.headerRow, 3);
   const mapped = { sheet: 'Table', headerRow: 3, columns: { sku: 'C', product: 'A' } };
-  const preview = await app.api('/admin/api/imports/' + job + '/preview', mapped); assert.equal(preview.value.canConfirm, true); assert.equal(preview.value.counts.valid, 2);
+  const preview = await app.api('/admin/api/imports/' + job + '/preview', mapped); assert.equal(preview.value.canConfirm, true); assert.deepEqual(preview.value.counts, { total: 2, ready: 2, blocked: 0 });
   assert.equal((await (await app.request('/admin/api/session')).json()).customers.length, 1);
   const confirmed = await app.api('/admin/api/imports/' + job + '/confirm'); assert.equal(confirmed.status, 200, confirmed.value.error); const a = confirmed.value.customer, product = confirmed.value.products[0];
-  for (const query of ['ADA10', 'ADX10', 'Adamax10mg']) assert.equal(filterProducts(confirmed.value.products, query)[0].id, product.id);
+  assert.equal(confirmed.value.products.length, 2);
+  assert.equal(filterProducts(confirmed.value.products, 'ADA10')[0].id, product.id);
+  assert.notEqual(filterProducts(confirmed.value.products, 'ADX10')[0].id, product.id);
+  assert.equal(filterProducts(confirmed.value.products, 'Adamax10mg').length, 2);
   assert.equal((await app.api('/admin/api/imports/' + job + '/confirm')).value.customer.id, a.id);
   assert.equal((await app.api('/admin/api/imports/' + job, {}, 'DELETE')).status, 409);
   assert.deepEqual(await readdir(path.join(files.store, 'customer-imports/staging')), []);
@@ -166,20 +161,20 @@ test('new folder/table, SKU-only, folder-only and two customers activate atomica
   await upload(app.api, skuJob, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nZED10,Adamax 10mg\n'));
   assert.equal((await app.api('/admin/api/imports/' + skuJob + '/preview', options)).value.canConfirm, true);
   const sku = (await app.api('/admin/api/imports/' + skuJob + '/confirm')).value;
-  assert.equal(sku.customer.imageRevision, a.imageRevision); assert.notEqual(sku.customer.aliasRevision, a.aliasRevision); assert.equal(filterProducts(sku.products, 'ADA10').length, 0); assert.equal(filterProducts(sku.products, 'ZED10').length, 1);
-  const renamed = await app.api('/admin/api/customers', { customerId: a.id, name: 'Aster renamed', directory: sku.customer.directory }); assert.equal(renamed.value.customer.imageRevision, a.imageRevision); assert.equal(renamed.value.customer.aliasRevision, sku.customer.aliasRevision);
+  assert.notEqual(sku.customer.catalogRevision, a.catalogRevision); assert.equal(filterProducts(sku.products, 'ADA10').length, 1); assert.equal(filterProducts(sku.products, 'ZED10').length, 1);
+  const renamed = await app.api('/admin/api/customers', { customerId: a.id, name: 'Aster renamed', directory: sku.customer.directory }); assert.equal(renamed.value.customer.catalogRevision, sku.customer.catalogRevision);
   const folderJob = (await app.api('/admin/api/imports', { customerId: a.id })).value.id; await upload(app.api, folderJob, 'image', 'ZED10.png', files.photo);
   assert.equal((await app.api('/admin/api/imports/' + folderJob + '/preview')).value.canConfirm, true); assert.equal((await app.api('/admin/api/imports/' + folderJob + '/confirm')).status, 200);
   const cedarJob = (await app.api('/admin/api/imports', { name: 'Cedar' })).value.id; await upload(app.api, cedarJob, 'image', 'ADA10.png', files.other); await upload(app.api, cedarJob, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nADA10,Adamax 10mg\n'));
   await app.api('/admin/api/imports/' + cedarJob + '/preview', options); const cedar = (await app.api('/admin/api/imports/' + cedarJob + '/confirm')).value;
-  assert.equal(cedar.products[0].id, product.id); assert.notEqual(cedar.products[0].imageURL, product.imageURL); assert.notDeepEqual(Buffer.from(await (await app.request(cedar.products[0].imageURL)).arrayBuffer()), firstPhoto);
+  assert.notEqual(cedar.products[0].id, product.id); assert.notEqual(cedar.products[0].imageURL, product.imageURL); assert.notDeepEqual(Buffer.from(await (await app.request(cedar.products[0].imageURL)).arrayBuffer()), firstPhoto);
   const staleJob = (await app.api('/admin/api/imports', { customerId: a.id })).value.id; await upload(app.api, staleJob, 'sheet', 'codes.csv', Buffer.from('SKU,Product\nALT10,Adamax 10mg\n')); await app.api('/admin/api/imports/' + staleJob + '/preview', options);
   const current = (await (await app.request('/admin/api/catalog?customerId=' + a.id)).json()).customer;
   await app.api('/admin/api/customers', { customerId: a.id, name: 'Aster changed again', directory: current.directory }); assert.equal((await app.api('/admin/api/imports/' + staleJob + '/confirm')).status, 409);
   const moved = path.join(files.root, 'moved-store'); await cp(files.store, moved, { recursive: true }); const restarted = await createCustomerCatalog({ store: moved, images: files.images });
   const catalog = await restarted.scan(a.id); assert.equal(catalog.products[0].id, product.id); assert.ok(catalog.products[0].imagePath.startsWith(await realpath(moved)));
   assert.deepEqual(Buffer.from(await (await app.request(old.value.pdfURL)).arrayBuffer()), oldPDF);
-  assert.equal((await fetch(app.origin + '/admin/import-ui.mjs')).status, 401); assert.equal((await app.request('/admin/customer-imports/revisions/' + a.imageRevision + '/catalog.json')).status, 404);
+  assert.equal((await fetch(app.origin + '/admin/import-ui.mjs')).status, 401); assert.equal((await app.request('/admin/customer-imports/revisions/' + a.catalogRevision + '/records.json')).status, 404);
 });
 
 test('one guarded job phase protects uploads/commits from cancel and TTL, and changed preview cannot activate a stale prepared revision', async t => {
@@ -196,16 +191,16 @@ test('one guarded job phase protects uploads/commits from cancel and TTL, and ch
   await directUpload(imports, job.id, 'sheet', 'mapping.csv', Buffer.from('SKU,Product,Alternative\nADA10,Adamax 10mg,Other 10mg\n'));
   await imports.preview(job.id, options); const before = await readFile(path.join(files.store, 'customers/profiles.json'));
   await assert.rejects(imports.confirm(job.id)); assert.deepEqual(await readFile(path.join(files.store, 'customers/profiles.json')), before);
-  await imports.preview(job.id, { ...options, columns: { sku: 'A', product: 'C' } }); fail = false;
-  const activate = registry.activate; let commitEntered, finishCommit;
+  await assert.rejects(imports.preview(job.id, { ...options, columns: { sku: 'A', product: 'C' } }), error => error.status === 409); fail = false;
+  const activate = registry.activateRecords; let commitEntered, finishCommit;
   const committing = new Promise(resolve => commitEntered = resolve), commitHold = new Promise(resolve => finishCommit = resolve);
-  registry.activate = async value => { commitEntered(); await commitHold; return activate(value); };
+  registry.activateRecords = async value => { commitEntered(); await commitHold; return activate(value); };
   const confirm = imports.confirm(job.id); await committing; now += IMPORT_LIMITS.idleMs + 1; await imports.cleanup(); await assert.rejects(imports.cancel(job.id), error => error.status === 409); finishCommit();
-  const result = await confirm; assert.equal(result.products[0].name, 'Other 10mg'); assert.equal((await imports.confirm(job.id)).customer.id, result.customer.id);
+  const result = await confirm; assert.equal(result.products[0].name, 'Adamax 10mg'); assert.equal((await imports.confirm(job.id)).customer.id, result.customer.id);
   const cancelled = await imports.create({ name: 'Cancelled' }); await imports.cancel(cancelled.id); await assert.rejects(imports.confirm(cancelled.id), error => error.status === 404);
-  const revision = result.customer.imageRevision, revisionFolder = path.join(files.store, 'customer-imports/revisions', revision), external = path.join(files.root, 'outside-images');
+  const revision = result.customer.catalogRevision, revisionFolder = path.join(files.store, 'customer-imports/revisions', revision), external = path.join(files.root, 'outside-images');
   await cp(path.join(revisionFolder, 'images'), external, { recursive: true }); await rename(path.join(revisionFolder, 'images'), path.join(revisionFolder, 'original-images'));
   try { await symlink(external, path.join(revisionFolder, 'images'), process.platform === 'win32' ? 'junction' : 'dir'); }
   catch (error) { if (!['EPERM', 'EACCES'].includes(error.code)) throw error; t.diagnostic('Symlink privilege unavailable; managed relative migration and file hashes remain covered.'); return; }
-  await assert.rejects(loadManagedCatalog(files.store, revision), /unavailable/);
+  await assert.rejects(readCatalogRecords(files.store, revision), /unavailable/);
 });

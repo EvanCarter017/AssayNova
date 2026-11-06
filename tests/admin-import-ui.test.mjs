@@ -112,3 +112,55 @@ test('actual markup has sibling forms, shortcode filenames, exactly two required
   assert.match(html, /webkitdirectory multiple/); assert.match(html, /ADA10\.png/); assert.match(html, /id="import-sku"/); assert.match(html, /id="import-product"/); assert.match(html, /id="import-dose"/);
   assert.doesNotMatch(html, /import-image-column|import-aliases-column|per-row|id="photo"/);
 });
+
+test('table-only all-blocked import remains confirmable and sends the exact preview token; no idle busy state', async () => {
+  const previewId = 'c'.repeat(32), calls = [];
+  const app = fixture(async (url, options) => {
+    calls.push({ url, options });
+    if (url === '/admin/api/imports') return ok({ id: jobId });
+    if (url.endsWith('/files')) return ok({ id: 'b'.repeat(32) });
+    if (options.method === 'PUT') return ok({});
+    if (url.endsWith('/inspect')) return ok(inspection);
+    if (url.endsWith('/preview')) return ok({ previewId, canConfirm: true, counts: { total: 1, ready: 0, blocked: 1 }, entries: [{ id: '1'.repeat(20), source: { sheet: 'Table', row: 4 }, raw: { sku: 'ADA10', product: 'Adamax', dose: '' }, values: { sku: 'ADA10', product: 'Adamax', dose: '' }, status: 'blocked', issues: [{ code: 'MISSING_IMAGE' }] }], imageRows: [] });
+    if (url.endsWith('/confirm')) return ok({ customer: { id: 'new' }, products: [], entries: [], catalogRevision: 'd'.repeat(32) });
+    throw new Error('Unexpected request');
+  });
+  app.node('target').value = 'new'; app.node('name').value = 'New customer'; app.node('sheet').files = [file('products.csv', 'SKU,Product\nADA10,Adamax\n')];
+  await app.ui.start(); await app.ui.perform('preview'); assert.equal(app.node('confirm').disabled, false); assert.match(app.node('counts').textContent, /1 retained.*0 ready.*1 need correction/); assert.match(app.node('rows').innerHTML, /image has not been selected/); assert.equal(app.node('progress').hidden, true);
+  await app.ui.perform('confirm'); assert.deepEqual(JSON.parse(calls.at(-1).options.body), { previewId }); assert.equal(app.confirmed.length, 1);
+});
+
+test('resume is explicit, GET-only discovery preserves files, restores mapped preview, and never auto-confirms', async () => {
+  const calls = [], previewId = 'c'.repeat(32), otherJob = 'd'.repeat(32);
+  const app = fixture(async (url, options) => {
+    calls.push({ url, options });
+    if (url === '/admin/api/imports') return ok({ imports: [{ id: jobId, name: 'Saved customer', purpose: 'import' }, { id: otherJob, purpose: 'correction' }] });
+    if (url.endsWith('/inspect')) return ok(inspection);
+    return ok({ id: jobId, purpose: 'import', customerId: 'old-customer', name: 'Saved customer', files: [{ id: 'f'.repeat(32), kind: 'sheet', path: 'products.csv', size: 12, offset: 12 }], mapping: { sheet: 'Table', headerRow: 3, columns: { sku: 'C', product: 'A' } }, preview: { previewId, entries: [], imageRows: [], counts: { total: 2, ready: 1, blocked: 1 }, canConfirm: true } });
+  });
+  const selected = [file('new.csv', 'keep')]; app.node('sheet').files = selected;
+  await app.ui.loadPending(); assert.equal(calls.length, 1); assert.equal(calls[0].options.method, 'GET'); assert.equal(Object.hasOwn(calls[0].options, 'body'), false); assert.match(app.node('pending-list').innerHTML, /Saved customer/); assert.doesNotMatch(app.node('pending-list').innerHTML, new RegExp(otherJob)); assert.equal(app.confirmed.length, 0); assert.equal(app.node('sheet').files, selected);
+  await app.ui.resume(jobId); assert.equal(app.node('sku').value, 'C'); assert.equal(app.node('product').value, 'A'); assert.equal(app.node('confirm').disabled, false); assert.equal(app.confirmed.length, 0); assert.equal(app.node('sheet').files, selected); assert.deepEqual(app.pending, [true]);
+});
+
+test('a stalled preview times out, clears operation busy state and retains its uploaded job for retry', async () => {
+  const app = fixture(async (url, options) => {
+    if (url === '/admin/api/imports') return ok({ id: jobId }); if (url.endsWith('/files')) return ok({ id: 'b'.repeat(32) }); if (options.method === 'PUT') return ok({}); if (url.endsWith('/inspect')) return ok(inspection); return new Promise(() => {});
+  }, { timeout: 5 });
+  app.node('sheet').files = [file('products.csv', 'x')]; await app.ui.start(); await app.ui.perform('preview');
+  assert.match(app.node('status').textContent, /timed out/); assert.equal(app.node('preview').disabled, false); assert.equal(app.node('cancel').disabled, false); assert.equal(app.node('confirm').disabled, true); assert.equal(app.node('progress').hidden, true); assert.equal(app.node('upload').disabled, true);
+});
+
+test('successful confirm and cancel immediately remove their resumed job from the pending list', async () => {
+  for (const action of ['confirm', 'cancel']) {
+    const app = fixture(async (url, options) => {
+      if (url === '/admin/api/imports') return ok({ imports: [{ id: jobId, name: 'Retained upload', purpose: 'import' }] });
+      if (url.endsWith('/confirm')) return ok({ customer: { id: 'old-customer' }, products: [] });
+      if (options.method === 'DELETE') return ok({ ok: true });
+      return ok({ id: jobId, purpose: 'import', customerId: 'old-customer', files: [], preview: { previewId: 'c'.repeat(32), entries: [], imageRows: [], counts: { total: 1, ready: 0, blocked: 1 }, canConfirm: true } });
+    });
+    await app.ui.loadPending(); await app.ui.resume(jobId); assert.match(app.node('pending-list').innerHTML, /Retained upload/);
+    if (action === 'confirm') await app.ui.perform('confirm'); else await app.ui.cancel();
+    assert.equal(app.node('pending-list').innerHTML, '', action); assert.equal(app.node('pending').hidden, true, action);
+  }
+});

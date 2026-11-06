@@ -6,6 +6,7 @@ import { createCustomerCatalog } from './customer-catalog.mjs';
 import { createImports } from './imports.mjs';
 import { importChunkRoute } from './import-limits.mjs';
 import { searchableCatalog } from './import-match.mjs';
+import { recordsDTO } from './catalog-records.mjs';
 import { DEFAULT_STORE, validCode } from './reader.mjs';
 import { createStore, validateFields, validateComponents } from './store.mjs';
 import { createAuth, DEFAULT_AUTH_STORE } from './auth.mjs';
@@ -14,7 +15,7 @@ const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 };
-const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs']]);
+const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs'], ['/admin/catalog-correction-ui.mjs', 'catalog-correction-ui.mjs']]);
 const inNamespace = pathname => pathname === '/admin' || pathname.startsWith('/admin/');
 export const isLoopbackPeer = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
 
@@ -49,7 +50,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
   const reports = await createStore(store, { render, codeFactory });
   const customers = await createCustomerCatalog({ store: reports.root, images });
   const imports = await createImports({ store: reports.root, customers });
-  const catalogResponse = catalog => ({ customer: catalog.customer, products: searchableCatalog(catalog.products).map(dto => ({ ...dto, imageURL: '/admin/images/' + catalog.customer.id + '/' + dto.id })) });
+  const catalogResponse = catalog => ({ customer: catalog.customer, ...(catalog.customer.catalogRevision ? recordsDTO(catalog) : { catalogRevision: null, entries: [], counts: { total: catalog.products.length, ready: catalog.products.length, blocked: 0 }, products: searchableCatalog(catalog.products).map(dto => ({ ...dto, imageURL: '/admin/images/' + catalog.customer.id + '/' + dto.id })) }) });
   const token = randomBytes(32).toString('hex');
   const auth = createAuth({ ...authOptions, store: authStore, origin });
   const validRunToken = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && timingSafeEqual(Buffer.from(value), Buffer.from(token));
@@ -115,12 +116,14 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       response.setHeader('Set-Cookie', auth.logout(request)); send(response, 200, { ok: true }); return true;
     }
     if (pathname === '/admin/api/imports' || pathname.startsWith('/admin/api/imports/')) {
-      if (!['POST', 'PUT', 'DELETE'].includes(request.method)) { send(response, 405, { error: 'Method not allowed.' }, undefined, head); return true; }
-      if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Run token required.' }); return true; }
+      if (!['GET', 'POST', 'PUT', 'DELETE'].includes(request.method)) { send(response, 405, { error: 'Method not allowed.' }, undefined, head); return true; }
+      if (request.method !== 'GET' && (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token']))) { send(response, 403, { error: 'Run token required.' }); return true; }
       try {
         const route = /^\/admin\/api\/imports\/([a-f0-9]{32})(?:\/(files|inspect|preview|confirm))?$/.exec(pathname);
         let value;
-        if (request.method === 'PUT' && importChunkRoute(request.method, request.url)) value = await imports.put(request);
+        if (request.method === 'GET' && request.url === pathname && pathname === '/admin/api/imports') value = await imports.list();
+        else if (request.method === 'GET' && request.url === pathname && route && !route[2]) value = await imports.detail(route[1]);
+        else if (request.method === 'PUT' && importChunkRoute(request.method, request.url)) value = await imports.put(request);
         else if (pathname === '/admin/api/imports' && request.method === 'POST') value = await imports.create(await bodyJSON(request));
         else if (route && request.method === 'DELETE' && !route[2] && request.url === pathname) {
           if (Number(request.headers['content-length']) > 0 || request.headers['transfer-encoding']) { const input = await bodyJSON(request); if (!input || Object.keys(input).length) throw new Error(); }
@@ -130,10 +133,21 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
           if (route[2] === 'files') value = await imports.register(route[1], input);
           else if (route[2] === 'inspect') value = await imports.inspect(route[1], input);
           else if (route[2] === 'preview') value = await imports.preview(route[1], input);
-          else { if (!input || Array.isArray(input) || Object.keys(input).length) throw new Error(); const saved = await imports.confirm(route[1]); value = { customers: saved.customers, ...catalogResponse(saved) }; }
+          else { const saved = await imports.confirm(route[1], input); value = { customers: saved.customers, ...catalogResponse(saved) }; }
         } else { send(response, 404, { error: 'Import route not found.' }); return true; }
         send(response, 200, value);
       } catch (error) { send(response, error.status || 400, { error: error.status ? error.message : 'Import could not be completed. The current customer catalog is unchanged.' }); }
+      return true;
+    }
+    const correction = /^\/admin\/api\/catalog\/([a-f0-9]{20})\/entries\/([a-f0-9]{20})$/.exec(pathname);
+    if (correction) {
+      if (request.url !== pathname) { send(response, 400, { error: 'Use an exact catalog correction route.' }); return true; }
+      if (!['GET', 'PATCH'].includes(request.method)) { send(response, 405, { error: 'Method not allowed.' }); return true; }
+      if (request.method === 'PATCH' && (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token']))) { send(response, 403, { error: 'Run token required.' }); return true; }
+      try {
+        if (request.method === 'GET') send(response, 200, await imports.entry(correction[1], correction[2]));
+        else { const saved = await imports.correct(correction[1], correction[2], await bodyJSON(request)); const display = catalogResponse(saved); send(response, 200, { customers: saved.customers, ...display, entry: display.entries.find(entry => entry.id === correction[2]) }); }
+      } catch (error) { send(response, error.status || 400, { error: error.status ? error.message : 'The catalog correction could not be saved.' }); }
       return true;
     }
     if (request.method === 'POST' && pathname === '/admin/api/customers') {
@@ -151,10 +165,11 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       }
       try {
         const input = await bodyJSON(request);
-        if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['customerId', 'productId', 'fields', 'components', 'publish'].includes(key)) || typeof input.publish !== 'boolean') throw new Error('Choose Preview or Generate and publish.');
+        if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['customerId', 'productId', 'fields', 'components', 'publish', 'catalogRevision'].includes(key)) || typeof input.publish !== 'boolean') throw new Error('Choose Preview or Generate and publish.');
         if (input.fields && Object.hasOwn(input.fields, 'client')) throw new Error('Client is determined by the saved customer.');
         const fields = validateFields(input.fields);
         const catalog = await customers.scan(input.customerId);
+        if (catalog.customer.catalogRevision && input.catalogRevision !== catalog.customer.catalogRevision) throw Object.assign(new Error('Catalog changed. Reload products before generating a report.'), { status: 409 });
         const selected = catalog.products.find(product => product.id === input.productId);
         if (!selected) throw new Error('Select a catalog product.');
         const components = validateComponents(input.components, selected.components);
@@ -170,10 +185,10 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
     try {
       if (pathname === '/admin/api/session') {
         const profiles = await customers.list(), defaultCustomerId = profiles[0]?.id || '';
-        let initial = { customer: null, products: [] };
+        let initial = { customer: null, products: [], catalogRevision: null, entries: [], counts: { total: 0, ready: 0, blocked: 0 } };
         if (defaultCustomerId) {
           try { initial = catalogResponse(await customers.scan(defaultCustomerId)); }
-          catch (error) { initial = { customer: profiles[0], products: [], catalogError: error.message }; }
+          catch (error) { initial = { customer: profiles[0], products: [], catalogRevision: null, entries: [], counts: { total: 0, ready: 0, blocked: 0 }, catalogError: error.message }; }
         }
         send(response, 200, { token, customers: profiles, defaultCustomerId, ...initial, publicOrigin: publicURL }, undefined, head); return true;
       }
@@ -191,6 +206,12 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       if (image) {
         const product = (await customers.scan(image[1])).products.find(row => row.id === image[2]);
         if (product) { send(response, 200, await readFile(product.imagePath), 'image/png', head); return true; }
+      }
+      const asset = /^\/admin\/catalog-assets\/([a-f0-9]{20})\/([a-f0-9]{32})$/.exec(pathname);
+      if (asset) {
+        if (request.url !== pathname) { send(response, 404, { error: 'Asset route not found.' }, undefined, head); return true; }
+        const catalog = await customers.scan(asset[1]), image = catalog.sources?.find(image => image.id === asset[2]);
+        if (image) { send(response, 200, await readFile(image.path), 'image/png', head); return true; }
       }
       const bundle = /^\/admin\/bundles\/(published|previews)\/(AN-[A-Z0-9]{4}-[A-Z0-9]{4})\/(report\.svg|report\.pdf)$/.exec(pathname);
       if (bundle && validCode(bundle[2])) {
