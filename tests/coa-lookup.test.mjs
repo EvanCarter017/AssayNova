@@ -1114,12 +1114,39 @@ test('opt-in lookup works without reload, preserves generated title/units/action
   const remoteFetch=async(url,options)=>{calls.push([url,options]);return {ok:true,json:async()=>bundle};};
   const app=bootApp('/verify',[],{publishedReader:true,remoteFetch});assert.equal(calls.length,0);
   app.submitLookup(' an-abcd-1234 ',false);await flushLookup();assert.equal(app.location.pathname,'/coa/AN-ABCD-1234');assert.match(app.document.title,/COA report/);assert.doesNotMatch(app.document.title,/Sample/);
-  const html=app.nodes.get('#coa-view').innerHTML;assert.match(html,/HCG 5000IU/);assert.match(html,/Net content \(IU\)/);assert.match(html,/__reports\/AN-ABCD-1234\/report.pdf/);assert.doesNotMatch(html,/Sample report|Fictional data|Not a valid certificate|Illustrative certificate/);
+  const html=app.nodes.get('#coa-view').innerHTML;assert.match(html,/HCG 5000IU/);assert.match(html,/Measured content · IU\/vial/);assert.match(html,/__reports\/AN-ABCD-1234\/report.pdf/);assert.doesNotMatch(html,/Sample report|Fictional data|Not a valid certificate|Illustrative certificate/);
   app.click('copy-code');await flushLookup();assert.equal(app.copied.at(-1),'AN-ABCD-1234');app.click('copy-link');await flushLookup();assert.equal(app.copied.at(-1),'http://127.0.0.1:4999/coa/AN-ABCD-1234');
   app.clickLink('/about');app.travel(-1);assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);app.travel(1);assert.equal(app.location.pathname,'/about');
   const refreshed=bootApp('/coa/an-abcd-1234',[],{publishedReader:true,remoteFetch});await flushLookup();assert.equal(refreshed.location.pathname,'/coa/AN-ABCD-1234');assert.match(refreshed.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);
   app.click('report',{lookupCode:DEMO_REPORT.lookupCode});assert.match(app.nodes.get('#coa-view').innerHTML,/Sample report/);
 });
+test('real COA transcript identifies same-sample replicates, means and mixed row units accessibly', async () => {
+  const bundle = generatedFixture();
+  bundle.record.contentUnit = 'mixed';
+  bundle.record.purity = ['99.41', '99.43', '99.42'];
+  bundle.record.composition = [
+    { analyte: 'Peptide A', sample1: '10.10', sample2: '10.30', summary: '10.20', unit: 'mg' },
+    { analyte: 'Peptide B', sample1: '5000.00', sample2: '5002.00', summary: '5001.00', unit: 'IU' }
+  ];
+  const app = bootApp('/coa/AN-ABCD-1234', [], { publishedReader: true, remoteFetch: async () => ({ ok: true, json: async () => bundle }) });
+  await flushLookup();
+  const html = app.nodes.get('#coa-view').innerHTML;
+  assert.match(html, /<summary>Report fields<\/summary>/);
+  assert.match(html, /Two determinations of the same sample\./);
+  assert.match(html, /Purity \(HPLC-UV area%\)/);
+  for (const [label, value] of [['Replicate 1', '99.41'], ['Replicate 2', '99.43'], ['Mean', '99.42']]) {
+    assert.ok(html.includes(`<dt>${label}</dt><dd>${value}%</dd>`));
+  }
+  assert.match(html, /<caption>Measured content · Per-analyte results<\/caption>/);
+  assert.match(html, /<th scope="col">Replicate 1<\/th><th scope="col">Replicate 2<\/th><th scope="col">Mean<\/th>/);
+  assert.match(html, /<th scope="row">Peptide A \(mg\/vial\)<\/th><td>10.10<\/td><td>10.30<\/td><td>10.20<\/td>/);
+  assert.match(html, /<th scope="row">Peptide B \(IU\/vial\)<\/th><td>5000.00<\/td><td>5002.00<\/td><td>5001.00<\/td>/);
+  assert.doesNotMatch(html, /Sample [12]|Reported summary|mixed\/vial/);
+  assert.match(html, /download>Download PDF/);
+  app.click('print');
+  assert.equal(app.printed(), 1);
+});
+
 test('opt-in lookup ignores late responses after navigation, input edits and newer overlapping codes',async()=>{
   const pending=[];const app=bootApp('/verify',[],{publishedReader:true,remoteFetch:(url,options)=>new Promise(resolve=>pending.push({url,options,resolve}))});
   app.submitLookup('AN-ABCD-1234',false);app.clickLink('/about');pending[0].resolve({ok:true,json:async()=>generatedFixture()});await flushLookup();assert.equal(app.location.pathname,'/about');assert.doesNotMatch(app.document.title,/ABCD/);

@@ -12,7 +12,7 @@ import json
 import math
 import random
 import hashlib
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from io import BytesIO
 import os
 from pathlib import Path
@@ -43,6 +43,7 @@ RULE = colors.HexColor("#D3E0E5")
 PALE = colors.HexColor("#EFF6F7")
 WHITE = colors.white
 DATA_FILE = ROOT / "sample_reports.json"
+CONTACT_FILE = ROOT / "lab-contact.json"
 EXPECTED = {
     "AN-7K9Q-2M4X": ("Reference sample A", "AN-2026-0042", "SAMPLE-2401", "2026-10-26", "2026-10-30", "99.32", "Consistent", "8.42"),
     "AN-8P6R-3N5Y": ("Reference sample C", "AN-2026-0043", "SAMPLE-2402", "2026-10-27", "2026-10-31", "97.84", "Partial match", "9.16")
@@ -75,6 +76,97 @@ def title(drawing, value, x, y, width, right=None):
     text(drawing, value, x, y, 10.5, True, NAVY)
     if right:
         text(drawing, right, x + width, y, 8.5, color=MUTED, anchor="end")
+
+
+def reported_content(record):
+    """Format stored analyte means, never nominal dose or purity-derived content."""
+    declared = record.get("contentUnit", "mg")
+    if declared not in {"mg", "IU", "ml", "mixed"}:
+        raise ValueError("Unsupported measured content unit")
+    rows = record.get("composition")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 4:
+        raise ValueError("Measured content requires one to four analyte results")
+    numbers, units = [], set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Invalid measured content row")
+        unit = row.get("unit", declared)
+        if unit not in {"mg", "IU", "ml"} or declared != "mixed" and unit != declared:
+            raise ValueError("Inconsistent measured content units")
+        value = row.get("summary")
+        if type(value) not in (str, int, float, Decimal) or len(str(value)) > 32:
+            raise ValueError("Invalid reported analyte mean")
+        try:
+            number = Decimal(str(value))
+        except InvalidOperation:
+            raise ValueError("Invalid reported analyte mean") from None
+        if not number.is_finite() or number < 0:
+            raise ValueError("Invalid reported analyte mean")
+        numbers.append(number)
+        units.add(unit)
+    if len(units) > 1:
+        if declared != "mixed":
+            raise ValueError("Mixed analyte units require mixed content")
+        return None, "mixed"
+    if declared == "mixed":
+        raise ValueError("Mixed content requires distinct analyte units")
+    # Sum the displayed means, retaining every row's existing reported value.
+    return format(sum(numbers).quantize(Decimal(".01"), rounding=ROUND_HALF_UP), ".2f"), declared
+
+
+def draw_reported_results(drawing, record, x, top, width):
+    amount, unit = reported_content(record)
+    title(drawing, "Analytical results", x, top - 10, width)
+    text(drawing, "Two determinations of the same sample", x, top - 28, 8.5, color=MUTED)
+    metric_width = (width - 96) / 2
+    metrics = (("Purity", "(HPLC-UV area%)", record["purity"][2] + "%"),
+               ("Measured content", f"({unit}/vial)" if unit != "mixed" else "Per-analyte results", amount if amount is not None else "See table"))
+    for index, (label, context, value) in enumerate(metrics):
+        mx = x + index * metric_width
+        text(drawing, label, mx, top - 47, 8.5, True, NAVY)
+        text(drawing, context, mx, top - 59, 8, color=MUTED)
+        if pdfmetrics.stringWidth(value, "SampleVeraBold", 17) > metric_width - 10:
+            raise ValueError("Reported result exceeds its measured slot")
+        text(drawing, value, mx, top - 82, 17, True, NAVY)
+        rule(drawing, mx, top - 88, metric_width - 10, TEAL, .7)
+    text(drawing, f'Replicate 1: {record["purity"][0]}% / Replicate 2: {record["purity"][1]}%', x, top - 103, 8, color=MUTED)
+    title(drawing, "Measured content", x, top - 115, width,
+          f"{unit}/vial" if unit != "mixed" else "Per-analyte results")
+    return unit
+
+
+def load_contact(config=None):
+    """Read fresh configuration and validate every line before any output writes."""
+    if config is None:
+        config = json.loads(CONTACT_FILE.read_text(encoding="utf-8"))
+    elif isinstance(config, (str, Path)):
+        config = json.loads(Path(config).read_text(encoding="utf-8"))
+    if not isinstance(config, dict) or set(config) != {"title", "email", "phone", "addressLines"}:
+        raise ValueError("Laboratory contact requires title, email, phone and addressLines only")
+    register_fonts()
+    def line(value, label, maximum, optional=False, bold=False):
+        if not isinstance(value, str) or len(value) > maximum or any(not 32 <= ord(c) <= 126 for c in value) or value != value.strip() or not value and not optional:
+            raise ValueError("Invalid laboratory contact " + label)
+        if pdfmetrics.stringWidth(value, "SampleVeraBold" if bold else "SampleVera", 9 if bold else 8.5) > PAGE_W - MARGIN - 315:
+            raise ValueError("Laboratory contact " + label + " exceeds its footer width")
+        return value
+    heading = line(config["title"], "title", 40, bold=True)
+    email = line(config["email"], "email", 100)
+    if not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+", email):
+        raise ValueError("Invalid laboratory contact email")
+    phone = line(config["phone"], "phone", 50, optional=True)
+    addresses = config["addressLines"]
+    if not isinstance(addresses, list) or len(addresses) > 2:
+        raise ValueError("Laboratory contact supports at most two address lines")
+    return {"title": heading, "email": email, "phone": phone,
+            "addressLines": [line(value, "address line", 90) for value in addresses]}
+
+
+def draw_contact(drawing, contact):
+    text(drawing, contact["title"], 315, 92, 9, True, TEAL)
+    lines = [contact["email"]] + ([contact["phone"]] if contact["phone"] else []) + contact["addressLines"]
+    for index, value in enumerate(lines):
+        text(drawing, value, 315, 80.5 - index * 12, 8.5, color=NAVY)
 
 
 def product(drawing, x, top, image=None):
@@ -286,7 +378,8 @@ def spectrum_plot(drawing,spectrum,x,y,width):
     for tx in (ix+3,ix+iw-3):drawing.add(Line(tx,iy+10,tx,iy+8,strokeColor=colors.black,strokeWidth=.25))
 
 
-def make_drawing(code, record, product_image=None):
+def make_drawing(code, record, product_image=None, contact_config=None):
+    contact = load_contact(contact_config)
     register_fonts()
     drawing = Drawing(PAGE_W, PAGE_H)
     drawing.add(Rect(0, 0, PAGE_W, PAGE_H, fillColor=WHITE, strokeColor=None))
@@ -308,24 +401,16 @@ def make_drawing(code, record, product_image=None):
         text(drawing, label, x, y, 8, True, MUTED)
         text(drawing, value, x, y - 12, 8.5)
     profile_x, profile_width = 208, PAGE_W - MARGIN - 208
-    title(drawing, "Analytical results", profile_x, top - 10, profile_width)
-    text(drawing, "Purity / HPLC-UV", profile_x, top - 28, 8.5, color=MUTED)
-    metric_width = (profile_width - 96) / 3
-    for index, label in enumerate(("Sample 1", "Sample 2", "Reported summary")):
-        mx = profile_x + index * metric_width
-        text(drawing, label, mx, top - 49, 8, color=MUTED)
-        text(drawing, record["purity"][index] + "%", mx, top - 72, 17, True, NAVY)
-        rule(drawing, mx, top - 83, metric_width - 10, TEAL, .7)
+    draw_reported_results(drawing, record, profile_x, top, profile_width)
     product(drawing, PAGE_W - MARGIN - 82, top, product_image)
-    title(drawing, "Composition", profile_x, top - 115, profile_width, "Net content (mg)")
     table_top, row_height = top - 132, 20
-    fractions = (.325, .183, .183, .309)
+    fractions = (.40, .20, .20, .20)
     widths = [profile_width * fraction for fraction in fractions]
     edges = [profile_x]
     for width in widths:
         edges.append(edges[-1] + width)
     drawing.add(Rect(profile_x, table_top - row_height, profile_width, row_height, fillColor=PALE, strokeColor=None))
-    labels = ("Analyte", "Sample 1", "Sample 2", "Reported summary")
+    labels = ("Analyte", "Replicate 1", "Replicate 2", "Mean")
     for index, label in enumerate(labels):
         text(drawing, label, edges[index] + 6 if index == 0 else edges[index + 1] - 6, table_top - 14, 8.2, True, anchor="start" if index == 0 else "end")
     for row in range(4):
@@ -354,8 +439,9 @@ def make_drawing(code, record, product_image=None):
         text(drawing, record["screenings"][index]["result"], ledger_x, y - 18, 9, True)
         text(drawing, record["screenings"][index]["details"], ledger_x, y - 34, 8.5)
         rule(drawing, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
-    title(drawing, "Method", ledger_x, 132, PAGE_W - MARGIN - ledger_x)
-    text(drawing, record["method"], ledger_x, 112, 9, color=MUTED)
+    title(drawing, "Method", ledger_x, 141, PAGE_W - MARGIN - ledger_x)
+    text(drawing, record["method"], ledger_x, 123, 9, color=MUTED)
+    draw_contact(drawing, contact)
     signature = ROOT / "assets" / "dylan-greene-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
@@ -490,7 +576,7 @@ def render(drawing, code):
     return buffer.getvalue(), ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def build(lookup_code, output_dir, product_image=None):
+def build(lookup_code, output_dir, product_image=None, contact_config=None):
     code = lookup_code.strip().upper()
     if not re.fullmatch(r"AN-[A-Z0-9]{4}-[A-Z0-9]{4}", code) or code not in STEMS:
         raise ValueError("Use the exact lookup code assigned to public sample A or C")
@@ -512,7 +598,7 @@ def build(lookup_code, output_dir, product_image=None):
                 crop = source["crop"]
                 if len(crop) != 4 or any(type(v) is not int for v in crop) or not (0 <= crop[0] < crop[2] <= image.width and 0 <= crop[1] < crop[3] <= image.height): raise ValueError("Invalid product crop")
                 image = image.crop(crop)
-    drawing = make_drawing(code, records[code], image)
+    drawing = make_drawing(code, records[code], image, contact_config)
     pdf, svg = render(drawing, code)
     module = ("// Generated from templates/coa/sample_reports.json; fixed fictional sample data.\nexport const SAMPLE_REPORT_DATA = " + json.dumps(records, ensure_ascii=True, indent=2) + ";\n").encode("utf-8")
     output_dir.mkdir(parents=True, exist_ok=True)

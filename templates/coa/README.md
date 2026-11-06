@@ -141,3 +141,48 @@ PNG/JPEG replacement remains available.
 Images, logo and the original authorized Dylan Greene signature design are
 embedded for offline use. No private source report/client data or scientific
 trace pixels are read by this public builder; no digital issuance is performed.
+
+## Current specimen and generated-report result presentation
+
+The current `build_sample_coa.py` master and `conference/render_report.py` share
+the result-summary and contact helpers. The two prominent results are the stored
+reported purity (HPLC-UV area%) and measured content per vial. The latter sums
+the stored, displayed per-analyte means with Decimal arithmetic and rounds the
+total to two decimal places using ROUND_HALF_UP. For one analyte it is that
+analyte's mean. It never uses the product's nominal label dose or multiplies that
+dose by purity. The existing per-analyte means and replicate values stay intact.
+
+The short caption, "Two determinations of the same sample", describes Replicate 1
+and Replicate 2. Mean labels the already reported mean. These are parallel
+determinations of the same submitted sample, not separate vials, bounds or
+confidence intervals. Two values alone do not establish method validation.
+
+Homogeneous results display mg/vial, IU/vial or ml/vial. A mixed-unit report has
+no aggregate: its main result says "See table" / "Per-analyte results", and the
+table identifies each analyte's unit. mg, IU and ml are never added together.
+This presentation changes no stored measurements or chemistry data. The legacy
+`build_coa.py` and `build_coa_alt.py` schemas and behavior above remain separate.
+
+### Laboratory contact configuration
+
+`lab-contact.json` is read fresh for each build or generated report. Its only
+keys are `title`, `email`, `phone` and `addressLines`. The current approved title
+is "Contact the laboratory" and the email is reports@assaynova.com. Phone is an
+empty string and addressLines is an empty list until the owner supplies them.
+Absent phone/address values print no labels or placeholders. Put the future
+formatted address into at most two address lines and the supplied telephone
+number into phone. Do not invent contact details.
+
+The borderless block is at the lower right; the unchanged signature and Chief
+Chemist title stay at the lower left. The title uses 9 pt and contact lines use
+8.5 pt. Configuration accepts bounded printable ASCII supported by the embedded
+font, a nonempty title and valid email text. Each line must fit the footer width;
+unknown keys, non-ASCII text, oversized lines or more than two address lines fail
+before any output is replaced. Python build/make_drawing functions accept an
+optional `contact_config` dictionary or JSON path for isolated fixture checks.
+
+A QR code would be useful for the unique report verification page once a
+canonical HTTPS domain is supplied. Its future target should be that domain's
+`/coa/` path followed by the report's Lookup Code, with the human-readable code
+retained. No QR is generated or reserved on the current paper. Do not use a
+localhost/LAN URL, generic marketing URL or invented verification domain.

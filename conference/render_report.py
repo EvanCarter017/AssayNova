@@ -367,8 +367,9 @@ def spectrum_plot(drawing, spectrum, x, y, width, height):
         chart_text(drawing, f'{cluster[0]["mz"]:.1f}', ix + 1, iy + 1, size=6.5)
 
 
-def make_drawing(code, record, product_image):
+def make_drawing(code, record, product_image, contact_config=None):
     master.register_fonts()
+    contact = master.load_contact(contact_config)
     d = Drawing(PAGE_W, PAGE_H)
     d.add(Rect(0, 0, PAGE_W, PAGE_H, fillColor=WHITE, strokeColor=None))
     logo = master.ROOT / "assets" / "assaynova-logo.png"
@@ -400,25 +401,16 @@ def make_drawing(code, record, product_image):
         master.text(d, label, x, y, 8, True, MUTED)
         y = wrapped(d, value, x, y - label_gap, 130, value_size, leading=value_leading, max_lines=4) - 2
     profile_x, profile_width = 208, PAGE_W - MARGIN - 208
-    master.title(d, "Analytical results", profile_x, top - 10, profile_width)
-    master.text(d, "Purity / HPLC-UV", profile_x, top - 28, 8.5, color=MUTED)
-    metric_width = (profile_width - 96) / 3
-    for index, label in enumerate(("Sample 1", "Sample 2", "Reported summary")):
-        mx = profile_x + index * metric_width
-        master.text(d, label, mx, top - 49, 8, color=MUTED)
-        master.text(d, record["purity"][index] + "%", mx, top - 72, 17, True, NAVY)
-        master.rule(d, mx, top - 83, metric_width - 10, TEAL, .7)
+    unit = master.draw_reported_results(d, record, profile_x, top, profile_width)
     master.product(d, PAGE_W - MARGIN - 82, top, product_image)
-    unit = record["contentUnit"]
-    master.title(d, "Composition", profile_x, top - 115, profile_width, "Net content" + (f" ({unit})" if unit != "mixed" else ""))
     table_top = top - 132
-    widths = [profile_width * f for f in (.325, .183, .183, .309)]
+    widths = [profile_width * f for f in (.40, .20, .20, .20)]
     edges = [profile_x]
     for width in widths:
         edges.append(edges[-1] + width)
     header_height = 20
     d.add(Rect(profile_x, table_top - header_height, profile_width, header_height, fillColor=PALE, strokeColor=None))
-    for index, label in enumerate(("Analyte", "Sample 1", "Sample 2", "Reported summary")):
+    for index, label in enumerate(("Analyte", "Replicate 1", "Replicate 2", "Mean")):
         master.text(d, label, edges[index] + 6 if index == 0 else edges[index + 1] - 6, table_top - 14, 8.2, True, anchor="start" if index == 0 else "end")
     y = table_top - header_height
     for row in record["composition"]:
@@ -460,8 +452,9 @@ def make_drawing(code, record, product_image):
         master.text(d, screening["result"], ledger_x, y - 18, 9, True)
         master.text(d, screening["details"], ledger_x, y - 34, 8.5)
         master.rule(d, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
-    master.title(d, "Method", ledger_x, 132, PAGE_W - MARGIN - ledger_x)
-    wrapped(d, record["method"], ledger_x, 112, PAGE_W - MARGIN - ledger_x, 8.5, color=MUTED, max_lines=3)
+    master.title(d, "Method", ledger_x, 141, PAGE_W - MARGIN - ledger_x)
+    wrapped(d, record["method"], ledger_x, 123, PAGE_W - MARGIN - ledger_x, 8.5, color=MUTED, max_lines=2)
+    master.draw_contact(d, contact)
     signature = master.ROOT / "assets" / "dylan-greene-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
@@ -502,13 +495,13 @@ def render(drawing, code, label):
     return buffer.getvalue(), ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
-def build(request, output):
+def build(request, output, contact_config=None):
     clean = validate_request(request)
     bundle = make_bundle(clean)
     with PILImage.open(clean["product"]["imagePath"]) as selected:
         selected.load()
         image = selected.copy()
-    drawing = make_drawing(clean["lookupCode"], bundle["record"], image)
+    drawing = make_drawing(clean["lookupCode"], bundle["record"], image, contact_config)
     pdf, svg = render(drawing, clean["lookupCode"], bundle["label"])
     payload = json.dumps(bundle, ensure_ascii=True, allow_nan=False, indent=2).encode("utf-8")
     # Validate/draw/render everything before creating output files. The caller
