@@ -82,7 +82,7 @@ test('bounded registry schema fails closed, concurrent seed is exclusive and abs
   const files = await fixture(t), seeded = await Promise.all([createCustomerCatalog({ store: files.store, images: files.a }), createCustomerCatalog({ store: files.store, images: files.b })]);
   assert.deepEqual(await seeded[0].list(), await seeded[1].list()); assert.equal((await seeded[0].list()).length, 1);
   const good = await readFile(configFile(files), 'utf8');
-  for (const data of ['x'.repeat(65537), JSON.stringify({ version: 2, customers: [] }), JSON.stringify({ ...JSON.parse(good), extra: true }), JSON.stringify({ version: 1, customers: Array(33).fill(JSON.parse(good).customers[0]) })]) {
+  for (const data of ['x'.repeat(65537), JSON.stringify({ version: 2, customers: [] }), JSON.stringify({ ...JSON.parse(good), extra: true }), JSON.stringify({ version: 1, customers: [{ ...JSON.parse(good).customers[0], imageRevision: '../outside' }] }), JSON.stringify({ version: 1, customers: [{ ...JSON.parse(good).customers[0], aliases: ['not-inline'] }] }), JSON.stringify({ version: 1, customers: Array(33).fill(JSON.parse(good).customers[0]) })]) {
     await writeFile(configFile(files), data); await assert.rejects(createCustomerCatalog({ store: files.store, images: files.a }), /configuration is unavailable/); assert.equal(await readFile(configFile(files), 'utf8'), data);
   }
   const missingStore = path.join(files.root, 'missing-store'), missing = await createCustomerCatalog({ store: missingStore, images: path.join(files.root, 'absent') });
@@ -95,7 +95,7 @@ test('authenticated customer API scopes same-name images and generation, rejects
   let primary = await studio(t, files, async (...args) => { captured.push(JSON.parse(await readFile(args[0]))); await stubRenderer(...args); });
   let request = await unlock(primary.origin), session = await (await request('/admin/api/session')).json();
   const post = (target, input, headers = {}) => request(target, { method: 'POST', headers: { Origin: primary.origin, 'Content-Type': 'application/json', 'X-Studio-Token': session.token, ...headers }, body: JSON.stringify(input) });
-  for (const target of ['/admin/api/catalog?customerId=' + session.defaultCustomerId, '/admin/api/customers', '/admin/images/' + session.defaultCustomerId + '/' + session.products[0].id]) assert.equal((await fetch(primary.origin + target)).status, 401);
+  for (const target of ['/admin/api/catalog?customerId=' + session.defaultCustomerId, '/admin/api/customers', '/admin/import-ui.mjs', '/admin/api/imports', '/admin/images/' + session.defaultCustomerId + '/' + session.products[0].id]) assert.equal((await fetch(primary.origin + target)).status, 401);
   assert.equal((await post('/admin/api/customers', { name: 'Cedar', directory: files.b }, { 'X-Studio-Token': '' })).status, 403);
   assert.equal((await post('/admin/api/customers', { name: 'Cedar', directory: files.b }, { Origin: 'http://evil.invalid' })).status, 403);
   assert.equal((await post('/admin/api/customers', { name: 'x'.repeat(9000), directory: files.b })).status, 413);

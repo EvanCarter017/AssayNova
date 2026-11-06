@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { isIP } from 'node:net';
+import { importBodyLimit } from './import-limits.mjs';
 
 const hopHeaders = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 const forwardedHeaders = ['accept', 'content-type', 'x-admin-csrf', 'x-studio-token', 'sec-fetch-site'];
@@ -64,15 +65,17 @@ export function createAdminProxy({ upstream, externalOrigin, port, bindAddress, 
       fail(response, 400, head); return true;
     }
     if (pathname === '/admin/auth/setup' || pathname === '/admin/auth/setup/') { fail(response, 403, head); return true; }
-    const chunks = []; let length = 0;
+    const chunks = []; let length = 0, oversized = false;
     try {
       // Do not destroy IncomingMessage's socket on a normal completed request.
       for await (const chunk of request.iterator({ destroyOnReturn: false })) {
         length += chunk.length;
-        if (length > 8192) { request.resume(); fail(response, 413, head); return true; }
+        if (length > importBodyLimit(request.method, target)) { oversized = true; break; }
         chunks.push(chunk);
       }
     } catch { fail(response, 400, head); return true; }
+    // Iterator cleanup may pause the stream; resume only after leaving it.
+    if (oversized) { request.resume(); fail(response, 413, head); return true; }
     if (request.aborted || response.destroyed) return true;
     const excluded = new Set((request.headers.connection || '').split(',').map(value => value.trim().toLowerCase()));
     const headers = { host: primary.host, 'content-length': String(length) };

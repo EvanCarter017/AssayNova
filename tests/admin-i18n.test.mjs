@@ -12,19 +12,21 @@ import { LOCALE_KEY, DICTIONARIES, resolveLocale, translate, translateError, cre
 import { filterProducts } from '../conference/product-search.mjs';
 import { catalogDTO, parseProduct } from '../conference/catalog.mjs';
 import { createStudio } from '../conference/studio.mjs';
+import { createImportUI } from '../conference/import-ui.mjs';
 
 const operatorHTML = await readFile(new URL('../conference/operator.html', import.meta.url), 'utf8');
 const loginHTML = await readFile(new URL('../conference/login.html', import.meta.url), 'utf8');
 const operatorJS = await readFile(new URL('../conference/operator.js', import.meta.url), 'utf8');
 const loginJS = await readFile(new URL('../conference/login.js', import.meta.url), 'utf8');
 const moduleJS = await readFile(new URL('../conference/admin-i18n.mjs', import.meta.url), 'utf8');
+const importJS = await readFile(new URL('../conference/import-ui.mjs', import.meta.url), 'utf8');
 const project = fileURLToPath(new URL('../', import.meta.url));
 
 test('dictionaries cover all declared UI bindings and import without browser/storage/network side effects', () => {
   assert.deepEqual(Object.keys(DICTIONARIES.en).sort(), Object.keys(DICTIONARIES['zh-CN']).sort());
   for (const dictionary of Object.values(DICTIONARIES)) for (const value of Object.values(dictionary)) assert.ok(typeof value === 'string' && value.length > 0);
   for (const html of [operatorHTML, loginHTML]) for (const [, key] of html.matchAll(/data-i18n(?:-placeholder|-aria-label|-alt)?="([^"]+)"/g)) assert.ok(Object.hasOwn(DICTIONARIES.en, key), key);
-  for (const source of [operatorJS, loginJS]) for (const [, key] of source.matchAll(/(?:\bt|language\.t|\bstatus)\('([a-zA-Z]+)'/g)) assert.ok(Object.hasOwn(DICTIONARIES.en, key), key);
+  for (const source of [operatorJS, loginJS, importJS]) for (const [, key] of source.matchAll(/(?:\bt|language\.t|\bstatus)\('([a-zA-Z]+)'/g)) assert.ok(Object.hasOwn(DICTIONARIES.en, key), key);
   for (const key of ['setupTitle','setupIntro','loginTitle','loginIntro','unavailableTitle','unavailableIntro','unlock','unavailable','loading','noMatches','selectedReady','chooseBelow','publishing','previewing','publishedReady','previewReady','authFallback','generateFallback','historyFallback','logoutFallback','sessionFallback']) assert.ok(DICTIONARIES['zh-CN'][key]);
   const context = {};
   for (const key of ['localStorage','sessionStorage','document','navigator','fetch']) Object.defineProperty(context, key, { get() { throw new Error('Import touched ' + key); } });
@@ -91,7 +93,7 @@ function documentFixture(html) {
 function storageFixture(saved) {const writes=[],values=new Map(saved?[[LOCALE_KEY,saved]]:[]);return {writes,values,getItem:key=>values.get(key)??null,setItem(key,value){writes.push([key,value]);values.set(key,value);}};}
 async function boot(source,html,{storage=storageFixture(),fetch,language='en',extra=''}={}) {
   const dom=documentFixture(html),navigation=[],window={addEventListener(){}},location={replace:value=>navigation.push(value),reload:()=>navigation.push('reload')};
-  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,filterProducts};
+  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,createImportUI,filterProducts};
   await runInNewContext('(async()=>{'+source.replace(/^import .*;\s*$/gm,'')+'\n'+extra+'})()',context);
   return {...dom,context,storage,navigation};
 }

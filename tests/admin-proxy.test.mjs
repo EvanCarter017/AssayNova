@@ -31,12 +31,12 @@ async function fixture(t) {
   await writeFile(path.join(images, 'BPC-157 10mg.png'), await readFile(path.join(project, 'templates/coa/assets/sample-vial-product.png')));
   return { root, images, store, authStore };
 }
-function raw(origin, target, { method = 'GET', headers = {}, body, fragments } = {}) {
+function raw(origin, target, { method = 'GET', headers = {}, body, fragments, agent } = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(origin);
-    const req = http.request({ hostname: url.hostname, port: url.port, path: target, method, headers }, response => {
+    const req = http.request({ hostname: url.hostname, port: url.port, path: target, method, headers, agent }, response => {
       const chunks = []; response.on('data', chunk => chunks.push(chunk)); response.on('error', reject);
-      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, bytes: Buffer.concat(chunks), text: Buffer.concat(chunks).toString('utf8') }));
+      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, bytes: Buffer.concat(chunks), text: Buffer.concat(chunks).toString('utf8'), reusedSocket: req.reusedSocket }));
     });
     req.on('error', reject);
     if (fragments) (async () => { for (const fragment of fragments) { req.write(fragment); await delay(2); } req.end(); })().catch(reject);
@@ -150,6 +150,22 @@ test('oversized input never reaches upstream; unavailable/timeout/aborted client
   assert.equal((await raw(proxy.origin, '/admin')).text, 'recovered');
   const down = await bridge(t, { origin: 'http://127.0.0.1:' + await freePort() });
   const response = await raw(down.origin, '/admin'); assert.equal(response.status, 502); assert.equal(response.text, 'Administration is unavailable.'); assert.doesNotMatch(response.text, /127\.0|ECONN|stack|password/i);
+});
+
+test('only an exact canonical PUT import-chunk route receives the 256 KiB proxy exception', async t => {
+  let calls = 0, bytes = 0;
+  const upstream = await listen(t, async (req, res) => { calls++; bytes = 0; for await (const chunk of req) bytes += chunk.length; res.end('accepted'); });
+  const proxy = await bridge(t, upstream), target = '/admin/api/imports/' + 'a'.repeat(32) + '/files/' + 'b'.repeat(32) + '?offset=0';
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1 }); t.after(() => agent.destroy());
+  const send = (route = target, method = 'PUT', body = Buffer.alloc(256 * 1024)) => raw(proxy.origin, route, { method, body, agent, headers: { Origin: proxy.origin, 'Content-Type': 'application/octet-stream' } });
+  assert.equal((await send()).status, 200); assert.equal(bytes, 256 * 1024); assert.equal(calls, 1);
+  const second = await send(); assert.equal(second.status, 200); assert.equal(second.reusedSocket, true); assert.equal(calls, 2);
+  assert.equal((await send(target, 'PUT', Buffer.alloc(256 * 1024 + 1))).status, 413);
+  assert.equal(calls, 2); const recovered = await send(); assert.equal(recovered.status, 200); assert.equal(recovered.reusedSocket, true);
+  for (const [route, method] of [[target, 'POST'], [target.replace('offset=0', 'offset=00'), 'PUT'], [target + '&extra=1', 'PUT'], ['/admin/api/generate', 'PUT']]) {
+    const before = calls; assert.equal((await send(route, method)).status, 413); assert.equal(calls, before);
+    const recovery = await send(); assert.equal(recovery.status, 200); assert.equal(recovery.reusedSocket, true); assert.equal(calls, before + 1);
+  }
 });
 
 test('real primary authentication stays private behind bridge, and bridge cookie cannot borrow/revoke distinct local login', async t => {

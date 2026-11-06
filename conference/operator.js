@@ -1,10 +1,12 @@
 import { filterProducts } from './product-search.mjs';
 import { createAdminI18n } from './admin-i18n.mjs';
+import { createImportUI } from './import-ui.mjs';
 const $=id=>document.getElementById(id);
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const language=createAdminI18n({storage:()=>localStorage,browserLanguage:navigator.language});
 const t=(key,values)=>language.t(key,values);
 let session,selected,result,busy=false,historyRows=[],currentCustomerId='',editingCustomerId,catalogLoading=false,saving=false,catalogRevision=0;
+let importer,importing=false;
 let statusState={key:'loading',error:false};
 const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 for(const name of ['received','reported']) $('generate').elements.namedItem(name).value=today;
@@ -30,11 +32,12 @@ function applyLanguage(){
   $('admin-language').value=language.locale;
   renderSelectionLanguage();renderResultLanguage();renderHistoryLanguage();renderStatus();
   $('customer-mode').textContent=t(editingCustomerId?'editingCustomer':'addingCustomer');
+  importer?.applyLanguage();
 }
 function updateControls(){
-  for(const control of document.querySelectorAll('main input,main select,main button'))control.disabled=busy||saving||catalogLoading||!session;
-  $('customer').disabled=busy||saving||!session;
-  for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||saving||catalogLoading||!selected||!currentCustomerId;
+  for(const control of document.querySelectorAll('main input,main select,main button'))if(!importer?.owns(control))control.disabled=busy||saving||catalogLoading||importing||!session;
+  $('customer').disabled=busy||saving||importing||!session;
+  for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||saving||catalogLoading||importing||!selected||!currentCustomerId;
 }
 function selectProduct(){
   selected=session.products.find(product=>product.id===$('product').value);
@@ -60,7 +63,7 @@ function configureCustomer(add=false){
   $('customer-mode').textContent=t(customer?'editingCustomer':'addingCustomer');
 }
 async function loadCustomer(id,reload=false){
-  if(busy||saving||!session)return;
+  if(busy||saving||importing||!session)return;
   const revision=++catalogRevision,previous=reload?$('product').value:'',query=reload?$('search').value:'';
   currentCustomerId=id;$('customer').value=id;configureCustomer();catalogLoading=true;session.products=[];selected=undefined;
   $('product').innerHTML='';$('product').value='';$('search').value='';$('count').textContent='(0/0)';renderSelectionLanguage();updateControls();status('catalogLoading');
@@ -100,10 +103,10 @@ $('history').addEventListener('click',event=>{
 $('search').addEventListener('input',filter);$('product').addEventListener('change',selectProduct);
 $('customer').addEventListener('change',()=>loadCustomer($('customer').value));
 $('reload-products').addEventListener('click',()=>loadCustomer(currentCustomerId,true));
-$('customer-add').addEventListener('click',()=>{if(busy||saving||catalogLoading)return;configureCustomer(true);$('customer-name').focus();});
-$('customer-edit').addEventListener('click',()=>{if(busy||saving||catalogLoading)return;configureCustomer();$('customer-name').focus();});
+$('customer-add').addEventListener('click',()=>{if(busy||saving||catalogLoading||importing)return;configureCustomer(true);$('customer-name').focus();});
+$('customer-edit').addEventListener('click',()=>{if(busy||saving||catalogLoading||importing)return;configureCustomer();$('customer-name').focus();});
 $('customer-form').addEventListener('submit',async event=>{
-  event.preventDefault();if(busy||saving||catalogLoading||!session)return;
+  event.preventDefault();if(busy||saving||catalogLoading||importing||!session)return;
   saving=true;++catalogRevision;updateControls();status('customerSaving');
   const input={name:$('customer-name').value,directory:$('customer-directory').value};if(editingCustomerId)input.customerId=editingCustomerId;
   try{
@@ -115,9 +118,10 @@ $('customer-form').addEventListener('submit',async event=>{
   finally{saving=false;updateControls();}
 });
 $('admin-language').addEventListener('change',event=>language.setLocale(event.target.value));
+importer=createImportUI({document,request:adminFetch,language,context:()=>!busy&&!saving&&!catalogLoading&&session?{customerId:currentCustomerId,token:session.token}:null,setPending:value=>{importing=value;updateControls();},onConfirmed:value=>{session.customers=value.customers;session.products=value.products;currentCustomerId=value.customer.id;renderCustomers();$('search').value='';$('product').value='';filter();configureCustomer();}});
 language.subscribe(applyLanguage);applyLanguage();updateControls();
 $('generate').addEventListener('submit',async event=>{
-  event.preventDefault();if(busy||saving||catalogLoading||!selected||!currentCustomerId)return;busy=true;
+  event.preventDefault();if(busy||saving||catalogLoading||importing||!selected||!currentCustomerId)return;busy=true;
   const publish=event.submitter?.value==='publish';
   updateControls();
   status(publish?'publishing':'previewing');

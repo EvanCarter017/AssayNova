@@ -3,6 +3,9 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_IMAGES, catalogDTO } from './catalog.mjs';
 import { createCustomerCatalog } from './customer-catalog.mjs';
+import { createImports } from './imports.mjs';
+import { importChunkRoute } from './import-limits.mjs';
+import { codeKey } from './import-match.mjs';
 import { DEFAULT_STORE, validCode } from './reader.mjs';
 import { createStore, validateFields, validateComponents } from './store.mjs';
 import { createAuth, DEFAULT_AUTH_STORE } from './auth.mjs';
@@ -11,7 +14,7 @@ const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 };
-const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs']]);
+const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs']]);
 const inNamespace = pathname => pathname === '/admin' || pathname.startsWith('/admin/');
 export const isLoopbackPeer = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
 
@@ -45,7 +48,15 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
   const publicURL = plainOrigin(publicOrigin);
   const reports = await createStore(store, { render, codeFactory });
   const customers = await createCustomerCatalog({ store: reports.root, images });
-  const catalogResponse = catalog => ({ customer: catalog.customer, products: catalog.products.map(product => ({ ...catalogDTO(product), imageURL: '/admin/images/' + catalog.customer.id + '/' + product.id })) });
+  const imports = await createImports({ store: reports.root, customers });
+  const catalogResponse = catalog => {
+    const claimed = new Map(catalog.products.flatMap(product => (product.importSkus || []).map(sku => [codeKey(sku), product.id])));
+    return { customer: catalog.customer, products: catalog.products.map(product => {
+      const dto = catalogDTO(product);
+      dto.aliases.skus = [...new Set([...dto.aliases.skus.filter(sku => !claimed.has(codeKey(sku)) || claimed.get(codeKey(sku)) === product.id), ...(product.importSkus || [])])];
+      return { ...dto, imageURL: '/admin/images/' + catalog.customer.id + '/' + product.id };
+    }) };
+  };
   const token = randomBytes(32).toString('hex');
   const auth = createAuth({ ...authOptions, store: authStore, origin });
   const validRunToken = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) && timingSafeEqual(Buffer.from(value), Buffer.from(token));
@@ -109,6 +120,28 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       if (request.method !== 'POST') { response.setHeader('Allow', 'POST'); send(response, 405, { error: 'Use POST to log out.' }, undefined, head); return true; }
       if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Logout request rejected.' }); return true; }
       response.setHeader('Set-Cookie', auth.logout(request)); send(response, 200, { ok: true }); return true;
+    }
+    if (pathname === '/admin/api/imports' || pathname.startsWith('/admin/api/imports/')) {
+      if (!['POST', 'PUT', 'DELETE'].includes(request.method)) { send(response, 405, { error: 'Method not allowed.' }, undefined, head); return true; }
+      if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Run token required.' }); return true; }
+      try {
+        const route = /^\/admin\/api\/imports\/([a-f0-9]{32})(?:\/(files|inspect|preview|confirm))?$/.exec(pathname);
+        let value;
+        if (request.method === 'PUT' && importChunkRoute(request.method, request.url)) value = await imports.put(request);
+        else if (pathname === '/admin/api/imports' && request.method === 'POST') value = await imports.create(await bodyJSON(request));
+        else if (route && request.method === 'DELETE' && !route[2] && request.url === pathname) {
+          if (Number(request.headers['content-length']) > 0 || request.headers['transfer-encoding']) { const input = await bodyJSON(request); if (!input || Object.keys(input).length) throw new Error(); }
+          value = await imports.cancel(route[1]);
+        } else if (route && request.method === 'POST' && route[2] && request.url === pathname) {
+          const input = await bodyJSON(request);
+          if (route[2] === 'files') value = await imports.register(route[1], input);
+          else if (route[2] === 'inspect') value = await imports.inspect(route[1], input);
+          else if (route[2] === 'preview') value = await imports.preview(route[1], input);
+          else { if (!input || Array.isArray(input) || Object.keys(input).length) throw new Error(); const saved = await imports.confirm(route[1]); value = { customers: saved.customers, ...catalogResponse(saved) }; }
+        } else { send(response, 404, { error: 'Import route not found.' }); return true; }
+        send(response, 200, value);
+      } catch (error) { send(response, error.status || 400, { error: error.status ? error.message : 'Import could not be completed. The current customer catalog is unchanged.' }); }
+      return true;
     }
     if (request.method === 'POST' && pathname === '/admin/api/customers') {
       if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Run token required.' }); return true; }
