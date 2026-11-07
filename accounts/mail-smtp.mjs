@@ -1,6 +1,6 @@
 import net from 'node:net';
 import tls from 'node:tls';
-import { validMailbox, validMailHost } from './mail-config.mjs';
+import { validMailbox, validMailHost, isResendSMTPAuth } from './mail-config.mjs';
 import { validMailPayload } from './mail-crypto.mjs';
 
 class SMTPError extends Error {
@@ -56,7 +56,7 @@ const phase = (socket, event, timeout, code) => new Promise((resolve, reject) =>
 // Tests may inject a loopback dialer and synthetic CA in process. Production
 // JSON has no CA, insecure-TLS, host-override or certificate-check escape hatch.
 export function createSMTPTransport({ smtp, dial = options => net.connect(options), ca, phaseTimeout = 10000, totalTimeout = 60000 } = {}) {
-  if (!smtp || !validMailHost(smtp.host) || smtp.port !== 587 || !validMailbox(smtp.username) || !validMailbox(smtp.from) || !validMailbox(smtp.supportTo) || !Number.isSafeInteger(phaseTimeout) || phaseTimeout < 1 || phaseTimeout > 10000 || !Number.isSafeInteger(totalTimeout) || totalTimeout < 1 || totalTimeout > 60000) throw new Error('SMTP transport configuration is unavailable.');
+  if (!smtp || !validMailHost(smtp.host) || smtp.port !== 587 || !(validMailbox(smtp.username) || isResendSMTPAuth(smtp.host, smtp.username)) || !validMailbox(smtp.from) || !validMailbox(smtp.supportTo) || !Number.isSafeInteger(phaseTimeout) || phaseTimeout < 1 || phaseTimeout > 10000 || !Number.isSafeInteger(totalTimeout) || totalTimeout < 1 || totalTimeout > 60000) throw new Error('SMTP transport configuration is unavailable.');
   return Object.freeze({
     async send(payload, { signal, beforeData = async () => true } = {}) {
       let socket, reader, dataStarted = false, accepted = false, aborted = false; const stopped = new AbortController();

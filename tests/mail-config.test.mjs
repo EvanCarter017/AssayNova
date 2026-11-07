@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, symlink, chmod, realpath } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { loadMailConfig, parseMailConfigJSON, privateMailPath, validMailbox } from '../accounts/mail-config.mjs';
+import { loadMailConfig, parseMailConfigJSON, privateMailPath, validMailbox, isResendSMTPAuth } from '../accounts/mail-config.mjs';
 import { encryptMailPayload, decryptMailPayload } from '../accounts/mail-crypto.mjs';
 import { createMailKey } from '../scripts/mail-key.mjs';
 
@@ -19,5 +19,16 @@ test('enabled config requires private exact paths, canonical HTTPS matching auth
  if(process.platform!=='win32'){await chmod(f.passwordFile,0o644);await assert.rejects(f.load(),/unavailable/);}
 });
 test('ASCII dot-atom mailboxes allow plus tags and reject routing, controls and Unicode',()=>{for(const address of['a+b@example.invalid','A.B@EXAMPLE.INVALID'])assert.equal(validMailbox(address),true);for(const address of['a..b@example.invalid','a@localhost','a@127.0.0.1','a@-bad.invalid','a@example.invalid\0','a@example.invalid,b@example.invalid','a'.repeat(65)+'@example.invalid','测试@example.invalid'])assert.equal(validMailbox(address),false);});
+test('Resend config admits only the exact provider auth pair while preserving sender/support equality and key',async()=>{
+ const f=await fixture(),before=await readFile(f.outboxKeyFile),sender='supports@assaynovalabs.com';
+ const resend={...f.config,smtp:{...f.config.smtp,host:'smtp.resend.com',username:'resend',from:sender,supportTo:sender}};
+ const configured=await f.load(resend);assert.equal(configured.smtp.host,'smtp.resend.com');assert.equal(configured.smtp.username,'resend');assert.equal(configured.smtp.from,sender);assert.equal(configured.smtp.supportTo,sender);assert.equal(configured.smtp.port,587);assert.deepEqual(configured.key,before);assert.deepEqual(await readFile(f.outboxKeyFile),before);
+ for(const patch of[{host:'mail101.invalid'},{host:'SMTP.resend.com'},{host:'smtp.resend.com.'},{host:'smtp.resend.com.evil.invalid'},{host:' smtp.resend.com'},{host:'smtp.resend.com\0'},{host:'smtp.resend.com\r\n'},{username:'Resend'},{username:'resend '},{username:' resend'},{username:'resend+alias'},{username:'resend\0'},{username:'resend\r\n'},{username:'ｒesend'},{username:null},{username:123},{username:'other@example.invalid'},{port:465},{from:'other@example.invalid'},{supportTo:'other@example.invalid'},{from:'Name <supports@assaynovalabs.com>'}])await assert.rejects(f.load({...resend,smtp:{...resend.smtp,...patch}}),/unavailable/);
+ assert.equal((await f.load()).smtp.username,f.config.smtp.from);
+});
+test('Resend auth predicate is exact and does not broaden mailbox syntax',()=>{
+ assert.equal(isResendSMTPAuth('smtp.resend.com','resend'),true);assert.equal(validMailbox('resend'),false);
+ for(const [host,username] of [['SMTP.resend.com','resend'],['smtp.resend.com.','resend'],['other.invalid','resend'],['smtp.resend.com','Resend'],['smtp.resend.com','resend\n'],['smtp.resend.com',{}],[null,'resend'],[new String('smtp.resend.com'),'resend']])assert.equal(isResendSMTPAuth(host,username),false);
+});
 test('AES-GCM binds event identity and key, rejects tamper, and uses fresh nonces',()=>{const key=randomBytes(32),event={event_key:'request:test:receipt',kind:'request_receipt',recipient_kind:'account'},payload={version:1,to:'test@example.invalid',messageId:'<'+'a'.repeat(64)+'@example.invalid>',date:'Sat, 07 Nov 2026 00:00:00 GMT',subject:'AssayNova request submitted',body:'Synthetic secret token '+ 'b'.repeat(64)};const sealed=encryptMailPayload(key,event,payload);assert.deepEqual(decryptMailPayload(key,event,sealed),payload);assert.equal(sealed.ciphertext.includes(Buffer.from(payload.body)),false);assert.notDeepEqual(encryptMailPayload(key,event,payload).nonce,sealed.nonce);assert.throws(()=>decryptMailPayload(randomBytes(32),event,sealed),error=>error.code==='unavailable');assert.throws(()=>decryptMailPayload(key,{...event,event_key:'other'},sealed),error=>error.code==='integrity');const changed=Buffer.from(sealed.tag);changed[0]^=1;assert.throws(()=>decryptMailPayload(key,event,{...sealed,tag:changed}),error=>error.code==='integrity');assert.throws(()=>encryptMailPayload(key,event,{...payload,body:'x'.repeat(65537)}));});
 test('key creation is exclusive and never replaces an existing key',async()=>{const f=await fixture(),output=path.join(f.directory,'new-key');await createMailKey({output,projectRoot:f.projectRoot});const before=await readFile(output);assert.equal(before.length,32);await assert.rejects(createMailKey({output,projectRoot:f.projectRoot}),/EEXIST/);assert.deepEqual(await readFile(output),before);});

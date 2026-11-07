@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSMTPTransport, formatSMTPMessage } from '../accounts/mail-smtp.mjs';
 import { fakeSMTP } from './support/fake-smtp.mjs';
+import * as resendTLS from './support/resend-tls-fixtures.mjs';
 
 const smtp = { host: 'mail101.invalid', port: 587, username: 'supports@example.invalid', from: 'supports@example.invalid', supportTo: 'supports@example.invalid', password: 'fabricated test only' };
 const payload = { version: 1, to: 'recipient+test@example.invalid', messageId: '<' + 'a'.repeat(64) + '@example.invalid>', date: 'Sat, 07 Nov 2026 00:00:00 GMT', subject: 'Verify your AssayNova email', body: 'Synthetic UTF-8 测试\r\n.one\n..two\rthree' };
@@ -35,3 +36,19 @@ test('mailbox/header injection and non-ASCII routing are rejected before dialing
  const message=formatSMTPMessage(payload,smtp.from,smtp.supportTo);assert.ok(message.length<131072);assert.match(message.toString(),/Message-ID: <a{64}@example.invalid>/);
 });
 test('total deadline during eligibility check is retryable, while explicit false is canceled',async t=>{const {result,fake}=await send(t,{}, {phaseTimeout:50,totalTimeout:75},{beforeData:()=>new Promise(()=>{})});assert.equal(result.outcome,'retry');assert.equal(result.uncertain,false);assert.equal(fake.messages.length,0);});
+const resendSMTP={...smtp,host:'smtp.resend.com',username:'resend',from:'supports@assaynovalabs.com',supportTo:'supports@assaynovalabs.com',password:'synthetic-resend-password-only'};
+for(const login of [false,true])test('Resend '+(login?'LOGIN':'PLAIN')+' authenticates exact identity over verified loopback TLS without changing mail routing',async t=>{
+ const {fake,result}=await send(t,{login,tlsFixture:resendTLS,expected:{username:'resend',password:resendSMTP.password,from:resendSMTP.from,to:payload.to}},{smtp:resendSMTP});
+ assert.equal(result.outcome,'accepted');assert.deepEqual(fake.checks,{auth:true,mailFrom:true,recipient:true});assert.equal(fake.messages.length,1);assert.equal(fake.states.includes('plain:AUTH'),false);assert.equal(fake.states.filter(state=>state==='tls:EHLO').length,1);
+ assert.match(fake.messages[0],/^From: AssayNova <supports@assaynovalabs\.com>\r\n/);assert.match(fake.messages[0],/\r\nReply-To: <supports@assaynovalabs\.com>\r\n/);assert.match(fake.messages[0],/\r\nTo: <recipient\+test@example\.invalid>\r\n/);assert.equal(fake.messages[0].includes(resendSMTP.password),false);assert.equal(JSON.stringify(fake.states).includes(resendSMTP.password),false);
+});
+test('Resend auth keeps mandatory hostname/CA/STARTTLS/authentication failure boundaries',async t=>{
+ for(const [options,transport,code] of [[{}, {}, 'tls'],[{tlsFixture:resendTLS},{ca:undefined},'tls'],[{tlsFixture:resendTLS,noStartTLS:true},{},'tls'],[{tlsFixture:resendTLS,authFailure:true},{},'authentication'],[{tlsFixture:resendTLS,expected:{username:'resend',password:'different-synthetic-password',from:resendSMTP.from,to:payload.to}},{},'authentication']]){
+  const {fake,result}=await send(t,options,{smtp:resendSMTP,...transport});assert.equal(result.code,code);assert.equal(result.outcome,'cooldown');assert.equal(fake.messages.length,0);assert.equal(fake.states.includes('plain:AUTH'),false);
+ }
+});
+test('constructor retains legacy mailbox identity flexibility and rejects Resend aliases before dialing',()=>{
+ assert.doesNotThrow(()=>createSMTPTransport({smtp:{...smtp,username:'legacy-other@example.invalid'}}));
+ let dials=0;for(const patch of[{host:'mail101.invalid'},{host:'SMTP.resend.com'},{host:'smtp.resend.com.evil.invalid'},{host:'smtp.resend.com\0'},{username:'Resend'},{username:'resend '},{username:'resend+alias'},{username:'resend\r\n'},{username:'ｒesend'},{username:{}},{port:465}])assert.throws(()=>createSMTPTransport({smtp:{...resendSMTP,...patch},dial:()=>{dials++;}}),/unavailable/);
+ assert.equal(dials,0);
+});

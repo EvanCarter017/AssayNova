@@ -13,6 +13,7 @@ export function validMailbox(value) {
   return local.length >= 1 && local.length <= 64 && /^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~]+(?:\.[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~]+)*$/.test(local) && validMailHost(domain.toLowerCase());
 }
 export const validMailHost = value => typeof value === 'string' && value.length <= 253 && value === value.toLowerCase() && value.includes('.') && value.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) && !/^\d+(?:\.\d+){3}$/.test(value);
+export const isResendSMTPAuth = (host, username) => host === 'smtp.resend.com' && username === 'resend';
 
 // Small bounded JSON grammar: objects, strings, finite numbers, booleans/null.
 // Decoded keys are checked before assignment, including escaped duplicates.
@@ -69,7 +70,7 @@ export async function loadMailConfig({ filename = process.env.ASSAYNOVA_MAIL_CON
     const origin = new URL(value.publicOrigin);
     if (origin.protocol !== 'https:' || origin.origin !== value.publicOrigin || value.publicOrigin !== accountOrigin || value.reportNoticesEnabled && value.publicOrigin !== adminOrigin) throw unavailable();
     const smtp = value.smtp;
-    if (!exact(smtp, ['host', 'port', 'username', 'passwordFile', 'from', 'supportTo']) || !validMailHost(smtp.host) || smtp.port !== 587 || !validMailbox(smtp.username) || !validMailbox(smtp.from) || !validMailbox(smtp.supportTo) || smtp.username !== smtp.from || smtp.from !== smtp.supportTo) throw unavailable();
+    if (!exact(smtp, ['host', 'port', 'username', 'passwordFile', 'from', 'supportTo']) || !validMailHost(smtp.host) || smtp.port !== 587 || !validMailbox(smtp.from) || !validMailbox(smtp.supportTo) || !(validMailbox(smtp.username) && smtp.username === smtp.from || isResendSMTPAuth(smtp.host, smtp.username)) || smtp.from !== smtp.supportTo) throw unavailable();
     const passwordBytes = await readPrivateMailFile(smtp.passwordFile, 4096, options);
     const password = new TextDecoder('utf-8', { fatal: true }).decode(passwordBytes).replace(/\r?\n$/, '');
     if (!password || /[\x00\r\n]/.test(password)) throw unavailable();
