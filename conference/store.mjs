@@ -35,7 +35,7 @@ export function validateComponents(value, original) {
     return { name: row.name.trim(), nominal: row.nominal, unit: row.unit };
   });
 }
-export async function runRenderer(requestPath, output, { python = PYTHON, renderer = fileURLToPath(new URL('./render_report.py', import.meta.url)), timeout = 45000 } = {}) {
+export async function runRenderer(requestPath, output, { python = process.env.ASSAYNOVA_PYTHON || (process.platform === 'win32' ? PYTHON : 'python3'), renderer = fileURLToPath(new URL('./render_report.py', import.meta.url)), timeout = 45000 } = {}) {
   await new Promise((resolve,reject) => {
     const child = spawn(python, ['-B', renderer, '--request', requestPath, '--output', output], { windowsHide: true, stdio: ['ignore','ignore','pipe'] });
     let stderr = '';

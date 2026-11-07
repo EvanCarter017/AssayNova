@@ -25,13 +25,13 @@ async function freePort() {
   const socket = createServer(); await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
   const port = socket.address().port; await new Promise(resolve => socket.close(resolve)); return port;
 }
-async function launch(t, files, { enabled = true, production = false, readonly = false } = {}) {
+async function launch(t, files, { enabled = true, production = false, readonly = false, demo = false, adminOrigin } = {}) {
   const port = await freePort(), origin = 'http://127.0.0.1:' + port;
   // Observe real server settings at listen time without changing their values.
   const preload = path.join(files.root, 'inspect-timeouts.mjs');
   await writeFile(preload, "import http from 'node:http';const create=http.createServer;http.createServer=function(...args){const server=create(...args);server.once('listening',()=>console.log('TIMEOUT_PROOF:'+JSON.stringify([server.requestTimeout,server.headersTimeout])));return server;};");
-  const args = ['--import', pathToFileURL(preload).href, 'server.mjs', '--no-accounts', '--port=' + port, ...(enabled || readonly ? ['--conference-reports', '--conference-store=' + files.store] : []), ...(enabled ? ['--admin', '--admin-images=' + files.images, '--admin-auth-store=' + files.authStore] : [])];
-  const child = spawn(process.execPath, args, { cwd: project, env: { ...process.env, NODE_ENV: production ? 'production' : 'test' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  const args = ['--import', pathToFileURL(preload).href, 'server.mjs', '--no-accounts', '--port=' + port, ...(enabled || readonly ? ['--conference-reports', '--conference-store=' + files.store] : []), ...(enabled ? ['--admin', '--admin-images=' + files.images, '--admin-auth-store=' + files.authStore] : []), ...(demo ? ['--watch'] : []), ...(adminOrigin ? ['--admin-origin=' + adminOrigin, '--admin-public-origin=' + adminOrigin] : [])];
+  const child = spawn(process.execPath, args, { cwd: project, env: { ...process.env, NODE_ENV: production ? 'production' : demo ? 'demo' : 'test' }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', bytes => output += bytes); child.stderr.on('data', bytes => output += bytes);
   let stopped;
   function stop() {
@@ -177,4 +177,27 @@ test('authenticated live preview is exact, bounded, uses catalog defaults and ne
   const catalog=await writeCatalogRecords(files.store,revision,ledger.records,ledger.sources);
   await writeFile(path.join(files.store,'customers','profiles.json'),JSON.stringify({version:1,customers:[{id:session.defaultCustomerId,name:'Synthetic',directory:files.images,catalogRevision:revision}]}));
   const ready={...input,productId:catalog.products[0].id};assert.equal((await post(ready)).status,409);assert.equal((await post({...ready,catalogRevision:'a'.repeat(32)})).status,409);assert.equal((await post({...ready,catalogRevision:revision})).status,200);assert.equal((await post({...ready,productId:'e'.repeat(20),catalogRevision:revision})).status,400);
+});
+
+test('HTTPS demo origin keeps Secure admin cookies and all real Host/Origin/CSRF boundaries while demo watch stays closed', async t => {
+  const files=await fixture(t), external='https://demo.example.invalid';
+  const server=await launch(t,files,{demo:true,adminOrigin:external});
+  const headers={Host:'demo.example.invalid'};
+  const home=await fetch(server.origin+'/');assert.doesNotMatch(await home.text(),/data-an-dev-|__dev\/client/);
+  for(const route of ['/__dev/context','/__dev/client.js','/__dev/events'])assert.equal((await fetch(server.origin+route)).status,404);
+  assert.equal((await raw(server.origin,'/admin/api/session',{headers})).status,401);
+  for(const bad of [{Host:'evil.invalid'},{...headers,Origin:'https://evil.invalid'},{...headers,'Sec-Fetch-Site':'cross-site'}])assert.equal((await raw(server.origin,'/admin',{headers:bad})).status,403);
+  const login=await raw(server.origin,'/admin',{headers});assert.equal(login.status,200);const csrf=login.body.match(/name="admin-auth-csrf" content="([^"]+)"/)[1];
+  assert.equal((await raw(server.origin,'/admin/auth/setup',{method:'POST',headers:{...headers,Origin:external,'Content-Type':'application/json','X-Admin-CSRF':'wrong'},body:JSON.stringify({password:'Synthetic demo admin password'})})).status,403);
+  const accepted=await raw(server.origin,'/admin/auth/setup',{method:'POST',headers:{...headers,Origin:external,'Content-Type':'application/json','X-Admin-CSRF':csrf},body:JSON.stringify({password:'Synthetic demo admin password'})});assert.equal(accepted.status,200);assert.match(accepted.headers['set-cookie'][0],/^an_admin_443=.*; Secure$/);
+  const cookie=accepted.headers['set-cookie'][0].split(';')[0];assert.equal((await raw(server.origin,'/admin/api/session',{headers:{...headers,Cookie:cookie}})).status,200);
+  assert.equal((await raw(server.origin,'/admin/api/history',{headers:{...headers,Cookie:cookie,Origin:'https://evil.invalid'}})).status,403);
+  await server.stop();
+});
+
+test('malformed or unsupported administrator origin flags fail before constructing any store',async t=>{
+ const files=await fixture(t);
+ const invalid=[['--admin-origin'],['--admin-origin='],['--admin-origin=https://demo.example.invalid','--admin-origin=https://demo.example.invalid'],...['http://demo.example.invalid','https://demo.example.invalid/','https://demo.example.invalid:443','https://user@demo.example.invalid','https://demo.example.invalid/path','https://demo.example.invalid?x=1','https://demo.example.invalid#x'].map(value=>['--admin-origin='+value])];
+ for(const extra of invalid){const destination=path.join(files.root,'must-not-be-created-'+Math.random());const child=spawn(process.execPath,['server.mjs','--no-accounts','--conference-reports','--admin','--conference-store='+destination,'--admin-auth-store='+destination+'-auth','--admin-images='+files.images,...extra],{cwd:project,env:{...process.env,NODE_ENV:'demo'},stdio:['ignore','ignore','pipe'],windowsHide:true});let stderr='';child.stderr.on('data',bytes=>stderr+=bytes);assert.notEqual(await new Promise(resolve=>child.once('exit',resolve)),0);assert.match(stderr,/admin-origin|canonical HTTPS/);await assert.rejects(readFile(path.join(destination,'customers','profiles.json')),{code:'ENOENT'});}
+ for(const args of [['--admin-origin=https://demo.example.invalid'],['--admin-origin=https://demo.example.invalid','--admin-proxy=http://127.0.0.1:4317','--admin-proxy-origin=http://192.168.0.60:4318','--conference-reports','--host=0.0.0.0','--port=4318']]){const child=spawn(process.execPath,['server.mjs','--no-accounts',...args],{cwd:project,env:{...process.env,NODE_ENV:'demo'},stdio:['ignore','ignore','pipe'],windowsHide:true});assert.notEqual(await new Promise(resolve=>child.once('exit',resolve)),0);}
 });

@@ -1,0 +1,25 @@
+[Unit]
+Description=AssayNova HTTPS demo
+After=network.target
+
+[Service]
+Type=simple
+User=assaynova-demo
+Group=assaynova-demo
+WorkingDirectory=/srv/assaynova-demo/current
+Environment=NODE_ENV=demo
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=ASSAYNOVA_PYTHON=/opt/assaynova-demo/venv/bin/python
+ExecStart=/opt/assaynova-demo/node/bin/node /srv/assaynova-demo/current/server.mjs --host=127.0.0.1 --port=4330 --conference-reports --admin --conference-store=/var/lib/assaynova-demo/reports --account-store=/var/lib/assaynova-demo/accounts --admin-auth-store=/var/lib/assaynova-demo/admin-auth --admin-images=/var/lib/assaynova-demo/seed-images --admin-origin=https://assaynovalabs.com --admin-public-origin=https://assaynovalabs.com --account-origin=https://assaynovalabs.com
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/assaynova-demo
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

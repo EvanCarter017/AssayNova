@@ -164,3 +164,10 @@ test('real Python closed loop publishes distinct products and repeated runs, pre
   for(const [index,proof] of inspect.entries()){assert.equal(proof.pages,1);assert.ok(Math.abs(proof.width-595.2756)<.1);assert.ok(Math.abs(proof.height-841.8898)<.1);assert.ok(proof.text.includes(snapshots[index].dto.report.lookupCode));assert.ok(proof.text.includes(snapshots[index].dto.record.purity[2]));assert.doesNotMatch(proof.text,/Sample report|demo report|conference|meeting example/i);}
   const restarted=await createStore(store);assert.equal((await restarted.history()).length,5);for(const snapshot of snapshots){assert.deepEqual((await readPublished(store,snapshot.dto.report.lookupCode)).record,snapshot.dto.record);assert.deepEqual(await readPublished(store,snapshot.dto.report.lookupCode,'report.pdf'),snapshot.pdf);}
 });
+
+test('default renderer honors the explicit Python interpreter and retains bounded CLI arguments',async t=>{
+ const root=await temporary(t),output=path.join(root,'output'),request=path.join(root,'request.json'),script=path.join(root,'renderer-fixture.py');await mkdir(output);await writeFile(request,'{}');await writeFile(script,"import json,sys,pathlib\noutput=pathlib.Path(sys.argv[sys.argv.index('--output')+1])\n(output/'proof.json').write_text(json.dumps({'args':sys.argv[1:],'noBytecode':sys.flags.dont_write_bytecode}))\n");
+ const old=process.env.ASSAYNOVA_PYTHON;
+ try{process.env.ASSAYNOVA_PYTHON=path.join(root,'missing-interpreter');await assert.rejects(runRenderer(request,output,{renderer:script}),/could not start/);process.env.ASSAYNOVA_PYTHON=PYTHON;await runRenderer(request,output,{renderer:script});const proof=JSON.parse(await readFile(path.join(output,'proof.json'),'utf8'));assert.deepEqual(proof.args,['--request',request,'--output',output]);assert.equal(proof.noBytecode,1);}
+ finally{if(old===undefined)delete process.env.ASSAYNOVA_PYTHON;else process.env.ASSAYNOVA_PYTHON=old;}
+});

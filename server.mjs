@@ -20,7 +20,7 @@ if (adminEnabled && !conferenceEnabled) throw new Error('--admin requires --conf
 if (conferenceEnabled && process.env.NODE_ENV === 'production') throw new Error('Temporary reports are disabled in production.');
 const conference = conferenceEnabled ? await import('./conference/reader.mjs') : null;
 const conferenceStore = conferenceEnabled ? path.resolve(process.argv.find(argument => argument.startsWith('--conference-store='))?.slice('--conference-store='.length) ?? conference.DEFAULT_STORE) : null;
-const liveReload = process.argv.includes('--watch') && process.env.NODE_ENV !== 'production';
+const liveReload = process.argv.includes('--watch') && !['production', 'demo'].includes(process.env.NODE_ENV);
 const devTools = liveReload ? await import('./dev/context.mjs') : null;
 const devModules = new Map([
   ['/__dev/client.js', './dev-client.js'],
@@ -43,8 +43,17 @@ if (!isIP(bindAddress)) throw new Error('Choose a literal IPv4 or IPv6 address f
 const localAddress = bindAddress === '0.0.0.0' ? '127.0.0.1' : bindAddress === '::' ? '::1' : bindAddress;
 const localHost = isIP(localAddress) === 6 ? `[${localAddress}]` : localAddress;
 if (adminEnabled && !['127.0.0.1', '::1'].includes(bindAddress)) throw new Error('--admin requires a loopback bind (127.0.0.1 or ::1).');
+const adminOriginOptions = process.argv.filter(argument => argument === '--admin-origin' || argument.startsWith('--admin-origin='));
+let adminOrigin = `http://${localHost}:${port}`;
+if (adminOriginOptions.length) {
+  if (adminOriginOptions.length !== 1 || !adminOriginOptions[0].startsWith('--admin-origin=') || !adminEnabled || proxyEnabled) throw new Error('Supply --admin-origin once with --admin and a loopback authority.');
+  const value = adminOriginOptions[0].slice('--admin-origin='.length);
+  let url; try { url = new URL(value); } catch { throw new Error('Choose a canonical HTTPS administrator origin.'); }
+  if (url.protocol !== 'https:' || url.origin !== value || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Choose a canonical HTTPS administrator origin.');
+  adminOrigin = value;
+}
 const admin = adminEnabled ? await (await import('./conference/admin.mjs')).createAdmin({
-  origin: `http://${localHost}:${port}`, store: conferenceStore,
+  origin: adminOrigin, store: conferenceStore,
   authStore: process.argv.find(argument => argument.startsWith('--admin-auth-store='))?.slice('--admin-auth-store='.length),
   images: process.argv.find(argument => argument.startsWith('--admin-images='))?.slice('--admin-images='.length),
   publicOrigin: process.argv.find(argument => argument.startsWith('--admin-public-origin='))?.slice('--admin-public-origin='.length) ?? `http://${localHost}:${port}`
