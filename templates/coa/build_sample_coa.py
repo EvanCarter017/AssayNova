@@ -46,7 +46,20 @@ WHITE = colors.white
 DATA_FILE = ROOT / "sample_reports.json"
 CONTACT_FILE = ROOT / "lab-contact.json"
 REPORT_ORIGIN = "https://assaynovalabs.com"
-REPORT_QR_BOUNDS = (229, 37, 60, 60)
+CONTACT_X = 222
+# Preserve the former contact capacity independently of its new placement.
+CONTACT_WIDTH = PAGE_W - MARGIN - 315
+REPORT_QR_FRAME_BOUNDS = (PAGE_W - MARGIN - 78, 67, 78, 78)
+REPORT_QR_BOUNDS = (REPORT_QR_FRAME_BOUNDS[0] + 9, 76, 60, 60)
+LOWER_ANALYSIS_SHIFT = 18
+FOOTER_STATEMENT = (
+    "The peptide purity analysis reported here was conducted using LCMS/MS under standard laboratory conditions. "
+    "This analysis is intended for informational purposes only and is specific to the sample(s) provided. "
+    "The peptides tested are intended for research use only and are not approved for human or veterinary use, "
+    "diagnostic, therapeutic, or clinical applications. Results should be interpreted by qualified professionals "
+    "within the scope of the intended research. The accuracy and reliability of the test may be influenced by "
+    "sample integrity, handling, and other experimental variables."
+)
 EXPECTED = {
     "AN-7K9Q-2M4X": ("Reference sample A", "AN-2026-0042", "SAMPLE-2401", "2026-10-26", "2026-10-30", "99.32", "Consistent", "8.42"),
     "AN-8P6R-3N5Y": ("Reference sample C", "AN-2026-0043", "SAMPLE-2402", "2026-10-27", "2026-10-31", "97.84", "Partial match", "9.16")
@@ -150,10 +163,10 @@ def load_contact(config=None):
     def line(value, label, maximum, optional=False, bold=False):
         if not isinstance(value, str) or len(value) > maximum or any(not 32 <= ord(c) <= 126 for c in value) or value != value.strip() or not value and not optional:
             raise ValueError("Invalid laboratory contact " + label)
-        if pdfmetrics.stringWidth(value, "SampleVeraBold" if bold else "SampleVera", 9 if bold else 8.5) > PAGE_W - MARGIN - 315:
+        if pdfmetrics.stringWidth(value, "SampleVeraBold" if bold else "SampleVera", 9 if bold else 8.5) > CONTACT_WIDTH:
             raise ValueError("Laboratory contact " + label + " exceeds its footer width")
         return value
-    heading = line(config["title"], "title", 40, bold=True)
+    heading = line(config["title"], "title", 40, optional=True, bold=True)
     email = line(config["email"], "email", 100)
     if not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+", email):
         raise ValueError("Invalid laboratory contact email")
@@ -166,10 +179,53 @@ def load_contact(config=None):
 
 
 def draw_contact(drawing, contact):
-    text(drawing, contact["title"], 315, 92, 9, True, TEAL)
+    if contact["title"]:
+        text(drawing, contact["title"], CONTACT_X, 112, 9, True, TEAL)
     lines = [contact["email"]] + ([contact["phone"]] if contact["phone"] else []) + contact["addressLines"]
+    first_baseline = 100.5 if contact["title"] else 112
     for index, value in enumerate(lines):
-        text(drawing, value, 315, 80.5 - index * 12, 8.5, color=NAVY)
+        text(drawing, value, CONTACT_X, first_baseline - index * 12, 8.5, color=NAVY)
+
+
+def draw_footer_statement(drawing):
+    """Measure the exact owner-supplied paragraph in its own bounded footer zone."""
+    font, size, leading = "SampleVera", 6.75, 8.25
+    width = PAGE_W - 2 * MARGIN
+    lines, current = [], ""
+    for word in FOOTER_STATEMENT.split():
+        candidate = current + (" " if current else "") + word
+        if pdfmetrics.stringWidth(candidate, font, size) <= width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    ascent, descent = pdfmetrics.getAscentDescent(font, size)
+    first_baseline = 24 - descent + leading * (len(lines) - 1)
+    if len(lines) != 4 or " ".join(lines) != FOOTER_STATEMENT or first_baseline + ascent > 55.5:
+        raise ValueError("Footer statement exceeds its measured paragraph zone")
+    for index, value in enumerate(lines):
+        baseline = first_baseline - index * leading
+        if pdfmetrics.stringWidth(value, font, size) > width or baseline + descent < 24:
+            raise ValueError("Footer statement exceeds measured page bounds")
+        drawing.add(String(MARGIN, baseline, value, fontName=font, fontSize=size, fillColor=MUTED))
+
+
+def draw_method_lines(drawing, value, x, baseline, width):
+    """Wrap the unchanged static method into the two-line slot left of the QR."""
+    lines, current = [], ""
+    for word in value.split():
+        candidate = current + (" " if current else "") + word
+        if pdfmetrics.stringWidth(candidate, "SampleVera", 9) <= width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    if len(lines) > 2 or " ".join(lines) != value or any(not line or pdfmetrics.stringWidth(line, "SampleVera", 9) > width for line in lines):
+        raise ValueError("Method exceeds its measured two-line slot")
+    for index, line in enumerate(lines):
+        text(drawing, line, x, baseline - index * 10, 9, color=MUTED)
 
 
 def report_pdf_url(code):
@@ -179,8 +235,35 @@ def report_pdf_url(code):
     return REPORT_ORIGIN + "/coa/" + code + "/report.pdf"
 
 
+def qr_band_label(drawing, value, band):
+    """Only the two QR band labels may use this measured six-point type."""
+    if value not in ("Scan report", "ASSAYNOVA"):
+        raise ValueError("Unsupported QR band label")
+    x, y, width, height = band
+    font, size = "SampleVeraBold", 6
+    advance = pdfmetrics.stringWidth(value, font, size)
+    ascent, descent = pdfmetrics.getAscentDescent(font, size)
+    baseline = y + (height - (ascent - descent)) / 2 - descent
+    if advance > width - 4 or baseline + descent < y or baseline + ascent > y + height:
+        raise ValueError("QR label exceeds its band")
+    drawing.add(String(x + width / 2, baseline, value, fontName=font,
+                       fontSize=size, fillColor=WHITE, textAnchor="middle"))
+
+
 def draw_report_qr(drawing, code):
     target = report_pdf_url(code)
+    fx, fy, fw, fh = REPORT_QR_FRAME_BOUNDS
+    drawing.add(Rect(fx, fy, fw, fh, fillColor=WHITE, strokeColor=None))
+    # Original corner brackets and narrow label bands stay outside the entire
+    # measured QR square, including its four-module white quiet zone.
+    for cx, cy, dx, dy in ((fx, fy, 1, 1), (fx + fw, fy, -1, 1),
+                          (fx, fy + fh, 1, -1), (fx + fw, fy + fh, -1, -1)):
+        drawing.add(Line(cx, cy, cx + dx * 8, cy, strokeColor=NAVY, strokeWidth=1))
+        drawing.add(Line(cx, cy, cx, cy + dy * 8, strokeColor=NAVY, strokeWidth=1))
+    for value, by in (("Scan report", fy + fh - 7), ("ASSAYNOVA", fy)):
+        band = (fx + 4, by, fw - 8, 7)
+        drawing.add(Rect(*band, fillColor=NAVY, strokeColor=None))
+        qr_band_label(drawing, value, band)
     x, y, width, height = REPORT_QR_BOUNDS
     widget = QrCodeWidget(target, barLevel="M", barBorder=4, barFillColor=NAVY)
     # Expand the widget into vector rectangles shared by PDF and SVG. The
@@ -190,7 +273,6 @@ def draw_report_qr(drawing, code):
     qr.transform = (width / (right - left), 0, 0, height / (top - bottom), x, y)
     drawing.add(Rect(x, y, width, height, fillColor=WHITE, strokeColor=None))
     drawing.add(qr)
-    text(drawing, "Scan report", x + width / 2, 27.5, 8, color=MUTED, anchor="middle")
 
 
 def product(drawing, x, top, image=None):
@@ -334,7 +416,7 @@ def chart_text(drawing,value,x,y,frame,size=6.5,anchor="start",rotate=False):
 
 
 def chromatogram(drawing,record):
-    frame=(MARGIN,368,265,96); x,y,w,h=frame
+    frame=(MARGIN,368+LOWER_ANALYSIS_SHIFT,265,96); x,y,w,h=frame
     drawing.add(Rect(x,y,w,h,fillColor=WHITE,strokeColor=colors.HexColor("#B8B8B8"),strokeWidth=.35))
     left,bottom,width,height=x+27,y+18,w-35,65
     rule(drawing,left,bottom,width,colors.black,.35)
@@ -447,34 +529,36 @@ def make_drawing(code, record, product_image=None, contact_config=None):
     if table_top - row_height * 5 < floor:
         raise ValueError("Composition table crosses the upper layout zone")
     figure_width, ledger_x = 265, 315
-    title(drawing, "HPLC-UV chromatogram", MARGIN, 480, figure_width)
+    title(drawing, "HPLC-UV chromatogram", MARGIN, 480 + LOWER_ANALYSIS_SHIFT, figure_width)
     chromatogram(drawing, record)
-    title(drawing, "Mass confirmation", MARGIN, 339, figure_width)
+    title(drawing, "Mass confirmation", MARGIN, 339 + LOWER_ANALYSIS_SHIFT, figure_width)
     pw = (figure_width - 12) / 2
     for index in range(4):
         px = MARGIN + (index % 2) * (pw + 12)
-        label_y = 313 - (index // 2) * 118
+        label_y = 313 + LOWER_ANALYSIS_SHIFT - (index // 2) * 118
         text(drawing, record["spectra"][index]["analyte"] + (" / GHK ligand" if index == 0 else ""), px, label_y, 8.5, True, NAVY)
         spectrum_plot(drawing, record["spectra"][index], px, label_y - 92, pw)
-    title(drawing, "Screening outcomes", ledger_x, 480, PAGE_W - MARGIN - ledger_x)
+    title(drawing, "Screening outcomes", ledger_x, 480 + LOWER_ANALYSIS_SHIFT, PAGE_W - MARGIN - ledger_x)
     screenings = ("Identity (LC-MS)", "Elemental impurities (ICP-MS)", "Endotoxin (LAL)", "Microbial analysis (PCR)", "Fentanyl")
     for index, label in enumerate(screenings):
-        y = 453 - index * 62
+        y = 453 + LOWER_ANALYSIS_SHIFT - index * 62
         text(drawing, label, ledger_x, y, 9, True, NAVY)
         text(drawing, record["screenings"][index]["result"], ledger_x, y - 18, 9, True)
         text(drawing, record["screenings"][index]["details"], ledger_x, y - 34, 8.5)
         rule(drawing, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
-    title(drawing, "Method", ledger_x, 141, PAGE_W - MARGIN - ledger_x)
-    text(drawing, record["method"], ledger_x, 123, 9, color=MUTED)
+    method_width = REPORT_QR_FRAME_BOUNDS[0] - 15 - ledger_x
+    title(drawing, "Method", ledger_x, 141 + LOWER_ANALYSIS_SHIFT, method_width)
+    draw_method_lines(drawing, record["method"], ledger_x, 123 + LOWER_ANALYSIS_SHIFT, method_width)
     draw_contact(drawing, contact)
     draw_report_qr(drawing, code)
     signature = ROOT / "assets" / "dylan-greene-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
         signature_width, signature_height = image.width * scale, image.height * scale
-    drawing.add(Image(MARGIN + (168 - signature_width) / 2, 97 - signature_height,
+    drawing.add(Image(MARGIN + (168 - signature_width) / 2, 117 - signature_height,
                       signature_width, signature_height, path=str(signature)))
-    text(drawing, record["signoffTitle"], MARGIN + 84, 42, 8.5, color=MUTED, anchor="middle")
+    text(drawing, record["signoffTitle"], MARGIN + 84, 64, 8.5, color=MUTED, anchor="middle")
+    draw_footer_statement(drawing)
     return drawing
 
 
@@ -597,7 +681,7 @@ def render(drawing, code):
     heading = ET.Element("{http://www.w3.org/2000/svg}title", {"id": "sample-title"})
     heading.text = "Fictional sample COA - " + code
     description = ET.Element("{http://www.w3.org/2000/svg}desc", {"id": "sample-description"})
-    description.text = "Single-page portrait report with fixed fictional sample data, illustrative chromatogram and mass spectra, and the Dylan Greene handwritten signature at the lower left. Lookup Code " + code + ". An illustrative vial image appears beside the analytical results. Footer QR opens " + target
+    description.text = "Single-page portrait report with fixed fictional sample data, illustrative chromatogram and mass spectra, and the Dylan Greene handwritten signature at the lower left. Lookup Code " + code + ". An illustrative vial image appears beside the analytical results. Footer QR opens " + target + ". Footer statement: " + FOOTER_STATEMENT
     metadata = ET.Element("{http://www.w3.org/2000/svg}metadata")
     metadata.text = "Font outlines derived from Bitstream Vera; see bitstream-vera-license.txt."
     root.insert(0, heading); root.insert(1, description)

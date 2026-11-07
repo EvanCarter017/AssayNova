@@ -305,7 +305,7 @@ def chart_text(drawing, value, x, y, size=6.5, anchor="start"):
 
 
 def chromatogram(drawing, record):
-    x, y, w, h = MARGIN, 368, 265, 96
+    x, y, w, h = MARGIN, 368 + master.LOWER_ANALYSIS_SHIFT, 265, 96
     drawing.add(Rect(x, y, w, h, fillColor=WHITE, strokeColor=colors.HexColor("#B8B8B8"), strokeWidth=.35))
     left, bottom, width, height = x + 27, y + 18, w - 35, 65
     master.rule(drawing, left, bottom, width, colors.black, .35)
@@ -426,43 +426,45 @@ def make_drawing(code, record, product_image, contact_config=None):
     if y < floor + 2:
         raise RequestError("Composition exceeds the portrait layout")
     figure_width, ledger_x = 265, 315
-    master.title(d, "HPLC-UV chromatogram", MARGIN, 480, figure_width)
+    master.title(d, "HPLC-UV chromatogram", MARGIN, 480 + master.LOWER_ANALYSIS_SHIFT, figure_width)
     chromatogram(d, record)
-    master.title(d, "Mass profiles", MARGIN, 339, figure_width)
+    master.title(d, "Mass profiles", MARGIN, 339 + master.LOWER_ANALYSIS_SHIFT, figure_width)
     count = len(record["spectra"])
     if count == 1:
-        panels = [(MARGIN, 140, figure_width, 160, 319)]
+        panels = [(MARGIN, 140 + master.LOWER_ANALYSIS_SHIFT, figure_width, 160, 319 + master.LOWER_ANALYSIS_SHIFT)]
     else:
         panel_width = (figure_width - 12) / 2
-        panels = [(MARGIN + i % 2 * (panel_width + 12), 221 - i // 2 * 118, panel_width, 76, 313 - i // 2 * 118) for i in range(count)]
+        panels = [(MARGIN + i % 2 * (panel_width + 12), 221 + master.LOWER_ANALYSIS_SHIFT - i // 2 * 118, panel_width, 76, 313 + master.LOWER_ANALYSIS_SHIFT - i // 2 * 118) for i in range(count)]
     for spectrum, (px, py, width, height, label_y) in zip(record["spectra"], panels):
         label = spectrum["analyte"] + (" / ligand" if spectrum["species"] == "GHK (apo ligand)" else "")
         label_lines = wrap(label, width, 8.5, True)
         wrapped(d, label, px, label_y, width, 8.5, True, NAVY, leading=10, max_lines=3)
         if len(label_lines) > 1:
             extra = (len(label_lines) - 1) * 10
-            if py - extra < 103:
+            if py - extra < 103 + master.LOWER_ANALYSIS_SHIFT:
                 height -= extra
             else:
                 py -= extra
         spectrum_plot(d, spectrum, px, py, width, height)
-    master.title(d, "Screening outcomes", ledger_x, 480, PAGE_W - MARGIN - ledger_x)
+    master.title(d, "Screening outcomes", ledger_x, 480 + master.LOWER_ANALYSIS_SHIFT, PAGE_W - MARGIN - ledger_x)
     for index, screening in enumerate(record["screenings"]):
-        y = 453 - index * 62
+        y = 453 + master.LOWER_ANALYSIS_SHIFT - index * 62
         master.text(d, screening["test"], ledger_x, y, 9, True, NAVY)
         master.text(d, screening["result"], ledger_x, y - 18, 9, True)
         master.text(d, screening["details"], ledger_x, y - 34, 8.5)
         master.rule(d, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
-    master.title(d, "Method", ledger_x, 141, PAGE_W - MARGIN - ledger_x)
-    wrapped(d, record["method"], ledger_x, 123, PAGE_W - MARGIN - ledger_x, 8.5, color=MUTED, max_lines=2)
+    method_width = master.REPORT_QR_FRAME_BOUNDS[0] - 15 - ledger_x
+    master.title(d, "Method", ledger_x, 141 + master.LOWER_ANALYSIS_SHIFT, method_width)
+    wrapped(d, record["method"], ledger_x, 123 + master.LOWER_ANALYSIS_SHIFT, method_width, 8.5, color=MUTED, leading=10, max_lines=2)
     master.draw_contact(d, contact)
     master.draw_report_qr(d, code)
     signature = master.ROOT / "assets" / "dylan-greene-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
         sw, sh = image.width * scale, image.height * scale
-    d.add(Image(MARGIN + (168 - sw) / 2, 97 - sh, sw, sh, path=str(signature)))
-    master.text(d, record["signoffTitle"], MARGIN + 84, 42, 8.5, color=MUTED, anchor="middle")
+    d.add(Image(MARGIN + (168 - sw) / 2, 117 - sh, sw, sh, path=str(signature)))
+    master.text(d, record["signoffTitle"], MARGIN + 84, 64, 8.5, color=MUTED, anchor="middle")
+    master.draw_footer_statement(d)
     return d
 
 
@@ -491,7 +493,7 @@ def render(drawing, code, label):
     title = ET.Element("{http://www.w3.org/2000/svg}title", {"id": "report-title"})
     title.text = "Certificate of Analysis - " + label
     description = ET.Element("{http://www.w3.org/2000/svg}desc", {"id": "report-description"})
-    description.text = "Portrait report with quantitative results, chromatogram, mass profiles, screening outcomes and signoff. Lookup Code " + code + ". Footer QR opens " + target
+    description.text = "Portrait report with quantitative results, chromatogram, mass profiles, screening outcomes and signoff. Lookup Code " + code + ". Footer QR opens " + target + ". Footer statement: " + master.FOOTER_STATEMENT
     metadata = ET.Element("{http://www.w3.org/2000/svg}metadata")
     metadata.text = "Font outlines derived from Bitstream Vera; license distributed with the platform."
     root.insert(0, title)

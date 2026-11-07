@@ -166,23 +166,31 @@ This presentation changes no stored measurements or chemistry data. The legacy
 ### Laboratory contact configuration
 
 `lab-contact.json` is read fresh for each build or generated report. Its only
-keys are `title`, `email`, `phone` and `addressLines`. The current approved title
-is "Contact the laboratory" and the email is reports@assaynova.com. Phone is an
-empty string and addressLines is an empty list until the owner supplies them.
-Absent phone/address values print no labels or placeholders. Put the future
+keys are `title`, `email`, `phone` and `addressLines`. The current title is empty,
+so the block prints reports@assaynovalabs.com followed by +1 6813343721 without
+a heading. addressLines is an empty list. Absent phone/address values print no
+labels or placeholders. Put the future
 formatted address into at most two address lines and the supplied telephone
 number into phone. Do not invent contact details.
 
-The borderless block is at the lower right; the unchanged signature and Chief
-Chemist title stay at the lower left. The title uses 9 pt and contact lines use
+The borderless block starts at x=222 pt, between the raised lower-left signature
+and the lower-right QR frame. Its original 244.2756 pt line capacity and fonts
+are preserved. With no heading, contact baselines start at 112 pt with 12 pt
+spacing. An optional title uses baseline 112 pt, followed by contact baselines
+100.5/88.5/76.5/64.5 pt. The title uses 9 pt and contact lines use
 8.5 pt. Configuration accepts bounded printable ASCII supported by the embedded
-font, a nonempty title and valid email text. Each line must fit the footer width;
+font, an optional empty title and valid email text. Each line must fit the footer width;
 unknown keys, non-ASCII text, oversized lines or more than two address lines fail
 before any output is replaced. Python build/make_drawing functions accept an
 optional `contact_config` dictionary or JSON path for isolated fixture checks.
 
-The current footer includes a vector QR beside the unchanged signature and
-laboratory contact block. Its target is exactly
+The current master and future generated reports place a vector QR in an original
+78 pt AssayNova corner frame at the lower right. Navy corner brackets and slim
+"Scan report" / "ASSAYNOVA" bands enclose the unchanged 60 pt white QR square;
+the bands and their measured 6 pt bold labels stay outside its quiet zone. The
+frame spans y=67..145 pt; the QR spans y=76..136 pt. The signature keeps its
+original dimensions with its top at 117 pt and Chief Chemist baseline at 64 pt.
+The QR target is exactly
 `https://assaynovalabs.com/coa/<LOOKUP-CODE>/report.pdf`, generated from the
 strict uppercase Lookup Code by the shared `report_pdf_url` helper. The QR has
 standard dark modules, medium error correction and a four-module white quiet
@@ -197,3 +205,15 @@ the published store. Runtime localhost/LAN origins never change the encoded URL.
 Only rebuilt masters and future generated snapshots gain the QR; existing
 immutable reports are not rewritten automatically. A later change of the
 canonical domain must deliberately update `REPORT_ORIGIN` and revalidate exports.
+
+The exact owner-supplied 588-character footer statement sits below the contact,
+signature and QR frame. It wraps into four lines in the existing Vera font at
+6.75 pt, with 8.25 pt leading and measured full-width bounds y=24..55.5 pt.
+This paragraph and the QR band labels have bounded small-type helpers; the
+global minimum 8 pt body-text guard remains intact. SVG outlines the paragraph
+and includes its complete wording in the accessible description.
+
+The HPLC, mass-panel and screening region moves up 18 pt without changing its
+scientific data, chart dimensions or fonts. The upper sample/results/table area
+stays in place. Method wording is preserved and wraps into at most two lines
+left of the QR, with baselines 141/131 pt and the original static/dynamic fonts.

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+from collections import Counter
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -12,13 +14,21 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image
 from pypdf import PdfReader
-from reportlab.graphics.shapes import Image as DrawingImage, String
+from reportlab.graphics.shapes import Drawing, Group, Image as DrawingImage, Rect, String
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("layout_renderer", ROOT / "conference" / "render_report.py")
 renderer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(renderer)
 master = renderer.master
+EXPECTED_STATEMENT = (
+    "The peptide purity analysis reported here was conducted using LCMS/MS under standard laboratory conditions. "
+    "This analysis is intended for informational purposes only and is specific to the sample(s) provided. "
+    "The peptides tested are intended for research use only and are not approved for human or veterinary use, "
+    "diagnostic, therapeutic, or clinical applications. Results should be interpreted by qualified professionals "
+    "within the scope of the intended research. The accuracy and reliability of the test may be influenced by "
+    "sample integrity, handling, and other experimental variables."
+)
 
 
 class ReportLayoutTests(unittest.TestCase):
@@ -69,6 +79,7 @@ class ReportLayoutTests(unittest.TestCase):
         contents = page.extract_text()
         for value in expected:
             self.assertIn(value, contents)
+        self.assertIn(EXPECTED_STATEMENT, " ".join(contents.split()))
         self.assertNotRegex(contents, r"Sample [12]|Reported summary|Coming soon")
         fonts = [value.get_object() for value in page["/Resources"]["/Font"].values()]
         self.assertTrue(any("/FontFile2" in font.get("/FontDescriptor", {}).get_object() for font in fonts if "/FontDescriptor" in font))
@@ -77,6 +88,7 @@ class ReportLayoutTests(unittest.TestCase):
         document = ET.fromstring(source)
         self.assertEqual((document.attrib["width"], document.attrib["height"]), ("210mm", "297mm"))
         self.assertEqual(len(list(document.iter("{http://www.w3.org/2000/svg}image"))), 3)
+        self.assertIn(EXPECTED_STATEMENT, " ".join(" ".join(document.itertext()).split()))
 
     def test_decimal_totals_use_reported_means_and_preserve_source(self):
         for code, expected in (("AN-7K9Q-2M4X", "80.91"), ("AN-8P6R-3N5Y", "78.35")):
@@ -122,9 +134,9 @@ class ReportLayoutTests(unittest.TestCase):
             for expected in ("80.91", "99.32%", "(mg/vial)", "Replicate 1: 99.31% / Replicate 2: 99.33%", "Two determinations of the same sample", "Replicate 1", "Replicate 2", "Mean", "Chief Chemist"):
                 self.assertIn(expected, values)
             self.assertEqual([(n.text, n.fontSize) for n in nodes if n.fontSize == 17], [("99.32%", 17), ("80.91", 17)])
-            self.assertEqual(next(n.y for n in nodes if n.text == "Chief Chemist"), 42)
+            self.assertEqual(next(n.y for n in nodes if n.text == "Chief Chemist"), 64)
             signature = next(n for n in drawing.contents if isinstance(n, DrawingImage) and "signature" in str(n.path))
-            self.assertAlmostEqual(signature.y + signature.height, 97)
+            self.assertAlmostEqual(signature.y + signature.height, 117)
             self.assertEqual(sum(isinstance(n, DrawingImage) for n in drawing.contents), 3)
             self.assertIn("HPLC-UV chromatogram", values)
             self.assertTrue(any(value.startswith("Mass ") for value in values))
@@ -137,18 +149,21 @@ class ReportLayoutTests(unittest.TestCase):
     def test_contact_empty_fields_omitted_full_block_fits_and_configuration_is_fresh(self):
         for dynamic in (False, True):
             drawing = self.drawing(dynamic)
-            default = [n for n in self.strings(drawing) if n.x == 315 and n.y <= 92]
-            self.assertEqual([n.text for n in default], ["Contact the laboratory", "reports@assaynova.com"])
+            default = [n for n in self.strings(drawing) if n.x == 222 and n.y <= 112]
+            self.assertEqual([n.text for n in default], ["reports@assaynovalabs.com", "+1 6813343721"])
+            self.assertEqual([n.y for n in default], [112, 100])
+            self.assertTrue(all(n.fontSize == 8.5 and n.fontName == "SampleVera" for n in default))
+            self.assertNotIn("Contact the laboratory", [n.text for n in self.strings(drawing)])
             drawing = self.drawing(dynamic, contact=self.full_contact)
-            footer = [n for n in self.strings(drawing) if n.x == 315 and n.y <= 141]
-            self.assertEqual([n.y for n in footer[-5:]], [92, 80.5, 68.5, 56.5, 44.5])
+            footer = [n for n in self.strings(drawing) if n.x == 222 and n.y <= 112]
+            self.assertEqual([n.y for n in footer], [112, 100.5, 88.5, 76.5, 64.5])
             self.assert_disjoint(footer)
             for node in footer:
                 left, bottom, right, top = self.bounds(node)
-                self.assertGreaterEqual(left, 315)
-                self.assertGreaterEqual(bottom, 42)
-                self.assertLessEqual(right, master.PAGE_W - master.MARGIN)
-                self.assertLess(top, 159)
+                self.assertEqual(left, 222)
+                self.assertGreater(bottom, 55.5)
+                self.assertLessEqual(right, 222 + master.PAGE_W - 36 - 315)
+                self.assertLess(top, 121)
                 self.assertGreaterEqual(node.fontSize, 8)
         path = self.directory / "contact.json"
         with patch.object(master, "CONTACT_FILE", path):
@@ -156,9 +171,114 @@ class ReportLayoutTests(unittest.TestCase):
                 path.write_text(json.dumps(dict(self.full_contact, email=email)), encoding="utf-8")
                 self.assertIn(email, [n.text for n in self.strings(self.drawing(True))])
 
+    def test_contact_retains_the_entire_original_accepted_line_width(self):
+        master.register_fonts()
+        old_width = master.PAGE_W - 36 - 315
+        def longest(prefix, suffix, font, size):
+            candidates = [prefix + "W" * count + suffix for count in range(1, 41)]
+            return max((value for value in candidates if master.pdfmetrics.stringWidth(value, font, size) <= old_width), key=len)
+        title = longest("", "", "SampleVeraBold", 9)
+        detail = longest("", "", "SampleVera", 8.5)
+        email = longest("", "@example.test", "SampleVera", 8.5)
+        config = {"title": title, "email": email, "phone": detail, "addressLines": [detail, detail]}
+        self.assertEqual(master.load_contact(config), config)
+        self.assertAlmostEqual(master.CONTACT_WIDTH, old_width)
+        for dynamic in (False, True):
+            drawing = self.drawing(dynamic, contact=config)
+            contact = [n for n in self.strings(drawing) if n.x == 222 and n.y <= 112]
+            self.assertEqual([n.text for n in contact], [title, email, detail, detail, detail])
+            self.assertEqual([n.y for n in contact], [112, 100.5, 88.5, 76.5, 64.5])
+            self.assert_disjoint(contact)
+            for node in contact:
+                self.assertLessEqual(self.bounds(node)[2], 222 + old_width)
+                self.assertGreater(self.bounds(node)[2], 222 + old_width - 10)
+        with self.assertRaises(ValueError):
+            master.load_contact(dict(config, title=title + "W"))
+        with self.assertRaises(ValueError):
+            master.load_contact(dict(config, addressLines=[detail + "W"]))
+
+    def test_exact_statement_uses_four_measured_outlined_lines_below_all_footer_blocks(self):
+        self.assertEqual(len(EXPECTED_STATEMENT), 588)
+        for dynamic in (False, True):
+            drawing = self.drawing(dynamic, contact=self.full_contact)
+            paragraph = [node for node in self.strings(drawing) if node.fontSize == 6.75]
+            self.assertEqual(len(paragraph), 4)
+            self.assertEqual(" ".join(node.text for node in paragraph), EXPECTED_STATEMENT)
+            self.assertEqual([round(paragraph[0].y - node.y, 5) for node in paragraph], [0, 8.25, 16.5, 24.75])
+            bounds = [self.bounds(node) for node in paragraph]
+            self.assertAlmostEqual(min(box[1] for box in bounds), 24)
+            self.assertAlmostEqual(max(box[3] for box in bounds), 55.5)
+            for node, box in zip(paragraph, bounds):
+                self.assertEqual((node.x, node.fontName, node.fillColor), (36, "SampleVera", master.MUTED))
+                self.assertLessEqual(box[2], master.PAGE_W - 36)
+            footer = [node for node in self.strings(drawing) if node.y <= 118 and node not in paragraph]
+            self.assertGreater(min(self.bounds(node)[1] for node in footer), 55.5)
+            self.assert_disjoint(paragraph + footer)
+            signature = next(node for node in drawing.contents if isinstance(node, DrawingImage) and "signature" in str(node.path))
+            self.assertEqual((signature.width, signature.height), (132, 44))
+            self.assertEqual((signature.y, signature.y + signature.height), (73, 117))
+            self.assertGreater(signature.y, 55.5)
+            self.assertEqual(next(node.y for node in footer if node.text == "Chief Chemist"), 64)
+            # Check real exported SVG path data, not only its accessible wording.
+            _, svg = renderer.render(drawing, "AN-TEST-0001", "Statement fixture") if dynamic else master.render(drawing, "AN-TEST-0001")
+            expected = Drawing(master.PAGE_W, master.PAGE_H)
+            for node in paragraph:
+                expected.add(master.outline_text(node))
+            outlined = ET.fromstring(master.renderSVG.drawToString(expected))
+            actual = ET.fromstring(svg)
+            paths = lambda root: Counter(node.attrib["d"] for node in root.iter("{http://www.w3.org/2000/svg}path"))
+            self.assertGreater(sum(paths(outlined).values()), 400)
+            self.assertFalse(paths(outlined) - paths(actual))
+
+    def test_lower_analytical_shapes_only_translate_eighteen_points(self):
+        # Golden node hashes come from pre-task 81871fb9 source, including every
+        # chart point, annotation, font, style and screening field before Method.
+        expected = {(False, 4): (365, "BAA00144EF127F87177462834F1E0D9F292F12739BBBE06262BF904E85CEC3CA"),
+                    (True, 1): (110, "241A1E70C6F571F111455306CC2C5A326AEF0C895E6D43DFD7F8EC39CFCADB04"),
+                    (True, 4): (253, "07FFB008302D20759856B579322F6553AAF065B03D7C1CD562363A7758D5AA5E")}
+        def canonical(node, offset):
+            props = node.getProperties().copy()
+            if isinstance(node, Group):
+                props["contents"] = [canonical(child, 0) for child in node.contents]
+                transform = list(props["transform"])
+                transform[5] -= offset
+                props["transform"] = transform
+            else:
+                for key in ("y", "y1", "y2"):
+                    if key in props:
+                        props[key] -= offset
+                if "points" in props:
+                    props["points"] = [value - (offset if index % 2 else 0) for index, value in enumerate(props["points"])]
+            def clean(value):
+                if isinstance(value, float): return round(value, 6)
+                if isinstance(value, dict): return {key: clean(item) for key, item in value.items()}
+                if isinstance(value, (list, tuple)): return [clean(item) for item in value]
+                if isinstance(value, (str, int, bool)) or value is None: return value
+                return str(value)
+            return [type(node).__name__, clean(props)]
+        for (dynamic, count), fingerprint in expected.items():
+            record = copy.deepcopy(self.records["AN-7K9Q-2M4X"])
+            record["composition"] = record["composition"][:count]
+            record["spectra"] = record["spectra"][:count]
+            drawing = self.drawing(dynamic, record, self.full_contact)
+            start = next(i for i, node in enumerate(drawing.contents) if isinstance(node, String) and node.text == "HPLC-UV chromatogram")
+            end = next(i for i, node in enumerate(drawing.contents) if isinstance(node, String) and node.text == "Method")
+            nodes = drawing.contents[start:end]
+            content = json.dumps([canonical(node, 18) for node in nodes], sort_keys=True, separators=(",", ":"))
+            self.assertEqual((len(nodes), hashlib.sha256(content.encode()).hexdigest().upper()), fingerprint)
+            self.assertEqual(drawing.contents[start].y, 498)
+            self.assertLess(self.bounds(drawing.contents[start])[3], 508)
+            frames = [node for node in nodes if isinstance(node, Rect)]
+            hplc = next(node for node in frames if node.width == 265 and node.height == 96)
+            self.assertEqual((hplc.x, hplc.y), (36, 386))
+            if dynamic and count == 1:
+                self.assertTrue(any(node.width == 265 and node.height == 160 and node.y == 158 for node in frames))
+            else:
+                self.assertEqual(sorted(node.y for node in frames if node.width == 126.5 and node.height == 76), [121, 121, 239, 239])
+
     def test_invalid_contact_preserves_outputs_for_both_builders(self):
         request = {"lookupCode": "AN-TEST-0001", "seed": "contact-fixture", "product": {"id": "bpc", "name": "BPC-157 10mg", "imagePath": str(self.photo), "components": [{"name": "BPC-157", "nominal": 10, "unit": "mg"}], "unit": "mg"}, "fields": {"client": "Fixture", "received": "2026-11-01", "reported": "2026-11-05"}}
-        invalid = [dict(self.full_contact, extra="unexpected"), dict(self.full_contact, title=""),
+        invalid = [dict(self.full_contact, extra="unexpected"), dict(self.full_contact, title=" "), dict(self.full_contact, title=None),
                    dict(self.full_contact, email="invalid email"), dict(self.full_contact, phone="bad\nline"),
                    dict(self.full_contact, addressLines=["a", "b", "c"]),
                    dict(self.full_contact, addressLines=["W" * 90]), dict(self.full_contact, title="Laborato\u00e9rio")]
@@ -200,7 +320,7 @@ class ReportLayoutTests(unittest.TestCase):
 
     def test_actual_static_mother_assets_and_cli_equivalent_exports(self):
         for code, stem, amount in (("AN-7K9Q-2M4X", "sample-a", "80.91"), ("AN-8P6R-3N5Y", "sample-c", "78.35")):
-            expected = [amount, "Measured content", "Two determinations of the same sample", "Contact the laboratory", "reports@assaynova.com", "Chief Chemist"]
+            expected = [amount, "Measured content", "Two determinations of the same sample", "reports@assaynovalabs.com", "+1 6813343721", "Chief Chemist"]
             self.assert_actual_exports(ROOT / "dist" / "reports" / (stem + ".pdf"), ROOT / "dist" / "reports" / (stem + ".svg"), expected)
             pdf, svg = master.build(code, self.directory / stem)
             self.assert_actual_exports(pdf, svg, expected)
