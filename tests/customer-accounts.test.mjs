@@ -15,13 +15,13 @@ test('customer signup uses real SQLite hashes, browser-bound CSRF, exact Unicode
   assert.equal((await b.call('/signup', 'POST', { email: 'b@example.invalid', password: fixturePassword })).status, 403);
   const password = '  密碼🧪 exact password 088  ';
   const created = await a.call('/signup', 'POST', { email: ' Fixture@Example.invalid ', password, name: 'Research team' });
-  assert.equal(created.status, 201); assert.equal(created.data.user.email, 'fixture@example.invalid'); assert.equal(created.data.user.emailVerified, false); assert.equal(created.data.recoveryCodes.length, 8); assert.equal(new Set(created.data.recoveryCodes).size, 8);
+  assert.equal(created.status, 201); assert.equal(created.data.user.email, 'fixture@example.invalid'); assert.equal(created.data.user.emailVerified, false); assert.equal(Object.hasOwn(created.data, 'recoveryCodes'), false);
   assert.equal(created.setCookies.length, 2); for (const cookie of created.setCookies) { assert.match(cookie, /HttpOnly; SameSite=Strict/); assert.match(cookie, /Path=\/api\/account/); assert.doesNotMatch(cookie, /Domain=|an_admin/); }
   assert.doesNotMatch(created.text, /sessionToken|password_hash|password_salt/);
   const db = new DatabaseSync(path.join(f.directory, 'accounts.sqlite'), { readOnly: true }); t.after(() => db.close());
   const user = db.prepare('SELECT * FROM account_users').get(); assert.equal(user.password_salt.length, 32); assert.equal(user.password_hash.length, 64); assert.notEqual(user.password_hash, password);
   const session = db.prepare('SELECT * FROM account_sessions').get(); assert.notEqual(session.token_hash, a.jar.get('an_customer_' + f.port)); assert.notEqual(session.csrf_hash, a.csrf);
-  for (const code of created.data.recoveryCodes) assert.ok(!JSON.stringify(db.prepare('SELECT * FROM account_recovery_codes').all()).includes(code.replaceAll('-', '')));
+  assert.equal(db.prepare('SELECT count(*) n FROM account_recovery_codes').get().n, 0);
   const other = browser(f.base); await other.call('/session'); assert.equal((await other.call('/login', 'POST', { email: 'fixture@example.invalid', password: password.trim() })).status, 401); assert.equal((await other.call('/login', 'POST', { email: 'FIXTURE@example.invalid', password })).status, 200);
   assert.equal(validPassword('x'.repeat(14)), false); assert.equal(validPassword('🧪'.repeat(15)), true); assert.equal(validPassword('x'.repeat(129)), false); assert.equal(validPassword('x'.repeat(15) + '\ud800'), false);
   const duplicate = browser(f.base); assert.equal((await duplicate.signup('fixture@example.invalid')).status, 409);
@@ -68,17 +68,16 @@ test('customer sessions and auth limits survive restart, expire, and logout-all 
   now += 30001; assert.equal((await b.call('/session')).data.authenticated, false);
 });
 
-test('password rotation, eight recovery codes and concurrent recovery replay revoke prior sessions', async t => {
-  const f = await accountFixture(); t.after(() => f.close()); const a = browser(f.base), created = await a.signup(); const oldCookie = a.cookie();
+test('password rotation revokes prior sessions and retired recovery routes cannot replace the new password', async t => {
+  const f = await accountFixture(); t.after(() => f.close()); const a = browser(f.base); await a.signup(); const oldCookie = a.cookie();
   const password = 'Replacement customer password 088'; const changed = await a.call('/password', 'POST', { currentPassword: fixturePassword, newPassword: password }); assert.equal(changed.status, 200); assert.notEqual(a.cookie(), oldCookie);
   const stolen = browser(f.base); for (const value of oldCookie.split('; ')) { const [key, content] = value.split('='); stolen.jar.set(key, content); } assert.equal((await stolen.call('/requests')).status, 401);
-  const rotated = await a.call('/recovery-codes', 'POST', { currentPassword: password }); assert.equal(rotated.data.recoveryCodes.length, 8);
+  assert.equal((await a.call('/recovery-codes', 'POST', { currentPassword: password })).status, 404);
   const b = browser(f.base), c = browser(f.base); await b.call('/session'); await c.call('/session');
-  assert.equal((await b.call('/recover', 'POST', { email: 'fixture@example.invalid', recoveryCode: created.data.recoveryCodes[0], newPassword: password })).status, 401);
-  const payload = { email: 'fixture@example.invalid', recoveryCode: rotated.data.recoveryCodes[0], newPassword: 'Recovered customer password 088' };
-  const results = await Promise.all([b.call('/recover', 'POST', payload), c.call('/recover', 'POST', payload)]); assert.deepEqual(results.map(value => value.status).sort(), [200, 401]);
-  const success = results.find(value => value.status === 200); assert.equal(success.data.recoveryCodes.length, 8); assert.equal((await a.call('/requests')).status, 401);
-  const login = browser(f.base); await login.call('/session'); assert.equal((await login.call('/login', 'POST', { email: 'fixture@example.invalid', password: payload.newPassword })).status, 200);
+  const input = { email: 'fixture@example.invalid', recoveryCode: 'A'.repeat(32), newPassword: 'Retired recovery must not set this password' };
+  const results = await Promise.all([b.call('/recover', 'POST', input), c.call('/recover', 'POST', input)]); assert.deepEqual(results.map(value => value.status), [404, 404]);
+  assert.equal((await a.call('/session')).data.authenticated, true);
+  const login = browser(f.base); await login.call('/session'); assert.equal((await login.call('/login', 'POST', { email: 'fixture@example.invalid', password: input.newPassword })).status, 401); assert.equal((await login.call('/login', 'POST', { email: 'fixture@example.invalid', password })).status, 200);
   assert.equal((await login.call('/profile', 'PATCH', { name: 'Updated', emailVerified: true })).status, 400); assert.equal((await login.call('/profile', 'PATCH', { name: 'Updated' })).data.user.name, 'Updated');
 });
 

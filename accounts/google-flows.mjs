@@ -54,6 +54,7 @@ export function createGoogleFlows({db,auth,clock=Date.now,config={enabled:false}
     db.run('UPDATE account_sessions SET google_reauth_at=NULL,google_reauth_purpose=NULL WHERE user_id=?',userId);
   }
   function source(row,context) {
+    if(row.intent==='reauth' && row.reauth_purpose!=='password_setup')throw invalid();
     if(row.intent==='login') {
       if(context?.user || !db.get('SELECT 1 FROM account_challenges WHERE token_hash=? AND expires_at>?',row.initiating_csrf_hash,clock()))throw invalid();
       if(context && !same(digest(context.csrf || ''),row.initiating_csrf_hash))throw invalid();
@@ -72,7 +73,7 @@ export function createGoogleFlows({db,auth,clock=Date.now,config={enabled:false}
     if(intent==='login' && context.user || intent!=='login' && !context.user)throw invalid();
     let user=context.user;
     if(intent==='link')user=await auth.google.verifyCurrentPassword(user,input.currentPassword,context);
-    if(intent==='reauth' && (!['password_setup','recovery_codes'].includes(input.purpose) || user.password_enabled!==0))throw invalid();
+    if(intent==='reauth' && (input.purpose!=='password_setup' || user.password_enabled!==0))throw invalid();
     const expected=intent==='reauth'?db.get("SELECT subject FROM account_identities WHERE user_id=? AND provider='google'",user.id)?.subject:null;
     if(intent==='reauth'&&!expected)throw invalid();
     return db.transaction(()=>{
@@ -128,8 +129,8 @@ export function createGoogleFlows({db,auth,clock=Date.now,config={enabled:false}
           const id=randomBytes(16).toString('hex'), now=clock(), domain=row.email.split('@')[1], verified=row.email_verified===1 && (domain==='gmail.com' || row.hd===domain);
           db.run('INSERT INTO account_users(id,email,name,company,password_salt,password_hash,security_version,recovery_version,created_at,updated_at,email_verified_at,password_enabled) VALUES(?,?,?,\'\',?,?,1,1,?,?,?,0)',id,row.email,row.name,randomBytes(16).toString('hex'),randomBytes(32).toString('hex'),now,now,verified?now:null);
           db.run("INSERT INTO account_identities VALUES('google',?,?,?,?)",row.subject,id,now,now);owner=account(id);
-          const recoveryCodes=auth.google.codes(id); result=auth.google.issue(owner,context.csrf,{method:'google',grant:'password_setup'});
-          const verification=verified?null:signupVerification(owner);result.data={...result.data,recoveryCodes,...(verification?{verification}:{})};
+          result=auth.google.issue(owner,context.csrf,{method:'google',grant:'password_setup'});
+          const verification=verified?null:signupVerification(owner);result.data={...result.data,...(verification?{verification}:{})};
         }
       } else if(row.intent==='link') {
         if(user.password_enabled!==1 || row.created_at+300000<=clock())throw invalid();
@@ -138,6 +139,7 @@ export function createGoogleFlows({db,auth,clock=Date.now,config={enabled:false}
         if(!mapped){db.run("INSERT INTO account_identities VALUES('google',?,?,?,?)",row.subject,user.id,clock(),clock());db.run('UPDATE account_users SET security_version=security_version+1 WHERE id=?',user.id);auth.google.securityChanged(user.id);db.run('DELETE FROM account_sessions WHERE user_id=?',user.id);result=auth.google.issue(account(user.id),context.csrf);}
         else result={data:{user:auth.google.user(user),csrfToken:context.csrf}};
       } else {
+        if(row.intent!=='reauth' || row.reauth_purpose!=='password_setup')throw invalid();
         if(user.password_enabled!==0 || row.subject!==row.expected_subject || identity(row.subject)?.user_id!==user.id)throw invalid();
         db.run('UPDATE account_sessions SET google_reauth_at=?,google_reauth_purpose=? WHERE token_hash=?',clock(),row.reauth_purpose,row.initiating_session_hash);
         result={data:{user:auth.google.user(user),csrfToken:context.csrf}};
@@ -154,14 +156,11 @@ export function createGoogleFlows({db,auth,clock=Date.now,config={enabled:false}
     requireEnabled();grant(user,context,'password_setup');const password=await auth.prepareMailPassword(input.newPassword);
     return db.transaction(()=>{grant(user,context,'password_setup');limits(context.peer,'security',user.id);db.run('UPDATE account_users SET password_enabled=1,password_salt=?,password_hash=?,security_version=security_version+1,updated_at=? WHERE id=?',password.salt,password.hash,clock(),user.id);auth.google.securityChanged(user.id);db.run('DELETE FROM account_sessions WHERE user_id=?',user.id);return auth.google.issue(account(user.id),context.csrf);});
   }
-  function regenerate(user,context) {
-    requireEnabled();return db.transaction(()=>{grant(user,context,'recovery_codes');limits(context.peer,'security',user.id);db.run('UPDATE account_users SET recovery_version=recovery_version+1 WHERE id=?',user.id);auth.google.securityChanged(user.id);return {recoveryCodes:auth.google.codes(user.id)};});
-  }
   async function unlink(user,input,context) {
     requireEnabled();await auth.google.verifyCurrentPassword(user,input.currentPassword,context);
     return db.transaction(()=>{auth.google.current(user,{sessionHash:digest(context.session),csrfHash:digest(context.csrf)});limits(context.peer,'security',user.id);db.run("DELETE FROM account_identities WHERE user_id=? AND provider='google'",user.id);db.run('UPDATE account_users SET security_version=security_version+1 WHERE id=?',user.id);auth.google.securityChanged(user.id);db.run('DELETE FROM account_sessions WHERE user_id=?',user.id);return auth.google.issue(account(user.id),context.csrf);});
   }
-  return Object.freeze({enabled,invalidateUser,start,status,complete,setup,regenerate,unlink,
+  return Object.freeze({enabled,invalidateUser,start,status,complete,setup,unlink,
     callback(input,browser,peer){const operation=callback(input,browser,peer).finally(()=>operations.delete(operation));operations.add(operation);return operation;},
     async close(){stopping=true;await client?.close?.();await Promise.allSettled([...operations]);}
   });

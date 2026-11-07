@@ -85,7 +85,7 @@ const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntr
   if (kind === 'testing') { if (requestPage.resume(doc.record, { ...doc, ownerId })) navigateToURL('/submit-sample'); }
   else if (kind === 'contact') { navigateToURL('/contact'); contactForm?.resume(doc, ownerId); }
   else { navigateToURL('/contact'); renderRecovery(doc, ownerId); }
-}, onNewRequest: () => renderSubmission(undefined, true) }) : null;
+}, onNewRequest: () => renderSubmission(undefined, true), onRegistrationNotice: showToast }) : null;
 accountClient?.subscribe((user, reason) => {
   requestPage.setAccountSession(user, reason); contactForm?.setAccountSession(user, reason); recoveryForm?.setAccountSession(user, reason);
   if (recoveryReturn) {

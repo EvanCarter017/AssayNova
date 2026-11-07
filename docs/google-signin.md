@@ -1,8 +1,7 @@
 # Google account sign-in
 
 Google sign-in is an optional account identity method, independent of SMTP.
-Password, recovery codes and existing mail actions continue to work when it is
-disabled. It does not grant ownership of COA reports or merge accounts by email.
+Password and configured mail actions continue to work when it is disabled. It does not grant ownership of COA reports or merge accounts by email.
 
 ## Configuration and activation
 
@@ -41,7 +40,7 @@ and https://developers.google.com/identity/branding-guidelines.
 The identity key is Google provider plus signed opaque subject. An existing
 Google mapping signs into that exact account without updating its immutable
 email, name, company or verification state. An unknown subject with an unused
-email creates a Google-only account and returns eight recovery codes once. A
+email creates a Google-only account without recovery codes. A
 matching existing email never creates a link: sign in using an existing method,
 then explicitly link Google from Security using the current password. Linking
 or unlinking rotates the security epoch and sessions. Google-only users must
@@ -52,11 +51,13 @@ salt/hash values satisfying historical NOT NULL constraints. The flag disables
 password authentication and current-password actions, including when the
 reserved hash is replaced by a known real hash. Password setup uses fresh
 purpose-bound Google confirmation, not a fictitious current password. Verified
-email reset or a saved recovery code can also enable a password without removing
-the Google identity. Recovery-code regeneration increments its epoch and clears
-both Google reauthentication grant fields on every surviving session, even when
-Google is disabled. All epoch changes cancel relevant Google flows and mail
-actions in the same transaction.
+email reset can also enable a password without removing the Google identity.
+Security/recovery epoch changes clear both Google reauthentication grant fields
+on every surviving session, even when Google is disabled, and cancel relevant
+Google flows and mail actions in the same transaction. Only password_setup is a
+supported reauthentication purpose. Legacy code-purpose flows/grants cannot
+perform an action; unsupported pending flows are rejected before exchange and
+completion without changing the schema or deleting old code hashes.
 
 New-account email is considered verified only for a signed verified Gmail
 mailbox or a signed Workspace domain exactly matching the email domain. Other
@@ -82,14 +83,14 @@ does not ask for another Continue after Google consent. Completion rechecks the
 original browser challenge or exact originating session, owner, both security
 and recovery epochs, mapping and quota atomically. Replays and owner changes
 cannot replace an account. After a successful completion acknowledgement, the
-client withholds its user and recovery codes until a fresh same-origin session
+client withholds its returned user until a fresh same-origin session
 GET confirms that returned owner. A cross-tab switch or logout drops the private
 result and retains the actual session state. Fresh profile, CSRF and capabilities
 are kept rather than overwritten by an earlier POST response. Password setup and
 Google unlink apply the same post-acknowledgement owner check. An uncertain
 response is session-confirmed before offering a bounded manual retry; it never
-automatically repeats a consumed completion. Lost recovery-code output is
-replaced only after fresh matching Google confirmation.
+automatically repeats a consumed completion. Confirmed completion navigates
+directly to its safe return page without a code-saving checkpoint.
 
 Native provider requests use fixed Google HTTPS endpoints, normal TLS and
 redirect rejection, 5 seconds per request/12 seconds per exchange, 4 concurrent

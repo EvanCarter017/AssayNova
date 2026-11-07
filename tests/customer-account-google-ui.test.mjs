@@ -31,7 +31,7 @@ test('navigation accepts only the pinned Google HTTPS authorization endpoint on 
 });
 test('client Google completion shares normal CSRF, validates DTO flags and cannot replace a signed-in owner', async () => {
   assert.equal(accountUser({ ...user, passwordEnabled: undefined }).passwordEnabled, true); for (const key of ['passwordEnabled', 'googleLinked']) for (const value of [null, 1, 'true']) assert.throws(() => accountUser({ ...user, [key]: value }));
-  let actualUser=null; const calls = [], c = createCustomerAccountClient({ fetcher: async (url, options) => { calls.push({ url, options }); if(url.endsWith('/session'))return response({authenticated:!!actualUser,user:actualUser,csrfToken:actualUser?'fresh-csrf':'synthetic-csrf',google:{enabled:true}});actualUser=user;return response({intent:'login',next:'/account',user,csrfToken:'new-csrf',google:{enabled:true},recoveryCodes:['synthetic']}); } });
+  let actualUser=null; const calls = [], c = createCustomerAccountClient({ fetcher: async (url, options) => { calls.push({ url, options }); if(url.endsWith('/session'))return response({authenticated:!!actualUser,user:actualUser,csrfToken:actualUser?'fresh-csrf':'synthetic-csrf',google:{enabled:true}});actualUser=user;return response({intent:'login',next:'/account',user,csrfToken:'new-csrf',google:{enabled:true}}); } });
   await c.getSession(); await c.googleComplete(); assert.equal(c.snapshot().user.id, user.id); assert.equal(c.snapshot().google.enabled, true); assert.equal(calls[1].options.headers['X-Account-CSRF'], 'synthetic-csrf'); assert.deepEqual(JSON.parse(calls[1].options.body), {}); assert.equal(calls[1].options.credentials, 'same-origin');
   await assert.rejects(c.googleComplete(), e => e.code === 'owner_changed');
 });
@@ -44,7 +44,6 @@ function acknowledgedCompletion(intent, replacement) {
   const accountA = { ...user, googleLinked: true, name: 'Confirmed session profile' }, accountB = { ...user, id: 'synthetic-other-102', email: 'other102@example.invalid' };
   let actualUser = intent === 'login' ? null : accountA, ready = true, posts = 0;
   const completed = [], states = [], changes = [], requests = [];
-  const privateCodes = Array.from({ length: 8 }, (_, index) => 'SYNTHETICPRIVATE102CODE' + index);
   const client = createCustomerAccountClient({ fetcher: async (url, options) => {
     requests.push(url);
     if (url.endsWith('/session')) return response({ authenticated: !!actualUser, user: actualUser, csrfToken: actualUser ? 'fresh-session-csrf-' + actualUser.id : 'fresh-preauth-csrf', mail: { enabled: false }, google: { enabled: true } });
@@ -52,21 +51,21 @@ function acknowledgedCompletion(intent, replacement) {
     assert.ok(url.endsWith('/complete')); posts++; ready = false; actualUser = accountA;
     return { ok: true, status: 200, json: async () => {
       actualUser = replacement === 'other' ? accountB : replacement === 'logout' ? null : accountA;
-      return { intent, next: '/account', user: { ...accountA, name: 'Earlier POST profile' }, csrfToken: 'earlier-post-csrf', mail: { enabled: false }, google: { enabled: true }, ...(intent === 'login' ? { recoveryCodes: privateCodes } : {}) };
+      return { intent, next: '/account', user: { ...accountA, name: 'Earlier POST profile' }, csrfToken: 'earlier-post-csrf', mail: { enabled: false }, google: { enabled: true } };
     } };
   } });
   client.subscribe((value, reason) => changes.push({ id: value?.id || null, reason }));
   const controller = createGoogleAccountController({ client, onComplete: value => completed.push(value), onState: (...args) => states.push(args) });
-  return { client, controller, completed, states, changes, requests, privateCodes, accountA, accountB, get posts() { return posts; } };
+  return { client, controller, completed, states, changes, requests, accountA, accountB, get posts() { return posts; } };
 }
 
-test('actual client and controller suppress A completion/codes when the cookie becomes B or logged out after POST commit before JSON acknowledgement', async () => {
+test('actual client and controller suppress A completion when the cookie becomes B or logged out after POST commit before JSON acknowledgement', async () => {
   for (const intent of ['login', 'link', 'reauth']) for (const replacement of ['other', 'logout']) {
     const f = acknowledgedCompletion(intent, replacement); await f.controller.enter();
     assert.equal(f.posts, 1); assert.equal(f.completed.length, 0); assert.equal(f.client.snapshot().user?.id || null, replacement === 'other' ? f.accountB.id : null);
     assert.equal(f.states.at(-1)[0], 'error'); assert.equal(f.states.at(-1)[1].code, 'owner_changed');
     assert.ok(f.requests.at(-1).endsWith('/session'), 'Completion must be followed by a fresh owner GET');
-    if (intent === 'login') { assert.ok(f.privateCodes.every(value => value === '')); assert.equal(f.changes.some(change => change.id === f.accountA.id), false); }
+    if (intent === 'login') assert.equal(f.changes.some(change => change.id === f.accountA.id), false);
     await f.controller.retry(); await f.controller.enter(); assert.equal(f.posts, 1, 'Consumed completion must never replay automatically'); assert.equal(f.completed.length, 0);
   }
 });
@@ -75,7 +74,7 @@ test('actual client/controller successful login, link and reauth release only ow
   for (const intent of ['login', 'link', 'reauth']) {
     const f = acknowledgedCompletion(intent, 'stable'); await f.controller.enter();
     assert.equal(f.posts, 1); assert.equal(f.completed.length, 1); assert.equal(f.completed[0].intent, intent); assert.equal(f.completed[0].user.id, f.accountA.id); assert.equal(f.completed[0].user.name, 'Confirmed session profile'); assert.equal(f.completed[0].csrfToken, 'fresh-session-csrf-' + f.accountA.id);
-    if (intent === 'login') assert.deepEqual(f.completed[0].recoveryCodes, f.privateCodes);
+    assert.equal(Object.hasOwn(f.completed[0], 'recoveryCodes'), false);
     await f.controller.enter(); assert.equal(f.posts, 1); assert.equal(f.completed.length, 1);
   }
 });
@@ -95,14 +94,14 @@ test('Google setup/unlink withhold returned user on the same post-commit cookie 
 });
 
 test('logout revision during the fresh completion owner GET aborts late private acknowledgement', async () => {
-  let actualUser = null, release, entered; const pendingGet = new Promise(resolve => { entered = resolve; }), privateCodes = Array(8).fill('SYNTHETIC-PRIVATE-102'); let afterCommit = false;
+  let actualUser = null, release, entered; const pendingGet = new Promise(resolve => { entered = resolve; }); let afterCommit = false;
   const client = createCustomerAccountClient({ fetcher: async (url, options) => {
     if (url.endsWith('/session')) {
       if (afterCommit) { entered(); return new Promise(resolve => { release = () => resolve(response({ authenticated: true, user, csrfToken: 'old-owner-csrf', google: { enabled: true } })); }); }
       return response({ authenticated: false, user: null, csrfToken: 'challenge-csrf', google: { enabled: true } });
     }
     if (url.endsWith('/logout')) { actualUser = null; return response({ ok: true }); }
-    afterCommit = true; actualUser = user; return response({ intent: 'login', next: '/account', user, csrfToken: 'post-csrf', google: { enabled: true }, recoveryCodes: privateCodes });
+    afterCommit = true; actualUser = user; return response({ intent: 'login', next: '/account', user, csrfToken: 'post-csrf', google: { enabled: true } });
   } });
-  await client.getSession(); const pending = client.googleComplete(); await pendingGet; await client.logout(); release(); await assert.rejects(pending, error => error.code === 'aborted'); assert.equal(actualUser, null); assert.equal(client.snapshot().user, null); assert.ok(privateCodes.every(value => value === ''));
+  await client.getSession(); const pending = client.googleComplete(); await pendingGet; await client.logout(); release(); await assert.rejects(pending, error => error.code === 'aborted'); assert.equal(actualUser, null); assert.equal(client.snapshot().user, null);
 });

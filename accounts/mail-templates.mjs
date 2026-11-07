@@ -10,7 +10,7 @@ export function mailTemplate(event, { config, recipient, token, record, revision
   if (event.kind === 'verify_email' || event.kind === 'reset_password') {
     if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('Mail action is unavailable.');
     const path = event.kind === 'verify_email' ? '/verify-email' : '/reset-password';
-    body = `Open this link, then explicitly confirm the action on AssayNova:\n\n${origin}${path}#token=${token}\n\n${event.kind === 'verify_email' ? 'This link expires in 24 hours.' : 'This link expires in 15 minutes. Resetting your password replaces recovery codes and signs out all sessions.'}\n\nIf you did not request this, ignore this message. Contact ${config.smtp.supportTo} for help.`;
+    body = `Open this link, then explicitly confirm the action on AssayNova:\n\n${origin}${path}#token=${token}\n\n${event.kind === 'verify_email' ? 'This link expires in 24 hours.' : 'This link expires in 15 minutes. Resetting your password signs out all sessions.'}\n\nIf you did not request this, ignore this message. Contact ${config.smtp.supportTo} for help.`;
   } else if (event.kind === 'request_receipt') {
     body = `Your ${REQUEST_KINDS[requestKind(record)]} request is recorded by AssayNova.\nReference: ${record.id}\n\nManage your request: ${origin}/account\n\nThis receipt does not confirm laboratory acceptance, sample receipt or analysis completion.`;
   } else if (event.kind === 'support_alert') {

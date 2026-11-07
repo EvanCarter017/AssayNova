@@ -2,7 +2,7 @@
 
 Submitted acknowledges durable platform storage. Email has a separate lifecycle and is disabled without explicit private configuration. Synthetic tests do not establish live provider acceptance or inbox delivery.
 
-Enabled registration queues verification and displays eight private recovery codes. Verification requires an explicit button at /verify-email and expires after24h. Verified stored mailboxes can request a password reset at /recover-account; links expire after15m. /reset-password requires a new password, revokes sessions/actions and prior codes, shows eight replacements and finishes at sign-in. Merely opening a link does nothing. Saved-code recovery remains available when mail is off, unsupported or inaccessible. Immutable email never assigns reports or catalog ownership.
+Enabled registration queues verification and continues after fresh session confirmation. A neutral queued/unavailable notice follows navigation without personal data. Verification requires an explicit button at /verify-email and expires after24h. Verified stored mailboxes can request a password reset at /recover-account; links expire after15m. /reset-password requires a new password, advances both security/recovery epochs, revokes sessions and mail/Google actions, then shows success with a sign-in action and no automatic login. Merely opening a link does nothing. No recovery codes are issued or accepted; provider-off recovery offers existing sign-in methods without a send form or code fallback. Immutable email never assigns reports or catalog ownership.
 
 New v3 testing/contact/report-recovery submissions and explicit v2 resubmissions create stable receipt/support events once. Receipts use only the currently verified stored account mailbox and contain kind/reference/account link without sample details. Support alerts use the fixed configured supports address, with the validated submission snapshot and revision. Claimed form/testing emails are labeled unverified body text, never destinations. Ordinary edits, reads, verification, login, restart and old Submitted rows stay silent. Explicit later admission after a blocked event may capture the current committed revision.
 
@@ -40,7 +40,7 @@ mail-verified only for signed verified Gmail or an exactly matching signed
 Workspace domain; other addresses use the existing best-effort verification
 admission. Linked accounts keep their stored mailbox/verification.
 
-A valid verified-mailbox reset can enable a password on a Google-only account;
-code recovery can do the same. Both retain the Google mapping, revoke sessions,
-replace recovery codes and invalidate mail/Google actions atomically without
-auto-login. Transactional Google sign-in never requires analytics consent.
+A valid verified-mailbox reset can enable a password on a Google-only account.
+It retains the Google mapping, advances both security and recovery epochs, revokes
+sessions and invalidates mail/Google actions atomically without auto-login.
+Legacy code hashes remain inert and unchanged; no replacement bundle is issued. Transactional Google sign-in never requires analytics consent.

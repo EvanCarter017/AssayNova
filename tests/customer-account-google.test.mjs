@@ -17,7 +17,7 @@ import http from 'node:http';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 
-test('Google creation uses flag-disabled reserved credentials, one-time codes, bound cookie and immutable linked profile', async t => {
+test('Google creation uses flag-disabled reserved credentials, no recovery codes, bound cookie and immutable linked profile', async t => {
   const f = await googleFixture(t), a = f.client(); const start = await f.start(a);
   const cookie = start.started.setCookies[0]; for (const part of ['Secure', 'HttpOnly', 'SameSite=Lax', 'Path=/api/account/oauth/google', 'Max-Age=600']) assert.ok(cookie.includes(part));
   const row = f.db.prepare('SELECT * FROM account_google_flows').get();
@@ -27,7 +27,7 @@ test('Google creation uses flag-disabled reserved credentials, one-time codes, b
   const callback = await f.callback(a, start); assert.equal(callback.status, 303); assert.equal(callback.headers.get('location'), '/google-signin'); assert.equal(callback.setCookies.length, 0);
   for (const [key, value] of strict) if (!key.startsWith('an_google_flow_')) a.jar.set(key, value);
   assert.deepEqual((await a.call('/oauth/google/status')).data, { ready: true, intent: 'login' });
-  const completed = await a.call('/oauth/google/complete', 'POST', {}); assert.equal(completed.status, 200, completed.text); assert.equal(completed.data.recoveryCodes.length, 8);
+  const completed = await a.call('/oauth/google/complete', 'POST', {}); assert.equal(completed.status, 200, completed.text); assert.equal(Object.hasOwn(completed.data, 'recoveryCodes'), false); assert.equal(f.db.prepare('SELECT count(*) n FROM account_recovery_codes').get().n, 0);
   assert.equal(completed.data.user.passwordEnabled, false); assert.equal(completed.data.user.googleLinked, true); assert.equal(completed.data.user.emailVerified, true);
   const user = f.db.prepare('SELECT * FROM account_users').get(); assert.equal(user.password_salt.length, 32); assert.equal(user.password_hash.length, 64); assert.equal(user.password_enabled, 0);
   assert.equal((await a.call('/oauth/google/complete', 'POST', {})).status, 400); assert.equal(f.db.prepare('SELECT count(*) n FROM account_users').get().n, 1);
@@ -47,17 +47,17 @@ test('third party Google email is unverified, email collisions never merge, expl
   assert.equal((await c.call('/oauth/google/unlink', 'POST', { currentPassword: fixturePassword })).status, 401);
 });
 
-test('password flag overrides a known real hash, setup uses purpose grant, code recovery enables a password and preserves identity', async t => {
+test('password flag overrides a known hash and purpose-bound password setup preserves Google identity', async t => {
   const f = await googleFixture(t), a = f.client(); const registered = await a.signup();
   const known = f.db.prepare('SELECT password_salt,password_hash FROM account_users WHERE id=?').get(registered.data.user.id);
   const b = f.client(); const google = await f.login(b, { subject: 'disabled102', email: 'disabled102@gmail.com' });
   f.db.prepare('UPDATE account_users SET password_salt=?,password_hash=? WHERE id=?').run(known.password_salt, known.password_hash, google.data.user.id);
   const c = f.client(); await c.call('/session'); assert.equal((await c.call('/login', 'POST', { email: 'disabled102@gmail.com', password: fixturePassword })).status, 401);
-  assert.equal((await b.call('/recovery-codes', 'POST', { currentPassword: fixturePassword })).status, 401);
-  const setup = await b.call('/password/setup', 'POST', { newPassword: 'A new Google setup password 102' }); assert.equal(setup.status, 200, setup.text); assert.equal(setup.data.user.passwordEnabled, true);
+  assert.equal((await b.call('/recovery-codes', 'POST', { currentPassword: fixturePassword })).status, 404);
+  const password = 'A new Google setup password 102'; const setup = await b.call('/password/setup', 'POST', { newPassword: password }); assert.equal(setup.status, 200, setup.text); assert.equal(setup.data.user.passwordEnabled, true);
   assert.equal((await b.call('/password/setup', 'POST', { newPassword: 'Another setup password 102' })).status, 400);
-  const recovered = await c.call('/recover', 'POST', { email: 'disabled102@gmail.com', recoveryCode: google.data.recoveryCodes[0], newPassword: 'Recovered Google password 102' }); assert.equal(recovered.status, 200, recovered.text);
-  assert.equal((await b.call('/session')).data.authenticated, false); assert.equal(f.db.prepare('SELECT count(*) n FROM account_identities WHERE user_id=?').get(google.data.user.id).n, 1);
+  assert.equal((await c.call('/recover', 'POST', { email: 'disabled102@gmail.com', recoveryCode: 'A'.repeat(32), newPassword: fixturePassword })).status, 404);
+  assert.equal((await c.call('/login', 'POST', { email: 'disabled102@gmail.com', password })).status, 200); assert.equal(f.db.prepare('SELECT count(*) n FROM account_identities WHERE user_id=?').get(google.data.user.id).n, 1);
 });
 
 test('callback parser/cookies reject duplicates, encoding, paths and unrelated callback cannot clear a valid browser flow', async t => {
@@ -82,30 +82,23 @@ test('one callback wins, origin/CSRF remain strict, denial/expired/changed-owner
 
 async function twoSessions(f) { const a = f.client(), first = await f.login(a), b = f.client(); await f.login(b); return { a, b, id: first.data.user.id }; }
 const grants = (f, id) => f.db.prepare('SELECT google_reauth_at,google_reauth_purpose FROM account_sessions WHERE user_id=?').all(id);
-test('Google recovery regeneration clears both grants on every surviving session and invalidates in-flight and ready recovery epochs', async t => {
+test('Google password setup invalidates in-flight and ready reauth flows and every older session grant', async t => {
   const f = await googleFixture(t), { a, b, id } = await twoSessions(f);
-  f.db.prepare("UPDATE account_sessions SET google_reauth_at=?,google_reauth_purpose='recovery_codes' WHERE user_id=?").run(f.now, id);
   const hold = f.provider.hold(); let began; const waiting = new Promise(resolve => { began = resolve; }); f.provider.onExchange = began;
   const flow = await f.start(b, {}, 'reauth', { purpose: 'password_setup' }), pending = f.callback(b, flow); await waiting;
-  const before = f.db.prepare('SELECT recovery_version FROM account_users WHERE id=?').get(id).recovery_version;
-  const regenerated = await a.call('/oauth/google/recovery-codes', 'POST', {}); assert.equal(regenerated.status, 200, regenerated.text); hold.release(); await pending;
-  assert.equal(f.db.prepare('SELECT recovery_version FROM account_users WHERE id=?').get(id).recovery_version, before + 1);
+  const changed = await a.call('/password/setup', 'POST', { newPassword: fixturePassword }); assert.equal(changed.status, 200, changed.text); hold.release(); await pending;
   for (const grant of grants(f, id)) assert.deepEqual({ ...grant }, { google_reauth_at: null, google_reauth_purpose: null });
-  assert.equal((await a.call('/session')).data.authenticated, true); assert.equal((await b.call('/session')).data.authenticated, true);
-  assert.equal(f.db.prepare('SELECT count(*) n FROM account_google_flows').get().n, 0);
-  assert.equal((await b.call('/password/setup', 'POST', { newPassword: fixturePassword })).status, 400);
-  const ready = await f.start(b, {}, 'reauth', { purpose: 'recovery_codes' }); await f.callback(b, ready);
-  f.db.prepare("UPDATE account_sessions SET google_reauth_at=?,google_reauth_purpose='recovery_codes' WHERE token_hash=?").run(f.now, hash(a.jar.get('an_customer_' + f.port)));
-  assert.equal((await a.call('/oauth/google/recovery-codes', 'POST', {})).status, 200); assert.equal((await b.call('/oauth/google/complete', 'POST', {})).status, 400);
-  const fresh = await f.start(b, {}, 'reauth', { purpose: 'password_setup' }); await f.callback(b, fresh); assert.equal((await b.call('/oauth/google/complete', 'POST', {})).status, 200); assert.equal((await b.call('/password/setup', 'POST', { newPassword: fixturePassword })).status, 200);
+  assert.equal((await a.call('/session')).data.authenticated, true); assert.equal((await b.call('/session')).data.authenticated, false); assert.equal(f.db.prepare('SELECT count(*) n FROM account_google_flows').get().n, 0);
+  const g = await googleFixture(t), pair = await twoSessions(g), ready = await g.start(pair.b, {}, 'reauth', { purpose: 'password_setup' }); await g.callback(pair.b, ready);
+  assert.equal((await pair.a.call('/password/setup', 'POST', { newPassword: fixturePassword })).status, 200); assert.ok((await pair.b.call('/oauth/google/complete', 'POST', {})).status >= 400); assert.equal(g.db.prepare('SELECT count(*) n FROM account_google_flows').get().n, 0);
 });
 
-test('password regeneration clears all surviving grants; disabled-provider invalidation is local and rolls back atomically', async t => {
+test('password rotation clears all grants; disabled-provider invalidation is local and rolls back atomically', async t => {
   const f = await googleFixture(t), a = f.client(); const signup = await a.signup(); const b = f.client(); await b.call('/session'); await b.call('/login', 'POST', { email: signup.data.user.email, password: fixturePassword }); const id = signup.data.user.id;
   f.db.prepare("UPDATE account_sessions SET google_reauth_at=?,google_reauth_purpose='password_setup' WHERE user_id=?").run(f.now, id);
-  assert.equal((await a.call('/recovery-codes', 'POST', { currentPassword: fixturePassword })).status, 200);
+  assert.equal((await a.call('/password', 'POST', { currentPassword: fixturePassword, newPassword: 'Synthetic rotated password 105' })).status, 200);
   for (const grant of grants(f, id)) assert.equal(grant.google_reauth_at, null);
-  assert.equal((await b.call('/session')).data.authenticated, true);
+  assert.equal((await b.call('/session')).data.authenticated, false);
   const directory = path.join(fixtureBase, randomUUID()), db = await openAccountDatabase({ directory }); t.after(() => db.close());
   const auth = createAccountAuth({ db }), google = createGoogleFlows({ db, auth, config: { enabled: false }, rate() { throw Error('No rate call expected.'); } });
   db.run("INSERT INTO account_users(id,email,name,company,password_salt,password_hash,security_version,recovery_version,created_at,updated_at,email_verified_at,password_enabled) VALUES(?,?,'','',?,?,1,1,1,1,NULL,1)", 'a'.repeat(32), 'local102@example.invalid', 'b'.repeat(32), 'c'.repeat(64));
@@ -154,13 +147,14 @@ test('schema2 to3 preserves every synthetic preexisting table row, raw request a
   assert.deepEqual(db.all('SELECT ciphertext,nonce,tag FROM account_mail_outbox ORDER BY event_key'), ciphertext); assert.equal(db.get('SELECT password_enabled FROM account_users').password_enabled, 1); assert.deepEqual({ ...db.get('SELECT auth_method,google_reauth_at,google_reauth_purpose FROM account_sessions') }, { auth_method: 'password', google_reauth_at: null, google_reauth_purpose: null }); assert.equal(db.get('PRAGMA foreign_keys').foreign_keys, 1); assert.deepEqual(db.all('PRAGMA foreign_key_check'), []);
 });
 
-test('ready resolved login cannot survive code regeneration and wrong/expired reauth purposes cannot perform setup', async t => {
-  const f = await googleFixture(t), { a, b } = await twoSessions(f), c = f.client();
+test('ready resolved login cannot survive logout-all and retired or expired grants cannot perform setup', async t => {
+  const f = await googleFixture(t), { a, b, id } = await twoSessions(f), c = f.client();
   const login = await f.start(c); await f.callback(c, login); assert.equal((await c.call('/oauth/google/status')).data.ready, true);
-  const proof = await f.start(a, {}, 'reauth', { purpose: 'recovery_codes' }); await f.callback(a, proof); assert.equal((await a.call('/oauth/google/complete', 'POST', {})).status, 200);
-  assert.equal((await a.call('/password/setup', 'POST', { newPassword: fixturePassword })).status, 400); assert.equal((await a.call('/oauth/google/recovery-codes', 'POST', {})).status, 200);
-  assert.equal((await c.call('/oauth/google/complete', 'POST', {})).status, 400);
-  const expired = await f.start(b, {}, 'reauth', { purpose: 'password_setup' }); await f.callback(b, expired); await b.call('/oauth/google/complete', 'POST', {}); f.advance(300001); assert.equal((await b.call('/password/setup', 'POST', { newPassword: fixturePassword })).status, 400);
+  assert.equal((await a.call('/oauth/google/reauth', 'POST', { purpose: 'recovery_codes' })).status, 400);
+  f.db.prepare("UPDATE account_sessions SET google_reauth_at=?,google_reauth_purpose='recovery_codes' WHERE user_id=?").run(f.now, id);
+  assert.equal((await a.call('/password/setup', 'POST', { newPassword: fixturePassword })).status, 400);
+  assert.equal((await a.call('/logout-all', 'POST', {})).status, 200); assert.equal((await c.call('/oauth/google/complete', 'POST', {})).status, 400);
+  await f.login(b); const expired = await f.start(b, {}, 'reauth', { purpose: 'password_setup' }); await f.callback(b, expired); await b.call('/oauth/google/complete', 'POST', {}); f.advance(300001); assert.equal((await b.call('/password/setup', 'POST', { newPassword: fixturePassword })).status, 400);
 });
 
 test('bounded start rates and source-session logout cannot promote or recreate a ready flow', async t => {
@@ -173,12 +167,12 @@ test('failed provider exchange consumes only its bound flow and returns no provi
   const callback = await f.callback(a, flow); assert.equal(callback.status, 303); assert.equal(callback.headers.get('location'), '/google-signin'); assert.equal(callback.text, ''); assert.ok(callback.setCookies[0].includes('Max-Age=0')); assert.equal(f.db.prepare('SELECT count(*) n FROM account_google_flows').get().n, 0); assert.equal(f.db.prepare('SELECT count(*) n FROM account_users').get().n, 0);
 });
 
-test('Google-only verified-mail reset enables password and atomically invalidates sessions, codes and Google actions', async t => {
+test('Google-only verified-mail reset enables password and atomically invalidates sessions and Google actions', async t => {
   const messages = [], config = { enabled: true, reportNoticesEnabled: false, publicOrigin: 'https://assaynovalabs.com', key: randomBytes(32), smtp: { host: 'mail102.invalid', port: 587, username: 'supports@example.invalid', from: 'supports@example.invalid', supportTo: 'supports@example.invalid', password: 'synthetic only' } };
   const f = await googleFixture(t, { mailOptions: { config, transport: { async send(payload) { messages.push(payload); return { outcome: 'accepted' }; } } } }), a = f.client(); const initial = await f.login(a), b = f.client(); await b.call('/session');
-  const flow = await f.start(a, {}, 'reauth', { purpose: 'recovery_codes' }); await f.callback(a, flow);
+  const flow = await f.start(a, {}, 'reauth', { purpose: 'password_setup' }); await f.callback(a, flow);
   assert.equal((await b.call('/password/reset-request', 'POST', { email: initial.data.user.email })).status, 202); await f.handler.pumpMail(); const token = /#token=([a-f0-9]{64})/.exec(messages.at(-1).body)[1];
-  const reset = await b.call('/password/reset', 'POST', { token, newPassword: fixturePassword }); assert.equal(reset.status, 200, reset.text); assert.equal(reset.data.recoveryCodes.length, 8); assert.notDeepEqual(reset.data.recoveryCodes, initial.data.recoveryCodes);
+  const reset = await b.call('/password/reset', 'POST', { token, newPassword: fixturePassword }); assert.equal(reset.status, 200, reset.text); assert.deepEqual(reset.data, { ok: true }); assert.equal(f.db.prepare('SELECT count(*) n FROM account_recovery_codes').get().n, 0);
   assert.equal((await a.call('/session')).data.authenticated, false); assert.equal((await b.call('/session')).data.authenticated, false); assert.equal(f.db.prepare('SELECT password_enabled FROM account_users').get().password_enabled, 1); assert.equal(f.db.prepare('SELECT count(*) n FROM account_identities').get().n, 1); assert.equal(f.db.prepare('SELECT count(*) n FROM account_google_flows').get().n, 0); assert.equal(f.db.prepare('SELECT count(*) n FROM account_mail_tokens').get().n, 0);
 });
 
@@ -252,8 +246,8 @@ globalThis.fetch=async(url,options)=>{
     return completions.at(-1);
   }
   await client.getSession(); assert.equal(client.snapshot().google.enabled, true);
-  const created = await roundTrip('login', '/account', 'staged-native-subject102', 'staged-native102@gmail.com'); assert.equal(created.recoveryCodes.length, 8); assert.equal(created.user.passwordEnabled, false); const ownerId = created.user.id;
-  await roundTrip('reauth', 'recovery_codes', 'staged-native-subject102', created.user.email); assert.equal((await client.googleRecoveryCodes()).recoveryCodes.length, 8);
+  const created = await roundTrip('login', '/account', 'staged-native-subject102', 'staged-native102@gmail.com'); assert.equal(Object.hasOwn(created, 'recoveryCodes'), false); assert.equal(created.user.passwordEnabled, false); const ownerId = created.user.id;
+  assert.equal(client.googleRecoveryCodes, undefined);
   await roundTrip('reauth', 'password_setup', 'staged-native-subject102', created.user.email); assert.equal((await client.setupPassword(fixturePassword)).passwordEnabled, true); await client.logout(); await client.login({ email: created.user.email, password: fixturePassword }); assert.equal(client.snapshot().user.id, ownerId);
   const record = createAccountRequest('contact', { name: 'Native stage', email: created.user.email, topic: 'testing', message: 'Actual staged runtime request' }, { id: 'AN-REQ-NATIVE-STAGE102', createdAt: '2026-11-08T00:00:00.000Z' }); const saved = await client.saveRequest(record, { ownerId, idempotencyKey: 'native-stage102-request-key' }); assert.equal(saved.record.id, record.id); await client.logout();
   const passwordAccount = await client.signup({ email: 'staged-link102@example.invalid', password: fixturePassword, name: 'Password account', company: 'Synthetic' }); const linked = await roundTrip('link', fixturePassword, 'staged-link-subject102', 'different-google102@gmail.com'); assert.equal(linked.user.id, passwordAccount.user.id); assert.equal(linked.user.email, passwordAccount.user.email); assert.equal(linked.user.emailVerified, false); assert.equal(linked.user.googleLinked, true); assert.equal(linked.recoveryCodes, undefined);

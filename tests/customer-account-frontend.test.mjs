@@ -11,7 +11,6 @@ import { accountFixture, browser, draftRecord, fixturePassword } from './support
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const user = { id: 'user-a', email: 'qa@example.invalid', emailVerified: false, name: 'Synthetic person', company: 'Synthetic lab' };
-const codes = Array.from({ length: 8 }, (_, i) => 'SYNTHETICCODE0000' + i);
 const response = (value, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => value });
 const browserFetcher = (active, hook = () => {}) => async (url, options) => {
   const route = url.slice('/api/account'.length);
@@ -31,13 +30,13 @@ test('mail fragments are captured and removed synchronously, malformed links cle
  for(const [search,hash,valid]of[['','#token='+'a'.repeat(64),true],['','#token=bad',false],['?extra=1','#token='+'a'.repeat(64),false],['','#token='+'a'.repeat(64)+'&x=1',false]]){const events=[],token=captureMailAction({pathname:'/verify-email',search,hash},{replaceState(...args){events.push(args);}});assert.equal(!!token,valid);assert.deepEqual(events,[[null,'','/verify-email']]);}
  const state=createMailActionState();state.enter('a'.repeat(64));let calls=0,finish;assert.equal(calls,0);const first=state.submit(async token=>{calls++;assert.equal(token.length,64);return new Promise(resolve=>finish=resolve);});assert.equal(await state.submit(()=>{calls++;}),null);state.clear();finish({ok:true});assert.equal(await first,null);assert.equal(calls,1);assert.equal(state.ready(),false);assert.equal(notificationText('accepted'),'Mail server accepted');
 });
-test('actual action page submits only on click, suppresses late acknowledgement and resets to sign-in with new codes',async()=>{
+test('actual action page submits only on click, suppresses late acknowledgement and renders reset success with sign-in and no automatic login',async()=>{
  let calls=0,finish;const h=pageHarness({overrides:{verifyEmail:()=>{calls++;return new Promise(resolve=>finish=resolve);}}});await h.page.activate('/verify-email',null,'a'.repeat(64));assert.equal(calls,0);assert.ok(h.root.querySelector('[data-account-action="verify-email"]'));assert.doesNotMatch(h.root.innerHTML,/a{64}/);h.root.click('[data-account-action="verify-email"]');h.root.click('[data-account-action="verify-email"]');assert.equal(calls,1);h.page.leave();finish({ok:true});await tick();assert.equal(h.root.innerHTML,'');
- const k=pageHarness({overrides:{resetPassword:async()=>({ok:true,recoveryCodes:codes})}});await k.page.activate('/reset-password',null,'b'.repeat(64));const form=k.root.querySelector('[data-account-form="reset"]');for(const name of['newPassword','confirmPassword'])form.elements.namedItem(name).value='New synthetic password 101';k.root.emit('submit',form);await tick();assert.match(k.root.innerHTML,/Your eight recovery codes/);const ack=k.root.querySelector('[data-account-confirm-codes]');ack.checked=true;k.root.emit('change',ack);k.root.click('[data-account-action="ack-codes"]');assert.equal(k.navigations.at(-1)[0],'/login');await k.page.activate('/reset-password');assert.match(k.root.innerHTML,/invalid, used or expired/);
+ const k=pageHarness({overrides:{resetPassword:async()=>({ok:true})}});await k.page.activate('/reset-password',null,'b'.repeat(64));const form=k.root.querySelector('[data-account-form="reset"]');for(const name of['newPassword','confirmPassword'])form.elements.namedItem(name).value='New synthetic password 101';k.root.emit('submit',form);await tick();assert.match(k.root.innerHTML,/Password updated/);assert.match(k.root.innerHTML,/href="\/login"/);assert.equal(k.navigations.length,0);assert.doesNotMatch(k.root.innerHTML,/recovery codes|data-account-ack/i);await k.page.activate('/reset-password');assert.match(k.root.innerHTML,/invalid, used or expired/);
 });
-test('mail-first recovery keeps saved-code fallback and verification/notifications stay separate from Submitted',async()=>{
+test('email recovery has no saved-code fallback and verification/notifications stay separate from Submitted',async()=>{
  const doc={id:'mail-doc',revision:1,record:createAccountRequest('contact',{name:'Synthetic',email:user.email,topic:'testing',message:'Test'},{id:'AN-REQ-UIMAIL101',createdAt:'2026-11-07T00:00:00.000Z'}),notifications:{receipt:'not_verified',support:'accepted',retryable:true}};let refreshed=0;
- const h=pageHarness({initialUser:user,overrides:{snapshot:()=>({user,mail:{enabled:true}}),listRequests:async()=>[doc],requestVerification:async()=>({ok:true,status:'queued'}),retryNotifications:async()=>{refreshed++;return{...doc,notifications:{receipt:'queued',support:'accepted',retryable:false}};}}});await h.page.activate('/recover-account');assert.ok(h.root.querySelector('[data-account-form="reset-request"]'));h.root.click('[data-account-action="use-code"]');assert.ok(h.root.querySelector('[data-account-form="recover"]'));await h.page.activate('/account');assert.match(h.root.innerHTML,/Submitted/);assert.match(h.root.innerHTML,/Mail server accepted/);assert.match(h.root.innerHTML,/Inbox delivery is not confirmed/);h.root.click('[data-account-action="retry-notifications"]');await tick();assert.equal(refreshed,1);assert.match(h.root.innerHTML,/Receipt: Queued/);h.root.click('[data-account-tab="security"]');h.root.click('[data-account-action="resend-verification"]');await tick();assert.match(h.root.querySelector('[data-account-status]').textContent,/Check your email/);
+ const h=pageHarness({initialUser:user,overrides:{snapshot:()=>({user,mail:{enabled:true}}),listRequests:async()=>[doc],requestVerification:async()=>({ok:true,status:'queued'}),retryNotifications:async()=>{refreshed++;return{...doc,notifications:{receipt:'queued',support:'accepted',retryable:false}};}}});await h.page.activate('/recover-account');assert.ok(h.root.querySelector('[data-account-form="reset-request"]'));assert.equal(h.root.querySelector('[data-account-action="use-code"]'),null);assert.equal(h.root.querySelector('[name="recoveryCode"]'),null);await h.page.activate('/account');assert.match(h.root.innerHTML,/Submitted/);assert.match(h.root.innerHTML,/Mail server accepted/);assert.match(h.root.innerHTML,/Inbox delivery is not confirmed/);h.root.click('[data-account-action="retry-notifications"]');await tick();assert.equal(refreshed,1);assert.match(h.root.innerHTML,/Receipt: Queued/);h.root.click('[data-account-tab="security"]');h.root.click('[data-account-action="resend-verification"]');await tick();assert.match(h.root.querySelector('[data-account-status]').textContent,/Check your email/);
 });
 test('a bootstrap connection failure retains the same volatile action through deliberate Retry',async()=>{let sessions=0,verified=0;const h=pageHarness({overrides:{getSession:async()=>{if(++sessions===1)throw new AccountError('network');return null;},verifyEmail:async token=>{assert.equal(token,'c'.repeat(64));verified++;return{ok:true};}}});await h.page.activate('/verify-email',null,'c'.repeat(64));assert.ok(h.root.querySelector('[data-account-action="retry"]'));h.root.click('[data-account-action="retry"]');await tick();h.root.click('[data-account-action="verify-email"]');await tick();assert.equal(verified,1);assert.match(h.root.innerHTML,/Email verified/);});
 test('actual app startup removes action fragments before its first DOM work, preserving only volatile capture',async()=>{
@@ -97,7 +96,7 @@ test('real uppercase API errors keep specific static feedback ahead of status fa
   };
   await assert.rejects(client.signup({ email, password: fixturePassword }), expectError('ACCOUNT_EXISTS', /Try signing in or use account recovery/));
   await assert.rejects(client.login({ email, password: 'A wrong synthetic password' }), expectError('INVALID_CREDENTIALS', /email and password could not be confirmed/));
-  await assert.rejects(client.recover({ email, recoveryCode: '0'.repeat(32), newPassword: fixturePassword }), expectError('INVALID_RECOVERY', /recovery details could not be confirmed/));
+  assert.equal(client.recover, undefined); assert.equal(client.recoveryCodes, undefined); assert.equal(client.googleRecoveryCodes, undefined);
   assert.equal(client.snapshot().user.id, created.user.id, 'credential rejection must not falsely expire the existing session');
   let first;
   for (let i = 0; i < 50; i++) {
@@ -189,42 +188,36 @@ function domRoot() {
     click(selector) { const node = root.querySelector(selector); assert.ok(node, selector); root.emit('click', node); }, focused: () => focus
   }; return root;
 }
-function pageHarness({ initialUser = null, overrides = {}, clipboard } = {}) {
+function pageHarness({ initialUser = null, overrides = {}, onRegistrationNotice, onNavigate } = {}) {
   const root = domRoot(), navigations = []; let currentUser = initialUser, deviceReads = 0; const listeners = new Set();
   const emit = (value, reason) => { currentUser = value; for (const fn of listeners) fn(value, reason); };
   const client = { getSession: async () => currentUser, snapshot: () => ({ user: currentUser }), subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }, listRequests: async () => [],
-    signup: async () => { emit(user, 'login'); return { user, recoveryCodes: codes }; }, recover: async () => { emit(null, 'recovered'); return { ok: true, recoveryCodes: codes }; }, ...overrides };
-  const page = createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'].map(path => [path, root])), client, navigate: (...args) => navigations.push(args), onResume() {}, onNewRequest() {}, onDeviceDrafts: () => deviceReads++, clipboard });
+    signup: async () => { emit(user, 'login'); return { user }; }, ...overrides };
+  const page = createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'].map(path => [path, root])), client, navigate: (...args) => { navigations.push(args); onNavigate?.(...args); }, onResume() {}, onNewRequest() {}, onDeviceDrafts: () => deviceReads++, onRegistrationNotice });
   return { root, page, client, emit, navigations, deviceReads: () => deviceReads };
 }
 
-test('auth UI has no implicit device reads; submit validates, awaits signup and clears one-time codes on navigation', async () => {
-  const h = pageHarness({ clipboard: async () => { throw Error('Synthetic denied clipboard'); } });
-  assert.equal(h.deviceReads(), 0); await h.page.activate('/register', '/account'); assert.equal(h.deviceReads(), 0);
-  const form = h.root.querySelector('[data-account-form="register"]');
-  assert.equal(h.root.emit('submit', form), true); assert.equal(h.root.focused(), 'ac-register-email');
-  for (const [name, value] of Object.entries({ email: 'qa@example.invalid', name: '<private-name>', company: '', password: 'synthetic password', confirmPassword: 'synthetic password' })) form.elements.namedItem(name).value = value;
-  h.root.emit('submit', form); await tick(); assert.ok(h.root.innerHTML.includes(codes[0]));
-  assert.ok(!sanitizeMarkup(h.root.innerHTML).includes(codes[0]));
-  h.root.click('[data-account-action="copy-codes"]'); await tick(); assert.equal(h.root.querySelector('[data-account-copy-fallback]').hidden, false); assert.equal(h.root.querySelector('textarea').value, codes.join('\n'));
+test('auth UI validates then navigates directly after signup and retains the private boundary', async () => {
+  const h = pageHarness(); assert.equal(h.deviceReads(), 0); await h.page.activate('/register', '/contact');
+  const form = h.root.querySelector('[data-account-form="register"]'); assert.equal(h.root.emit('submit', form), true); assert.equal(h.root.focused(), 'ac-register-email');
+  for (const [name, value] of Object.entries({ email: user.email, name: '<private-name>', company: '', password: 'synthetic password', confirmPassword: 'synthetic password' })) form.elements.namedItem(name).value = value;
+  assert.ok(h.root.querySelector('[data-request-private]'));assert.ok(!sanitizeMarkup(h.root.innerHTML).includes('qa@example.invalid'));
+  h.root.emit('submit', form); await tick(); assert.equal(h.navigations.at(-1)[0], '/contact'); assert.doesNotMatch(h.root.innerHTML,/recovery codes|ack-codes|copy-codes/i);
   h.page.leave(); assert.equal(h.root.innerHTML, ''); assert.equal(h.deviceReads(), 0);
 });
 
-test('account security forms have unique labels/IDs and recovery does not auto-login', async () => {
+test('account security forms have unique IDs and mail-disabled recovery offers no unusable form', async () => {
   const h = pageHarness({ initialUser: user }); await h.page.activate('/account'); h.root.click('[data-account-tab="security"]');
-  const ids = [...h.root.innerHTML.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]); assert.equal(ids.length, new Set(ids).size);
-  await h.page.activate('/recover-account'); const form = h.root.querySelector('[data-account-form="recover"]');
-  for (const [name, value] of Object.entries({ email: user.email, recoveryCode: codes[0], newPassword: 'new synthetic password', confirmPassword: 'new synthetic password' })) form.elements.namedItem(name).value = value;
-  h.root.emit('submit', form); await tick(); assert.equal(h.client.snapshot().user, null); assert.ok(h.root.innerHTML.includes(codes[0]));
-  const check = h.root.querySelector('[data-account-confirm-codes]'); check.checked = true; h.root.emit('change', check); h.root.click('[data-account-action="ack-codes"]'); assert.equal(h.navigations.at(-1)[0], '/login?next=%2Faccount');
+  const ids = [...h.root.innerHTML.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]); assert.equal(ids.length, new Set(ids).size);assert.ok(h.root.querySelector('[data-account-action="logout-all"]'));assert.ok(h.root.innerHTML.includes(user.email));assert.ok(!sanitizeMarkup(h.root.innerHTML).includes(user.email));
+  await h.page.activate('/recover-account');assert.match(h.root.innerHTML,/email is currently unavailable/);assert.equal(h.root.querySelector('[data-account-form]'),null);assert.match(h.root.innerHTML,/Back to sign in/);assert.doesNotMatch(h.root.innerHTML,/saved recovery|recovery code|support.*unlock/i);
 });
 
-test('leaving or switching account suppresses pending private page and late clipboard results', async () => {
+test('leaving or switching account suppresses pending private page and late signup navigation or notice', async () => {
   let resolveSession; const h = pageHarness({ overrides: { getSession: () => new Promise(resolve => { resolveSession = resolve; }) } });
   const pending = h.page.activate('/account'); h.page.leave(); resolveSession(user); await pending; assert.equal(h.root.innerHTML, ''); assert.equal(h.navigations.length, 0);
-  let rejectCopy; const k = pageHarness({ clipboard: () => new Promise((_, reject) => { rejectCopy = reject; }) }); await k.page.activate('/register');
-  const form = k.root.querySelector('[data-account-form="register"]'); for (const [name, value] of Object.entries({ email: user.email, name: '', company: '', password: 'synthetic password', confirmPassword: 'synthetic password' })) form.elements.namedItem(name).value = value;
-  k.root.emit('submit', form); await tick(); k.root.click('[data-account-action="copy-codes"]'); await tick(); k.emit(null, 'logout'); rejectCopy(Error('Synthetic late rejection')); await tick(); assert.equal(k.root.innerHTML, '');
+  let finish;const notices=[];const k=pageHarness({onRegistrationNotice:value=>notices.push(value),overrides:{signup:()=>new Promise(resolve=>{finish=resolve;})}});await k.page.activate('/register');
+  const form=k.root.querySelector('[data-account-form="register"]');for(const [name,value]of Object.entries({email:user.email,password:'synthetic password',confirmPassword:'synthetic password'}))form.elements.namedItem(name).value=value;
+  k.root.emit('submit',form);k.page.leave();finish({user,verification:{status:'queued'}});await tick();assert.equal(k.root.innerHTML,'');assert.equal(k.navigations.length,0);assert.deepEqual(notices,[]);
 });
 
 test('account request tab renders all kinds and legacy truth with escaped details and context-preserving edits',async()=>{
@@ -251,6 +244,29 @@ test('Google button is conditional and Google-only security never asks for a fic
  await g.page.activate('/account');g.root.click('[data-account-tab="security"]');assert.ok(g.root.querySelector('[data-account-form="password-setup"]'));assert.equal(g.root.querySelector('[name="currentPassword"]'),null);assert.match(g.root.innerHTML,/Set a password before disconnecting/);
  const ids=[...g.root.innerHTML.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(ids.length,new Set(ids).size);
 });
-test('actual Google result page reuses the private codes pane once and clears codes on leave',async()=>{
- let calls=0;const h=pageHarness({overrides:{googleStatus:async()=>({ready:true,intent:'login'}),googleComplete:async()=>{calls++;return{intent:'login',next:'/account',recoveryCodes:codes,user};}}});await h.page.activate('/google-signin');assert.equal(calls,1);assert.match(h.root.innerHTML,/Your eight recovery codes/);assert.ok(h.root.innerHTML.includes(codes[0]));h.page.leave();assert.equal(h.root.innerHTML,'');await h.page.activate('/google-signin');assert.equal(calls,1);assert.ok(!h.root.innerHTML.includes(codes[0]));
+test('actual Google result page navigates once directly without a recovery-code checkpoint',async()=>{
+ let calls=0;const h=pageHarness({overrides:{googleStatus:async()=>({ready:true,intent:'login'}),googleComplete:async()=>{calls++;return{intent:'login',next:'/account',user};}}});await h.page.activate('/google-signin');assert.equal(calls,1);assert.deepEqual(h.navigations,[['/account',{replace:true}]]);assert.doesNotMatch(h.root.innerHTML,/recovery codes|ack-codes|copy-codes/i);h.page.leave();assert.equal(h.root.innerHTML,'');await h.page.activate('/google-signin');assert.equal(calls,1);
+});
+
+test('registration notice is captured before navigation clears the page and contains only static verification feedback',async()=>{
+ for(const status of['queued','unavailable']){let enabled=true,h;const events=[];h=pageHarness({overrides:{snapshot:()=>({user,mail:{enabled}}),signup:async()=>({user,verification:{status}})},onNavigate:path=>{events.push(['navigate',path]);enabled=false;h.page.leave();},onRegistrationNotice:notice=>events.push(['notice',notice])});await h.page.activate('/register','/contact');const form=h.root.querySelector('[data-account-form="register"]');for(const[name,value]of Object.entries({email:user.email,password:'synthetic password',confirmPassword:'synthetic password'}))form.elements.namedItem(name).value=value;h.root.emit('submit',form);await tick();assert.equal(h.root.innerHTML,'');assert.equal(events.length,2);assert.deepEqual(events[0],['navigate','/contact']);assert.match(events[1][1],status==='queued'?/Check your email/:/currently unavailable/);assert.doesNotMatch(events[1][1],/qa@|Synthetic|recovery code/i);await tick();assert.equal(events.length,2);}
+});
+
+test('signup releases only a fresh confirmed owner/profile/CSRF/capability and withholds page feedback for cookie replacements',async()=>{
+ for(const replacement of['stable','other','logout']){const other={...user,id:'signup-b105',email:'other105@example.invalid'},fresh={...user,name:'Fresh profile'};let actual=null,committed=false;const calls=[],published=[],notices=[],navigations=[],root=domRoot();
+  const client=createCustomerAccountClient({fetcher:async(url,options)=>{calls.push({url,options});if(url.endsWith('/session'))return response({authenticated:!!actual,user:actual,csrfToken:committed?'fresh-csrf105':'challenge105',mail:{enabled:committed},google:{enabled:false}});if(url.endsWith('/logout')){actual=null;return response({ok:true});}assert.ok(url.endsWith('/signup'));committed=true;return{ok:true,status:201,json:async()=>{actual=replacement==='stable'?fresh:replacement==='other'?other:null;return{user:{...user,name:'Old POST profile'},csrfToken:'old-post105',mail:{enabled:false},google:{enabled:false},verification:{status:'queued'}};}};}});client.subscribe(value=>published.push(value?.id));
+  const page=createAccountPage({roots:{'/register':root},client,navigate:path=>navigations.push(path),onResume(){},onNewRequest(){},onRegistrationNotice:value=>notices.push(value)});await page.activate('/register','/submit-sample');const form=root.querySelector('[data-account-form="register"]');for(const[name,value]of Object.entries({email:user.email,password:'synthetic password',confirmPassword:'synthetic password'}))form.elements.namedItem(name).value=value;root.emit('submit',form);await tick();await tick();assert.ok(calls.at(-1).url.endsWith('/session'));
+  if(replacement==='stable'){assert.deepEqual(navigations,['/submit-sample']);assert.equal(notices.length,1);assert.equal(client.snapshot().user.name,'Fresh profile');assert.equal(client.snapshot().mail.enabled,true);await client.logout();assert.equal(calls.at(-1).options.headers['X-Account-CSRF'],'fresh-csrf105');}
+  else{assert.deepEqual(navigations,[]);assert.deepEqual(notices,[]);assert.equal(published.includes(user.id),false);assert.equal(client.snapshot().user?.id||null,replacement==='other'?other.id:null);assert.match(root.querySelector('[data-account-error]').textContent,/signed-in account changed/);}
+  page.destroy();
+ }
+});
+
+test('logout revision during signup fresh-session confirmation aborts late publication',async()=>{
+ let committed=false,release,entered;const waiting=new Promise(resolve=>entered=resolve),published=[];const client=createCustomerAccountClient({fetcher:async(url)=>{if(url.endsWith('/session')){if(committed){entered();return new Promise(resolve=>release=()=>resolve(response({authenticated:true,user,csrfToken:'late105',mail:{enabled:true}})));}return response({authenticated:false,user:null,csrfToken:'challenge105'});}if(url.endsWith('/logout'))return response({ok:true});committed=true;return response({user,csrfToken:'post105',mail:{enabled:true}});}});client.subscribe(value=>published.push(value?.id));const pending=client.signup({email:user.email,password:'Synthetic password 105'});await waiting;await client.logout();release();await assert.rejects(pending,error=>error.code==='aborted');assert.equal(client.snapshot().user,null);assert.equal(published.includes(user.id),false);
+});
+
+test('sign out of all devices remains visible and operates for every password/mail/Google capability combination',async()=>{
+ for(const passwordEnabled of[true,false])for(const mailEnabled of[true,false])for(const googleEnabled of[true,false]){const signed={...user,passwordEnabled,googleLinked:!passwordEnabled},calls=[];let h;h=pageHarness({initialUser:signed,overrides:{snapshot:()=>({user:signed,mail:{enabled:mailEnabled},google:{enabled:googleEnabled}}),logout:async all=>{calls.push(all);h.emit(null,'logout');}}});await h.page.activate('/account');h.root.click('[data-account-tab="security"]');assert.ok(h.root.querySelector('[data-account-action="logout-all"]'));assert.match(h.root.innerHTML,/<h2>Sessions<\/h2>/);assert.doesNotMatch(h.root.innerHTML,/Recovery codes|ack-codes/);h.root.click('[data-account-action="logout-all"]');await tick();assert.deepEqual(calls,[true]);assert.equal(h.navigations.at(-1)[0],'/login');assert.equal(h.root.innerHTML,'');}
+ const g=pageHarness({overrides:{snapshot:()=>({user:null,mail:{enabled:false},google:{enabled:true}})}});await g.page.activate('/recover-account');assert.ok(g.root.querySelector('[data-account-action="google-login"]'));assert.equal(g.root.querySelector('[data-account-form="reset-request"]'),null);assert.doesNotMatch(g.root.innerHTML,/or use your email|saved recovery|support.*unlock/i);
 });

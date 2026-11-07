@@ -9,13 +9,10 @@ export const digest = value => createHash('sha256').update(value).digest('hex');
 const token = () => randomBytes(32).toString('hex');
 const id = () => randomBytes(16).toString('hex');
 const invalid = () => accountError(401, 'INVALID_CREDENTIALS', 'Email or password was not accepted.');
-const invalidRecovery = () => accountError(401, 'INVALID_RECOVERY', 'The recovery details were not accepted.');
 export const validPassword = value => validUnicode(value) && Array.from(value).length >= 15 && Array.from(value).length <= 128 && Buffer.byteLength(value, 'utf8') <= 512;
 export function requirePassword(value) { if (!validPassword(value)) throw accountError(400, 'INVALID_PASSWORD', 'Use 15 to 128 characters, at most 512 UTF-8 bytes.'); return value; }
 export const safeUser = row => ({ id: row.id, email: row.email, emailVerified: Number.isSafeInteger(row.email_verified_at) && row.email_verified_at > 0, name: row.name, company: row.company, passwordEnabled: row.password_enabled !== 0, googleLinked: !!row.google_linked });
 const sameToken = (a, b) => typeof a === 'string' && typeof b === 'string' && tokenPattern.test(a) && tokenPattern.test(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-const normalizeCode = value => typeof value === 'string' && value.length <= 64 ? value.replace(/[- ]/g, '').toUpperCase() : '';
-const codeHash = (userId, code) => digest(userId + '\0' + code);
 
 export function createAccountAuth({ db, clock = Date.now, derive = nativeDerive, kdfLimit = 2, absoluteMs = 7 * 86400000, idleMs = 86400000, challengeMs = 600000, challengePeerLimit = 20, challengeGlobalLimit = 512, rateWindowMs = 900000, identityLimit = 20, peerLimit = 200, globalLimit = 1000, onSignup = () => null, onSecurityChange = () => {} } = {}) {
   if (typeof clock !== 'function' || ![kdfLimit, absoluteMs, idleMs, challengeMs, challengePeerLimit, challengeGlobalLimit, rateWindowMs, identityLimit, peerLimit, globalLimit].every(value => Number.isSafeInteger(value) && value > 0) || kdfLimit > 2) throw new Error('Invalid account security limits.');
@@ -86,16 +83,10 @@ export function createAccountAuth({ db, clock = Date.now, derive = nativeDerive,
     if (count >= 32) db.run('DELETE FROM account_sessions WHERE token_hash IN (SELECT token_hash FROM account_sessions WHERE user_id=? ORDER BY last_seen,token_hash LIMIT ?)', user.id, count - 31);
     if (db.get('SELECT count(*) AS n FROM account_sessions').n >= 8192) throw accountError(429, 'SESSIONS_BUSY', 'Sign-in is busy. Try again shortly.', 60);
     const sessionToken = token(), csrfToken = token();
-    if (!['password','google'].includes(method) || grant !== null && !['password_setup','recovery_codes'].includes(grant)) throw new Error('Invalid session provenance.');
+    if (!['password','google'].includes(method) || grant !== null && grant !== 'password_setup') throw new Error('Invalid session provenance.');
     db.run('INSERT INTO account_sessions(token_hash,user_id,csrf_hash,security_version,created_at,last_seen,expires_at,auth_method,google_reauth_at,google_reauth_purpose) VALUES(?,?,?,?,?,?,?,?,?,?)', digest(sessionToken), user.id, digest(csrfToken), user.security_version, now, now, now + absoluteMs, method, grant ? now : null, grant);
     if (tokenPattern.test(oldCsrf || '')) db.run('DELETE FROM account_challenges WHERE token_hash=?', digest(oldCsrf));
     return { sessionToken, csrfToken, data: { user: publicUser(user), csrfToken } };
-  }
-  function codes(userId) {
-    const values = Array.from({ length: 8 }, () => randomBytes(16).toString('hex').toUpperCase());
-    db.run('DELETE FROM account_recovery_codes WHERE user_id=?', userId);
-    for (const code of values) db.run('INSERT INTO account_recovery_codes VALUES(?,?)', userId, codeHash(userId, code));
-    return values.map(code => code.match(/.{4}/g).join('-'));
   }
   async function verifyPassword(snapshot, password) {
     const enabled = snapshot && snapshot.password_enabled !== 0;
@@ -106,7 +97,7 @@ export function createAccountAuth({ db, clock = Date.now, derive = nativeDerive,
   return {
     session, bootstrap, csrf, requireUser,
     google: Object.freeze({
-      user: publicUser, issue, codes, securityChanged: onSecurityChange,
+      user: publicUser, issue, securityChanged: onSecurityChange,
       current(snapshot, binding = {}) {
         const row = db.get('SELECT * FROM account_users WHERE id=?',snapshot.id);
         if (!row || row.security_version !== snapshot.security_version || row.recovery_version !== snapshot.recovery_version) throw accountError(409,'ACCOUNT_CHANGED','Account security changed. Sign in again.');
@@ -116,7 +107,6 @@ export function createAccountAuth({ db, clock = Date.now, derive = nativeDerive,
       async verifyCurrentPassword(user,password,context) { requirePassword(password); rate(context.peer,user.email); await verifyPassword(user,password); const result = requireUser(context.session); current(user,true); if(result.id!==user.id)throw invalid(); return result; }
     }),
     async prepareMailPassword(password) { requirePassword(password); const salt = randomBytes(16).toString('hex'); return { salt, hash: (await hashPassword(password, salt)).toString('hex') }; },
-    mailRecoveryCodes: codes,
     cookieSeconds: Math.floor(absoluteMs / 1000), challengeSeconds: Math.floor(challengeMs / 1000),
     async signup(input, context) {
       const email = emailKey(input.email), password = requirePassword(input.password), name = text(input.name ?? '', 100), company = text(input.company ?? '', 160);
@@ -127,9 +117,9 @@ export function createAccountAuth({ db, clock = Date.now, derive = nativeDerive,
         if (db.get('SELECT count(*) AS n FROM account_users').n >= 10000) throw accountError(429, 'ACCOUNT_CAPACITY', 'Registration is busy. Try again later.', 60);
         const userId = id(), now = clock();
         db.run('INSERT INTO account_users(id,email,name,company,password_salt,password_hash,security_version,recovery_version,created_at,updated_at,email_verified_at) VALUES(?,?,?,?,?,?,1,1,?,?,NULL)', userId, email, name, company, salt, hash, now, now);
-        const user = db.get('SELECT * FROM account_users WHERE id=?', userId), recoveryCodes = codes(userId), result = issue(user, context.csrf);
+        const user = db.get('SELECT * FROM account_users WHERE id=?', userId), result = issue(user, context.csrf);
         const verification = onSignup(user);
-        return { ...result, data: { ...result.data, recoveryCodes, ...(verification ? { verification } : {}) } };
+        return { ...result, data: { ...result.data, ...(verification ? { verification } : {}) } };
       });
     },
     async login(input, context) {
@@ -158,26 +148,6 @@ export function createAccountAuth({ db, clock = Date.now, derive = nativeDerive,
         requireUser(context.session); current(user); db.run('UPDATE account_users SET password_salt=?,password_hash=?,password_enabled=1,security_version=security_version+1,updated_at=? WHERE id=?', salt, hash, clock(), user.id);
         db.run('DELETE FROM account_sessions WHERE user_id=?', user.id); onSecurityChange(user.id);
         return issue(db.get('SELECT * FROM account_users WHERE id=?', user.id), context.csrf);
-      });
-    },
-    async regenerate(user, input, context) {
-      requirePassword(input.currentPassword); rate(context.peer, user.email); await verifyPassword(user, input.currentPassword);
-      return db.transaction(() => { requireUser(context.session); current(user, true); db.run('UPDATE account_users SET recovery_version=recovery_version+1 WHERE id=?', user.id); onSecurityChange(user.id); return { recoveryCodes: codes(user.id) }; });
-    },
-    async recover(input, context) {
-      const email = emailKey(input.email), password = requirePassword(input.newPassword), normalized = normalizeCode(input.recoveryCode);
-      if (!/^[A-F0-9]{32}$/.test(normalized)) throw invalidRecovery();
-      rate(context.peer, email);
-      const snapshot = db.get('SELECT * FROM account_users WHERE email=?', email), salt = randomBytes(16).toString('hex');
-      const hash = (await hashPassword(password, salt)).toString('hex');
-      return db.transaction(() => {
-        if (!snapshot) throw invalidRecovery();
-        let user; try { user = current(snapshot, true); } catch { throw invalidRecovery(); }
-        if (!db.get('SELECT 1 FROM account_recovery_codes WHERE user_id=? AND code_hash=?', user.id, codeHash(user.id, normalized))) throw invalidRecovery();
-        db.run('UPDATE account_users SET password_salt=?,password_hash=?,password_enabled=1,security_version=security_version+1,recovery_version=recovery_version+1,updated_at=? WHERE id=?', salt, hash, clock(), user.id);
-        db.run('DELETE FROM account_sessions WHERE user_id=?', user.id); onSecurityChange(user.id);
-        if (tokenPattern.test(context.csrf || '')) db.run('DELETE FROM account_challenges WHERE token_hash=?', digest(context.csrf));
-        return { ok: true, recoveryCodes: codes(user.id) };
       });
     }
   };

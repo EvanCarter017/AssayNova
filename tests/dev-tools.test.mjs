@@ -335,7 +335,7 @@ test('live locator masks request summary/review children and ancestors and retur
 });
 
 
-test('account profile, recovery codes and draft summaries reuse the private markup boundary', () => {
-  const raw = '<section data-request-private><h2>PRIVATE_ACCOUNT_NAME</h2><p>PRIVATE_ACCOUNT_EMAIL</p><ul><li><code>PRIVATE_ACCOUNT_CODE</code></li></ul><textarea>PRIVATE_ACCOUNT_COPY</textarea><button data-id="PRIVATE_ACCOUNT_DRAFT">Resume</button></section>';
+test('account profile, password actions and request summaries reuse the private markup boundary', () => {
+  const raw = '<section data-request-private><h2>PRIVATE_ACCOUNT_NAME</h2><p>PRIVATE_ACCOUNT_EMAIL</p><input type="password" value="PRIVATE_ACCOUNT_PASSWORD"><p>PRIVATE_ACCOUNT_ACTION</p><button data-id="PRIVATE_ACCOUNT_DRAFT">Resume</button></section>';
   const clean = sanitizeMarkup(raw); assert.ok(!clean.includes('PRIVATE_ACCOUNT_')); assert.ok(clean.includes('[content omitted]'));
 });

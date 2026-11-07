@@ -87,6 +87,7 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     const ticket = ++revision;
     const value = await mutate(suffix, body, options);
     if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
+    if (suffix === '/signup') return confirmAuthenticationResult(value, ticket, options);
     if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response');
     setSession(value.user, value.csrfToken, 'login', mailCapability(value.mail), mailCapability(value.google));
     return value;
@@ -97,25 +98,20 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     if (!ownerId || !current || current.id !== ownerId) throw new AccountError('owner_changed');
   }
   async function confirmAuthenticationResult(value, ticket, options, ownerId = null) {
-    try {
-      if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
-      const returnedUser = accountUser(value.user);
-      if (ownerId && returnedUser.id !== ownerId) throw new AccountError('owner_changed');
-      if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response');
-      mailCapability(value.mail); mailCapability(value.google);
-      // A successful POST can precede a cross-tab cookie replacement. Its JSON
-      // is not proof that the returned owner still controls this browser.
-      const confirmedUser = await getSession(options);
-      if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
-      if (!confirmedUser || confirmedUser.id !== returnedUser.id) throw new AccountError('owner_changed');
-      // Preserve the fresh session's user, CSRF and capabilities; an older POST
-      // acknowledgement must not overwrite a rotated or replacement session.
-      setSession(confirmedUser, csrf, 'login');
-      return { ...value, user: confirmedUser, csrfToken: csrf };
-    } catch (error) {
-      if (Array.isArray(value?.recoveryCodes)) value.recoveryCodes.fill('');
-      throw error;
-    }
+    if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
+    const returnedUser = accountUser(value.user);
+    if (ownerId && returnedUser.id !== ownerId) throw new AccountError('owner_changed');
+    if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response');
+    mailCapability(value.mail); mailCapability(value.google);
+    // A successful POST can precede a cross-tab cookie replacement. Its JSON
+    // is not proof that the returned owner still controls this browser.
+    const confirmedUser = await getSession(options);
+    if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
+    if (!confirmedUser || confirmedUser.id !== returnedUser.id) throw new AccountError('owner_changed');
+    // Preserve the fresh session's user, CSRF and capabilities; an older POST
+    // acknowledgement must not overwrite a rotated or replacement session.
+    setSession(confirmedUser, csrf, 'login');
+    return { ...value, user: confirmedUser, csrfToken: csrf };
   }
   async function authenticateCurrentOwner(suffix, body, options) {
     const ownerId = user?.id;
@@ -150,13 +146,10 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     },
     async setupPassword(newPassword,options) {return (await authenticateCurrentOwner('/password/setup',{newPassword},options)).user;},
     async googleUnlink(currentPassword,options) {return (await authenticateCurrentOwner('/oauth/google/unlink',{currentPassword},options)).user;},
-    async googleRecoveryCodes(options) {const owner=user?.id;await confirmOwner(owner,options);const value=await mutate('/oauth/google/recovery-codes',{},options);await confirmOwner(owner,options);return value;},
 
     async logout(all = false, options) { const ticket = ++revision; const value = await mutate(all ? '/logout-all' : '/logout', {}, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'logout'); },
-    async recover(values, options) { const ticket = ++revision; const value = await mutate('/recover', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'recovered'); return value; },
     async profile(values, options) { const ticket = revision; const value = await mutate('/profile', values, options, 'PATCH'); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); setSession(value.user, csrf, 'profile', mailCapability(value.mail), mailCapability(value.google)); return user; },
     async password(values, options) { const ticket = ++revision; const value = await mutate('/password', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response'); setSession(value.user, value.csrfToken, 'password', mailCapability(value.mail), mailCapability(value.google)); return user; },
-    async recoveryCodes(values, options) { const ticket = revision; const value = await mutate('/recovery-codes', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken === 'string') csrf = value.csrfToken; return value; },
     async requestVerification(options) { const ownerId = user?.id; await confirmOwner(ownerId, options); const value = await mutate('/email/verification', {}, options); await confirmOwner(ownerId, options); if (value.ok !== true || !['verified','queued','not_configured','unsupported_address','backpressure','unavailable'].includes(value.status)) throw new AccountError('invalid_response'); return value; },
     async requestPasswordReset(email, options) { const value = await mutate('/password/reset-request', { email }, options); if (value.ok !== true || Object.keys(value).length !== 1) throw new AccountError('invalid_response'); return value; },
     async verifyEmail(token, options) { const ownerId = (await getSession(options))?.id || null; const value = await mutate('/email/verify', { token }, options); if (value.ok !== true || Object.keys(value).length !== 1) throw new AccountError('invalid_response'); const current = await getSession(options); if ((current?.id || null) !== ownerId) throw new AccountError('owner_changed'); return value; },

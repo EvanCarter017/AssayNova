@@ -58,7 +58,7 @@ export async function createAccountHandler({ directory, origins, port, allowPriv
         if(target==='/api/account/oauth/google/status' && ['GET','HEAD'].includes(request.method)) { send(200,google.status(browser,{user:auth.session(tokens.session),session:tokens.session,csrf:tokens.csrf}));return true; }
         const paths = new Map([
           ['/api/account/oauth/google/start',['next']],['/api/account/oauth/google/link',['currentPassword']],['/api/account/oauth/google/reauth',['purpose']],
-          ['/api/account/oauth/google/complete',[]],['/api/account/oauth/google/unlink',['currentPassword']],['/api/account/oauth/google/recovery-codes',[]],['/api/account/password/setup',['newPassword']]
+          ['/api/account/oauth/google/complete',[]],['/api/account/oauth/google/unlink',['currentPassword']],['/api/account/password/setup',['newPassword']]
         ]);
         if(!paths.has(target))throw accountError(404,'ACCOUNT_ROUTE_NOT_FOUND','Account page was not found.');
         if(request.method!=='POST')throw accountError(405,'METHOD_NOT_ALLOWED','Account request method was rejected.');
@@ -74,16 +74,13 @@ export async function createAccountHandler({ directory, origins, port, allowPriv
           catch(error){response.setHeader('Set-Cookie',googleCookie(port,'',0));throw error;}return true;
         }
         if(!user)throw accountError(401,'AUTH_REQUIRED','Sign in to continue.');
-        if(target.endsWith('/recovery-codes')){send(200,google.regenerate(user,context));return true;}
         const result=target.endsWith('/setup')?await google.setup(user,input,context):await google.unlink(user,input,context);send(200,capabilities(result.data),setSession(result));return true;
       }
       const specs = new Map([
         ['/api/account/signup', ['POST', ['email', 'password', 'name', 'company'], ['email', 'password']]],
         ['/api/account/login', ['POST', ['email', 'password']]],
         ['/api/account/logout', ['POST', []]], ['/api/account/logout-all', ['POST', []]],
-        ['/api/account/recover', ['POST', ['email', 'recoveryCode', 'newPassword']]],
         ['/api/account/password', ['POST', ['currentPassword', 'newPassword']]],
-        ['/api/account/recovery-codes', ['POST', ['currentPassword']]],
         ['/api/account/profile', ['PATCH', ['name', 'company'], []]],
         ['/api/account/email/verification', ['POST', []]],
         ['/api/account/email/verify', ['POST', ['token']]],
@@ -112,7 +109,7 @@ export async function createAccountHandler({ directory, origins, port, allowPriv
       if (!spec) throw accountError(404, 'ACCOUNT_ROUTE_NOT_FOUND', 'Account page was not found.');
       if (request.method !== spec[0]) throw accountError(405, 'METHOD_NOT_ALLOWED', 'Account request method was rejected.');
       const input = await jsonBody(request, target); exactInput(input, spec[1], spec[2]);
-      const preauth = ['/api/account/signup', '/api/account/login', '/api/account/recover', '/api/account/email/verify', '/api/account/password/reset-request', '/api/account/password/reset'].includes(target);
+      const preauth = ['/api/account/signup', '/api/account/login', '/api/account/email/verify', '/api/account/password/reset-request', '/api/account/password/reset'].includes(target);
       const user = preauth ? auth.csrf(tokens, request.headers['x-account-csrf']) : auth.requireUser(tokens.session);
       if (!preauth) auth.csrf(tokens, request.headers['x-account-csrf']);
       const context = { peer: request.socket.remoteAddress, csrf: tokens.csrf, session: tokens.session, userId: user?.id || null };
@@ -122,13 +119,12 @@ export async function createAccountHandler({ directory, origins, port, allowPriv
       if (target === '/api/account/signup' || target === '/api/account/login') {
         const result = await auth[target.endsWith('/signup') ? 'signup' : 'login'](input, context); send(target.endsWith('/signup') ? 201 : 200, capabilities(result.data), setSession(result)); return true;
       }
-      if (target === '/api/account/recover') { send(200, await auth.recover(input, context), clear()); return true; }
       if (!user) throw accountError(401, 'AUTH_REQUIRED', 'Sign in to continue.');
       if (target === '/api/account/logout' || target === '/api/account/logout-all') send(200, auth.logout(tokens, target.endsWith('/logout-all')), clear());
       else if (target === '/api/account/email/verification') send(200, actions.verification(user));
       else if (target === '/api/account/profile') send(200, capabilities(auth.profile(user, input)));
       else if (target === '/api/account/password') { const result = await auth.password(user, input, context); send(200, capabilities(result.data), setSession(result)); }
-      else send(200, await auth.regenerate(user, input, context));
+      else throw accountError(404, 'ACCOUNT_ROUTE_NOT_FOUND', 'Account page was not found.');
       return true;
     } catch (error) { if (!request.complete && !request.destroyed) request.resume(); accountFailure(response, error, head); return true; }
   }

@@ -81,7 +81,7 @@ export function createMailActions({ db, auth, mail, clock = Date.now, securityCh
         db.run('UPDATE account_users SET password_salt=?,password_hash=?,password_enabled=1,security_version=security_version+1,recovery_version=recovery_version+1,updated_at=? WHERE id=?', password.salt, password.hash, clock(), current.user.id);
         db.run('DELETE FROM account_sessions WHERE user_id=?', current.user.id); securityChanged(current.user.id);
         db.run('DELETE FROM account_challenges WHERE token_hash=?', digest(context.csrf));
-        return { ok: true, recoveryCodes: auth.mailRecoveryCodes(current.user.id) };
+        return { ok: true };
       });
     }
   };

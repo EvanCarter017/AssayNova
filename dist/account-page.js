@@ -2,7 +2,7 @@ import { SERVICE_NAMES } from './data.js';
 import { SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES } from './submission.js';
 import { REQUEST_KINDS, requestDetails, requestKind, requestStatus, requestSummary } from './account-requests.js';
 import { CONTACT_TOPICS } from './contact.js';
-import { validAccountPassword, safeAccountNext, accountErrorMessage, AccountError } from './customer-account.js';
+import { validAccountPassword, safeAccountNext, accountErrorMessage } from './customer-account.js';
 import { createMailActionState, notificationText } from './account-mail.js';
 import { createGoogleAccountController } from './account-google.js';
 
@@ -13,17 +13,16 @@ const password = (name, label, current = false) => field(name, label, { type: 'p
 const submit = label => `<button class="button button-teal" type="submit">${label}<span aria-hidden="true"> →</span></button>`;
 const notice = '<p class="ac-note">Manage your submitted requests here. Older saved requests need explicit review and submission.</p>';
 
-export function createAccountPage({ roots, client, navigate, onResume, onNewRequest, clipboard = value => globalThis.navigator.clipboard.writeText(value) }) {
+export function createAccountPage({ roots, client, navigate, onResume, onNewRequest, onRegistrationNotice = () => {} }) {
   const mailAction = createMailActionState();
-  let recoverWithCode = false, verificationNotice = '', resendAt = 0;
+  let resendAt = 0;
   let path = '', root = null, revision = 0, actionRevision = 0, controller = null, busy = false;
-  let user = null, documents = [], tab = 'requests', selected = null, pendingDelete = null, codes = null, codesNext = '/account', next = '/account';
+  let user = null, documents = [], tab = 'requests', selected = null, pendingDelete = null, next = '/account';
   let returnSecurity = false;
-  const googleButton = () => client.snapshot().google?.enabled ? '<div class="ac-google-choice"><button class="ac-google-button" type="button" data-account-action="google-login" aria-label="Continue with Google"><img src="/assets/google-signin-light.png" alt=""></button><p class="ac-help">Google shares your basic identity with AssayNova. <a href="/privacy-policy">Privacy policy</a></p><p class="ac-divider">or use your email</p></div>' : '';
+  const googleButton = (emailAlternative = true) => client.snapshot().google?.enabled ? '<div class="ac-google-choice"><button class="ac-google-button" type="button" data-account-action="google-login" aria-label="Continue with Google"><img src="/assets/google-signin-light.png" alt=""></button><p class="ac-help">Google shares your basic identity with AssayNova. <a href="/privacy-policy">Privacy policy</a></p>' + (emailAlternative ? '<p class="ac-divider">or use your email</p>' : '') + '</div>' : '';
   const googleController = createGoogleAccountController({ client, onComplete(result) {
     user = client.snapshot().user;
-    if (result.recoveryCodes) showCodes(result.recoveryCodes, result.next);
-    else { returnSecurity = result.intent !== 'login'; navigate(result.next, { replace: true }); }
+    returnSecurity = result.intent !== 'login'; navigate(result.next, { replace: true });
   }, onState(state, error) {
     if (!root) return;
     if (path !== '/google-signin') { setBusy(state === 'pending'); if (error) report(accountErrorMessage(error)); return; }
@@ -31,8 +30,7 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     if (error) report(accountErrorMessage(error));
   } });
   const current = (ticket, action) => root && ticket === revision && (action === undefined || action === actionRevision) && !controller?.signal.aborted;
-  function clearCodes() { if (codes) codes.fill(''); codes = null; }
-  function leave() { googleController.leave(); mailAction.clear(); verificationNotice = ''; recoverWithCode = false; revision++; actionRevision++; controller?.abort(); controller = null; clearCodes(); for (const node of Object.values(roots)) if (node) node.innerHTML = ''; path = ''; root = null; busy = false; user = null; documents = []; selected = null; pendingDelete = null; }
+  function leave() { googleController.leave(); mailAction.clear(); revision++; actionRevision++; controller?.abort(); controller = null; for (const node of Object.values(roots)) if (node) node.innerHTML = ''; path = ''; root = null; busy = false; user = null; documents = []; selected = null; pendingDelete = null; }
   const errorNode = () => root?.querySelector('[data-account-error]');
   function report(message) { const node = errorNode(); if (node) { node.textContent = message; node.focus?.({ preventScroll: true }); } }
   function status(message) { const node = root?.querySelector('[data-account-status]'); if (node) node.textContent = message; }
@@ -43,12 +41,12 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
       const valid = mailAction.ready();
       shell('<section class="ac-card"><h2>' + (path === '/verify-email' ? 'Confirm your email' : 'Choose a new password') + '</h2>' + (valid ? '<p>' + (path === '/verify-email' ? 'Confirm your email to receive account email.' : 'Choose a new password to regain access.') + '</p>' + (path === '/verify-email' ? '<button class="button button-teal" type="button" data-account-action="verify-email">Verify email</button>' : form('reset', password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Reset password'))) : '<p>This link is invalid, used or expired. Reopen the email or request a new link.</p>') + '<p class="ac-links"><a href="/recover-account">Request a password reset</a><a href="/login">Sign in</a></p></section>'); return;
     }
-    if (path === '/recover-account' && client.snapshot().mail?.enabled && !recoverWithCode) {
-      shell('<section class="ac-card"><h2>Reset your password by email.</h2><p>Enter your account email. If it is eligible, you will receive a reset link.</p>' + form('reset-request', field('email', 'Account email', { type: 'email', maximum: 160, autocomplete: 'email' }) + submit('Request reset link')) + '<button class="text-button" type="button" data-account-action="use-code">Use a saved recovery code</button><p class="ac-links"><a href="/login">Back to sign in</a></p></section>'); return;
+    if (path === '/recover-account') {
+      const mailEnabled = client.snapshot().mail?.enabled;
+      shell('<section class="ac-card"><h2>' + (mailEnabled ? 'Reset your password by email.' : 'Account recovery') + '</h2>' + googleButton(!!mailEnabled) + (mailEnabled ? '<p>Enter your account email. If it is eligible, you will receive a reset link.</p>' + form('reset-request', field('email', 'Account email', { type: 'email', maximum: 160, autocomplete: 'email' }) + submit('Request reset link')) : '<p>Password reset by email is currently unavailable. You can sign in with your existing password' + (client.snapshot().google?.enabled ? ' or linked Google account' : '') + '.</p>') + '<p class="ac-links"><a href="/login?next=' + encodeURIComponent(next) + '">Back to sign in</a></p></section>'); return;
     }
     if (path === '/login') shell(`<div class="ac-card"><p class="ac-kicker">WELCOME BACK</p><h2>Sign in to your workspace.</h2><p class="ac-intro">Submit and manage your requests in one account.</p>${googleButton()}${form('login', field('email', 'Email', { type: 'email', maximum: 160, autocomplete: 'email' }) + password('password', 'Password', true) + submit('Sign in'))}<p class="ac-links"><a href="/register?next=${encodeURIComponent(next)}">Create an account</a><a href="/recover-account?next=${encodeURIComponent(next)}">Recover your account</a></p></div>`);
     else if (path === '/register') shell(`<div class="ac-card"><p class="ac-kicker">YOUR NEXT ANALYSIS</p><h2>A place for your requests.</h2><p class="ac-intro">Create an account to submit and manage testing, contact and report recovery requests.</p>${googleButton()}${form('register', `<div class="ac-field-grid">${field('name', 'Your name', { maximum: 100, autocomplete: 'name', required: false })}${field('company', 'Company', { autocomplete: 'organization', required: false })}</div>` + field('email', 'Email', { type: 'email', maximum: 160, autocomplete: 'email' }) + password('password', 'Password') + password('confirmPassword', 'Repeat password') + submit('Create account'))}<p class="ac-links">Already have an account? <a href="/login?next=${encodeURIComponent(next)}">Sign in</a></p>${notice}</div>`);
-    else shell(`<div class="ac-card"><p class="ac-kicker">ACCOUNT RECOVERY</p><h2>Find your way back.</h2><p class="ac-intro">Use one of your saved recovery codes to set a new password. Keep your recovery codes private.</p>${form('recover', field('email', 'Account email', { type: 'email', maximum: 160, autocomplete: 'email' }) + field('recoveryCode', 'Recovery code', { maximum: 128, autocomplete: 'off' }) + password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Recover account'))}<p class="ac-links"><a href="/login?next=${encodeURIComponent(next)}">Back to sign in</a></p><p class="ac-help">Report recovery is separate. Nova Support can help prepare a report enquiry, but cannot reset an account password.</p></div>`);
   }
   function dashboard(focusHeading = false) {
     const navigation = `<div class="ac-workspace-bar"><div><p class="ac-kicker">YOUR WORKSPACE</p><p class="ac-user-name">${escape(user.name || 'My account')}</p><p class="ac-help">${escape(user.email)} · ${user.emailVerified ? 'Email verified' : 'Email not verified'}</p></div><button type="button" class="text-button" data-account-action="logout">Sign out</button></div><nav class="ac-tabs" aria-label="Account sections">${[['requests', 'My requests'], ['profile', 'Profile'], ['security', 'Security']].map(([key, label]) => `<button type="button" data-account-tab="${key}"${key === tab ? ' aria-current="page"' : ''}>${label}</button>`).join('')}</nav>`;
@@ -58,8 +56,7 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
       const enabled = client.snapshot().google?.enabled;
       const google = enabled ? '<section class="ac-card"><h2>Google sign-in</h2><p>' + (user.googleLinked ? 'Linked to your account.' : 'Not linked.') + '</p>' + (user.googleLinked ? user.passwordEnabled !== false ? form('google-unlink', password('currentPassword', 'Current password', true) + submit('Disconnect Google')) : '<p class="ac-help">Set a password before disconnecting your only sign-in method.</p>' : form('google-link', password('currentPassword', 'Current password', true) + submit('Link Google'))) + '</section>' : '';
       const passwordPanel = user.passwordEnabled !== false ? '<h2>Change your password</h2>' + form('password', password('currentPassword', 'Current password', true) + password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Update password')) : '<h2>Set a password</h2><p>Use a recent Google confirmation to add an email-and-password sign-in method.</p>' + (enabled ? '<button class="text-button" type="button" data-account-action="google-password-proof">Confirm with Google</button>' + form('password-setup', password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Set password')) : '<p>Google sign-in is currently unavailable. Use account recovery.</p>');
-      const codePanel = user.passwordEnabled !== false ? form('codes', password('currentPassword', 'Current password', true) + submit('Replace recovery codes')) : enabled ? '<button class="text-button" type="button" data-account-action="google-codes-proof">Confirm with Google for recovery codes</button><button class="button button-outline" type="button" data-account-action="google-codes">Replace recovery codes</button>' : '<p>Use account recovery when you need access.</p>';
-      content = '<section class="ac-card"><h2>Email verification</h2><p>' + (user.emailVerified ? 'Email verified' : 'Email not verified') + '</p>' + (!user.emailVerified && client.snapshot().mail?.enabled ? '<button class="button button-outline" type="button" data-account-action="resend-verification">Send verification email</button>' : '') + '</section>' + google + '<div class="ac-security-grid"><section class="ac-card">' + passwordPanel + '<p class="ac-help">Updating your password signs out your other sessions.</p></section><section class="ac-card"><h2>Recovery codes</h2><p>Keep a private copy of your eight one-time codes. Each replacement set invalidates the previous codes.</p>' + codePanel + '<p class="ac-help">Save your codes so you can recover access when email is unavailable.</p><button class="text-button" type="button" data-account-action="logout-all">Sign out of all devices</button></section></div>';
+      content = '<section class="ac-card"><h2>Email verification</h2><p>' + (user.emailVerified ? 'Email verified' : 'Email not verified') + '</p>' + (!user.emailVerified && client.snapshot().mail?.enabled ? '<button class="button button-outline" type="button" data-account-action="resend-verification">Send verification email</button>' : '') + '</section>' + google + '<div class="ac-security-grid"><section class="ac-card">' + passwordPanel + '<p class="ac-help">Updating your password signs out your other sessions.</p></section><section class="ac-card"><h2>Sessions</h2><p>Sign out everywhere, including this device.</p><button class="text-button" type="button" data-account-action="logout-all">Sign out of all devices</button></section></div>';
     }
     else if (selected) {
       const record = selected.record, details = requestDetails(record), kind = requestKind(record);
@@ -73,23 +70,15 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     const meta = doc.notifications || { receipt: 'not_requested', support: 'not_requested', retryable: false };
     return '<div class="ac-mail-status"><p>Receipt: ' + escape(notificationText(meta.receipt)) + '</p><p>Support alert: ' + escape(notificationText(meta.support)) + '</p>' + ([meta.receipt,meta.support].includes('accepted') ? '<p class="ac-help">Inbox delivery is not confirmed.</p>' : '') + (meta.receipt === 'not_verified' ? '<button type="button" class="text-button" data-account-action="verification-tab">Verify email</button>' : '') + (meta.retryable ? '<button type="button" class="text-button" data-account-action="retry-notifications" data-id="' + escape(doc.id) + '">Retry notifications</button>' : '') + '<button type="button" class="text-button" data-account-action="refresh-notifications" data-id="' + escape(doc.id) + '">Refresh status</button></div>';
   }
-  function showCodes(value, destination) {
-    if (!Array.isArray(value) || value.length !== 8 || value.some(code => typeof code !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(code)) || new Set(value).size !== 8) throw new AccountError('invalid_response');
-    clearCodes(); codes = value.slice(); codesNext = destination;
-    user = client.snapshot().user;
-    shell(`<section class="ac-card ac-code-card"><p class="ac-kicker">SAVE THESE NOW</p><h2>${verificationNotice ? 'Check your email' : 'Your eight recovery codes'}</h2>${verificationNotice ? `<p role="status">${escape(verificationNotice)}</p>` : ''}<p>Each code works once. Store them privately before continuing. This set will not be shown again.</p><ul class="ac-codes">${codes.map(code => `<li><code>${escape(code)}</code></li>`).join('')}</ul><button class="button button-outline" type="button" data-account-action="copy-codes">Copy codes</button><div class="ac-manual-copy" data-account-copy-fallback hidden><label for="ac-code-copy">Recovery codes — manual copy</label><textarea id="ac-code-copy" readonly></textarea></div><label class="ac-code-ack"><input type="checkbox" data-account-confirm-codes> I have saved my recovery codes.</label><button class="button button-teal" type="button" data-account-action="ack-codes" data-account-ack disabled>Continue →</button></section>`);
-    const heading = root.querySelector('h2'); heading?.setAttribute('tabindex', '-1'); heading?.focus?.({ preventScroll: true });
-  }
   function values(formNode) { return Object.fromEntries([...formNode.elements].filter(item => item.name).map(item => [item.name, item.value])); }
   function validate(formNode, data, kind) {
     const errors = {};
-    if (['login', 'register', 'recover', 'reset-request'].includes(kind) && !emailOK(data.email)) errors.email = 'Enter a valid email address.';
+    if (['login', 'register', 'reset-request'].includes(kind) && !emailOK(data.email)) errors.email = 'Enter a valid email address.';
     if (kind === 'login' && !validAccountPassword(data.password)) errors.password = 'Enter your 15–128 character password.';
-    const newKey = kind === 'register' ? 'password' : ['password', 'recover', 'reset', 'password-setup'].includes(kind) ? 'newPassword' : null;
+    const newKey = kind === 'register' ? 'password' : ['password', 'reset', 'password-setup'].includes(kind) ? 'newPassword' : null;
     if (newKey && !validAccountPassword(data[newKey])) errors[newKey] = 'Use 15–128 characters.';
     if (newKey && data.confirmPassword !== data[newKey]) errors.confirmPassword = 'Repeat the same password.';
-    if (['password', 'codes', 'google-link', 'google-unlink'].includes(kind) && !validAccountPassword(data.currentPassword)) errors.currentPassword = 'Enter your current 15–128 character password.';
-    if (kind === 'recover' && (!data.recoveryCode || data.recoveryCode.length > 128)) errors.recoveryCode = 'Enter a saved recovery code.';
+    if (['password', 'google-link', 'google-unlink'].includes(kind) && !validAccountPassword(data.currentPassword)) errors.currentPassword = 'Enter your current 15–128 character password.';
     if (data.name?.length > 100) errors.name = 'Use 100 characters or fewer.';
     if (data.company?.length > 160) errors.company = 'Use 160 characters or fewer.';
     for (const input of [...formNode.elements].filter(item => item.name)) {
@@ -120,16 +109,14 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     if (!validate(formNode, data, kind)) return;
     const options = signal => ({ signal });
     if (kind === 'login') void execute(signal => client.login({ email: data.email, password: data.password }, options(signal)), () => navigate(next), false);
-    if (kind === 'register') void execute(signal => client.signup({ email: data.email, password: data.password, name: data.name, company: data.company }, options(signal)), result => { verificationNotice = client.snapshot().mail?.enabled ? result.verification?.status === 'queued' ? 'Check your email to verify your mailbox. Save your backup codes too.' : 'Your account is ready. Verification email is currently unavailable; save your backup codes.' : ''; showCodes(result.recoveryCodes, next); }, false);
-    if (kind === 'recover') void execute(signal => client.recover({ email: data.email, recoveryCode: data.recoveryCode, newPassword: data.newPassword }, options(signal)), result => showCodes(result.recoveryCodes, '/login?next=' + encodeURIComponent(next)), false);
-    if (kind === 'reset-request') void execute(signal => client.requestPasswordReset(data.email, { signal }), () => { shell('<section class="ac-card"><h2>Check your email</h2><p>If that account is eligible, a reset link will arrive. You can also use a saved recovery code.</p><button type="button" class="text-button" data-account-action="use-code">Use a saved recovery code</button></section>'); }, false);
-    if (kind === 'reset') void execute(signal => mailAction.submit(token => client.resetPassword(token, data.newPassword, { signal })), result => { if (result) showCodes(result.recoveryCodes, '/login'); }, false);
+    if (kind === 'register') void execute(signal => client.signup({ email: data.email, password: data.password, name: data.name, company: data.company }, options(signal)), result => { const registrationNotice = client.snapshot().mail?.enabled ? result.verification?.status === 'queued' ? 'Check your email to verify your mailbox.' : 'Your account is ready. Verification email is currently unavailable.' : ''; navigate(next); if (registrationNotice) onRegistrationNotice(registrationNotice); }, false);
+    if (kind === 'reset-request') void execute(signal => client.requestPasswordReset(data.email, { signal }), () => { shell('<section class="ac-card"><h2>Check your email</h2><p>If that account is eligible, a reset link will arrive.</p><p class="ac-links"><a href="/login">Sign in</a></p></section>'); }, false);
+    if (kind === 'reset') void execute(signal => mailAction.submit(token => client.resetPassword(token, data.newPassword, { signal })), result => { if (result) shell('<section class="ac-card"><h2>Password updated</h2><p>Sign in with your new password to continue.</p><p class="ac-links"><a href="/login">Sign in</a></p></section>'); }, false);
     if (kind === 'profile') void execute(signal => client.profile({ name: data.name, company: data.company }, options(signal)), value => { user = value; dashboard(); status('Profile saved.'); });
     if (kind === 'password') void execute(signal => client.password({ currentPassword: data.currentPassword, newPassword: data.newPassword }, options(signal)), value => { user = value; dashboard(); status('Password updated. Other sessions are signed out.'); });
     if (kind === 'google-link') void googleController.begin('link', data.currentPassword);
     if (kind === 'google-unlink') void execute(signal => client.googleUnlink(data.currentPassword, { signal }), value => { user = value; dashboard(); status('Google disconnected.'); });
     if (kind === 'password-setup') void execute(signal => client.setupPassword(data.newPassword, { signal }), value => { user = value; dashboard(); status('Password is ready.'); });
-    if (kind === 'codes') void execute(signal => client.recoveryCodes({ currentPassword: data.currentPassword }, options(signal)), value => showCodes(value.recoveryCodes, '/account'));
   }
   function onClick(event) {
     const button = event.target.closest('[data-account-action],[data-account-tab]');
@@ -138,9 +125,7 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     const action = button.dataset.accountAction, id = button.dataset.id;
     if (action === 'google-login') { void googleController.begin('login', next); return; }
     if (action === 'google-retry') { void googleController.retry(); return; }
-    if (action === 'google-password-proof' || action === 'google-codes-proof') { void googleController.begin('reauth', action === 'google-password-proof' ? 'password_setup' : 'recovery_codes'); return; }
-    if (action === 'google-codes') { void execute(signal => client.googleRecoveryCodes({ signal }), value => showCodes(value.recoveryCodes, '/account')); return; }
-    if (action === 'use-code') { recoverWithCode = true; auth(); return; }
+    if (action === 'google-password-proof') { void googleController.begin('reauth', 'password_setup'); return; }
     if (action === 'verify-email') { void execute(signal => mailAction.submit(token => client.verifyEmail(token, { signal })), result => { if (result) shell('<section class="ac-card"><h2>Email verified</h2><p>You can now receive account email.</p><a href="/account">My account</a><a href="/login">Sign in</a></section>'); }, false); return; }
     if (action === 'verification-tab') { tab = 'security'; selected = null; dashboard(true); return; }
     if (action === 'resend-verification') {
@@ -160,14 +145,8 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
       const doc = documents.find(item => item.id === id); if (!doc || id !== pendingDelete) return;
       void execute(signal => client.deleteRequest(doc.id, doc.revision, { signal }), () => { documents = documents.filter(item => item.id !== id); selected = null; pendingDelete = null; dashboard(); status('Account request deleted.'); }); return;
     }
-    if (action === 'ack-codes' && codes && root.querySelector('[data-account-confirm-codes]')?.checked) { const destination = codesNext; clearCodes(); navigate(destination); return; }
-    if (action === 'copy-codes' && codes) {
-      const ticket = revision, actionTicket = ++actionRevision, snapshot = codes;
-      Promise.resolve().then(() => clipboard(snapshot.join('\n'))).then(() => { if (current(ticket, actionTicket) && codes === snapshot) status('Recovery codes copied. Store them privately.'); }, () => { if (!current(ticket, actionTicket) || codes !== snapshot) return; const fallback = root.querySelector('[data-account-copy-fallback]'); fallback.hidden = false; const input = fallback.querySelector('textarea'); input.value = snapshot.join('\n'); input.focus(); input.select(); });
-    }
   }
-  function onChange(event) { if (event.target.matches('[data-account-confirm-codes]')) { const button = root?.querySelector('[data-account-ack]'); if (button) button.disabled = !event.target.checked; } }
-  for (const node of Object.values(roots)) if (node) { node.addEventListener('submit', onSubmit); node.addEventListener('click', onClick); node.addEventListener('change', onChange); }
+  for (const node of Object.values(roots)) if (node) { node.addEventListener('submit', onSubmit); node.addEventListener('click', onClick); }
   const unsubscribe = client.subscribe((nextUser, reason) => {
     if (['/recover-account', '/reset-password'].includes(path) && reason === 'recovered' && busy) return;
     if (user && nextUser?.id !== user.id && ['logout', 'expired', 'login', 'recovered', 'session'].includes(reason)) { leave(); navigate(nextUser ? '/account' : '/login'); }
@@ -189,7 +168,7 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
       } catch (error) { if (current(ticket)) { shell('<div class="ac-card"><h2>Let’s try that again.</h2><button type="button" class="button button-outline" data-account-action="retry">Retry</button><a href="/submit-sample">Return to testing</a></div>'); report(accountErrorMessage(error)); } }
     },
     leave,
-    destroy() { leave(); unsubscribe(); for (const node of Object.values(roots)) if (node) { node.removeEventListener('submit', onSubmit); node.removeEventListener('click', onClick); node.removeEventListener('change', onChange); } }
+    destroy() { leave(); unsubscribe(); for (const node of Object.values(roots)) if (node) { node.removeEventListener('submit', onSubmit); node.removeEventListener('click', onClick); } }
   });
   return api;
 }
