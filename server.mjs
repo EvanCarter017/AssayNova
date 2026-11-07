@@ -52,15 +52,6 @@ if (adminOriginOptions.length) {
   if (url.protocol !== 'https:' || url.origin !== value || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Choose a canonical HTTPS administrator origin.');
   adminOrigin = value;
 }
-const admin = adminEnabled ? await (await import('./conference/admin.mjs')).createAdmin({
-  origin: adminOrigin, store: conferenceStore,
-  authStore: process.argv.find(argument => argument.startsWith('--admin-auth-store='))?.slice('--admin-auth-store='.length),
-  images: process.argv.find(argument => argument.startsWith('--admin-images='))?.slice('--admin-images='.length),
-  publicOrigin: process.argv.find(argument => argument.startsWith('--admin-public-origin='))?.slice('--admin-public-origin='.length) ?? `http://${localHost}:${port}`
-}) : null;
-const adminProxy = proxyEnabled ? (await import('./conference/admin-proxy.mjs')).createAdminProxy({
-  upstream: proxyOptions[0].slice('--admin-proxy='.length), externalOrigin: proxyOriginOptions[0].slice('--admin-proxy-origin='.length), port, bindAddress
-}) : null;
 if (!process.argv.includes('--no-accounts')) {
   const [major, minor] = process.versions.node.split('.').map(Number);
   if (major < 24 || (major === 24 && minor < 15)) throw new Error('Customer accounts require Node 24.15 or newer with native SQLite.');
@@ -69,7 +60,26 @@ const accountOptions = process.argv.includes('--no-accounts') ? { mode: 'disable
   argv: process.argv.slice(2), env: { NODE_ENV: process.env.NODE_ENV, ASSAYNOVA_ACCOUNT_STORE: process.env.ASSAYNOVA_ACCOUNT_STORE, ASSAYNOVA_ACCOUNT_ORIGIN: process.env.ASSAYNOVA_ACCOUNT_ORIGIN },
   port, bindAddress, adminProxy: proxyEnabled ? { upstream: proxyOptions[0].slice('--admin-proxy='.length), externalOrigin: proxyOriginOptions[0].slice('--admin-proxy-origin='.length) } : null
 });
-const customerAccounts = accountOptions.mode === 'authority' ? await (await import('./accounts/handler.mjs')).createAccountHandler(accountOptions) : null;
+const mailConfiguration = accountOptions.mode === 'authority' || process.env.ASSAYNOVA_MAIL_CONFIG_FILE ? await (await import('./accounts/mail-config.mjs')).loadMailConfig({
+  accountOrigin: accountOptions.origins?.[0], adminOrigin: adminEnabled ? adminOrigin : undefined,
+  accountDirectory: accountOptions.directory,
+  reportDirectory: conferenceStore,
+  adminAuthDirectory: process.argv.find(argument => argument.startsWith('--admin-auth-store='))?.slice('--admin-auth-store='.length)
+}) : { enabled: false };
+if (mailConfiguration.enabled && accountOptions.mode !== 'authority') throw new Error('Mail requires the sole account authority.');
+const reportMailModule = accountOptions.mode === 'authority' && adminEnabled ? await import('./conference/report-mail.mjs') : null;
+const customerAccounts = accountOptions.mode === 'authority' ? await (await import('./accounts/handler.mjs')).createAccountHandler({ ...accountOptions, mailOptions: { config: mailConfiguration, reportEligible: code => reportMailModule ? reportMailModule.reportMailEligible(conferenceStore, code) : false } }) : null;
+const reportMail = reportMailModule?.createReportMail({ store: conferenceStore, mail: customerAccounts?.reportMail });
+const admin = adminEnabled ? await (await import('./conference/admin.mjs')).createAdmin({
+  reportMail, origin: adminOrigin, store: conferenceStore,
+  authStore: process.argv.find(argument => argument.startsWith('--admin-auth-store='))?.slice('--admin-auth-store='.length),
+  images: process.argv.find(argument => argument.startsWith('--admin-images='))?.slice('--admin-images='.length),
+  publicOrigin: process.argv.find(argument => argument.startsWith('--admin-public-origin='))?.slice('--admin-public-origin='.length) ?? `http://${localHost}:${port}`
+}) : null;
+const adminProxy = proxyEnabled ? (await import('./conference/admin-proxy.mjs')).createAdminProxy({
+  upstream: proxyOptions[0].slice('--admin-proxy='.length), externalOrigin: proxyOriginOptions[0].slice('--admin-proxy-origin='.length), port, bindAddress
+}) : null;
+
 const customerAccountProxy = accountOptions.mode === 'proxy' ? (await import('./accounts/proxy.mjs')).createAccountProxy(accountOptions) : null;
 const mime = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -190,7 +200,7 @@ const server = http.createServer(async (request, response) => {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'same-origin',
+      'Referrer-Policy': ['/verify-email', '/reset-password'].includes(pathname.replace(/\/$/, '')) ? 'no-referrer' : 'same-origin',
       'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     });
     response.end(request.method === 'HEAD' ? undefined : contents);
@@ -206,6 +216,7 @@ server.on('error', (error) => {
   process.exitCode = 1;
 });
 server.listen(port, bindAddress, () => {
+  customerAccounts?.startMail();
   console.log(`AssayNova ready\nLocal: http://${localHost}:${port}\nBind: ${bindAddress}\nProject: ${path.dirname(root)}\nLive reload: ${liveReload ? 'ON — CSS updates in place; HTML/JS changes reload the page' : 'OFF (add --watch to enable)'}\nPress Ctrl+C to stop.`);
   if (liveReload) {
     watcher = watch(root, { recursive: true }, (event, filename) => {
@@ -227,11 +238,14 @@ server.listen(port, bindAddress, () => {
   }
 });
 
-function shutdown() {
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return; shuttingDown = true;
+  await customerAccounts?.stopMail();
   clearTimeout(changeTimer);
   watcher?.close();
   for (const client of clients) client.end();
-  server.close(() => { customerAccounts?.close(); process.exit(0); });
+  server.close(async () => { await customerAccounts?.close(); process.exit(0); });
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

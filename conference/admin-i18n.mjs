@@ -2,6 +2,9 @@
 export const LOCALE_KEY = 'assaynova.admin.locale.v1';
 export const LOCALES = Object.freeze(['en', 'zh-CN']);
 const text = {
+  noticeFailed: ['Publication notice failed, expired or canceled.', '发布通知失败、已过期或已取消。'],
+  noticeEmail: ['Notification email', '通知邮箱'], noticeConfirm: ['Send the public report link to this recipient.', '将公开报告链接发送给此收件人。'], noticeSend: ['Send publication notice', '发送发布通知'], noticeAccepted: ['Mail server accepted. Inbox delivery is not confirmed.', '邮件服务器已接受，尚未确认收件箱送达。'], noticeQueued: ['Publication notice queued or retrying.', '发布通知已排队或正在重试。'], noticeUncertain: ['Result unconfirmed. Retry keeps the same recipient and report.', '结果未确认，重试将保持相同收件人和报告。'], noticeUnavailable: ['Publication email is unavailable.', '发布邮件暂不可用。'],
+
   reportRemovedLibraryError: ['Report removed. The library could not be loaded. Use Refresh to retry.', '报告已移除，但无法加载报告列表。请点击“刷新”重试。'], reportRestoredLibraryError: ['Report restored. The library could not be loaded. Use Refresh to retry.', '报告已恢复，但无法加载报告列表。请点击“刷新”重试。'],
   savedReports: ['Saved reports', '已保存报告'], removedReports: ['Removed reports', '已移除报告'], reportVisibility: ['Show reports', '显示报告'], refreshReports: ['Refresh', '刷新'], removedEmpty: ['No removed reports.', '暂无已移除报告。'],
   removeReport: ['Remove report', '移除报告'], restoreReport: ['Restore report', '恢复报告'], cancelReportChange: ['Cancel', '取消'], removeNamedReport: ['Remove {name}, Lookup Code {code}', '移除 {name}，查询码 {code}'], restoreNamedReport: ['Restore {name}, Lookup Code {code}', '恢复 {name}，查询码 {code}'],

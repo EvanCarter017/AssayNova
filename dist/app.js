@@ -1,3 +1,4 @@
+import { captureMailAction } from './account-mail.js';
 import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission, normalizeLookupCode } from './data.js';
 import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
 import { createRequestPage } from './request-page.js';
@@ -6,6 +7,19 @@ import { createContactForm } from './contact-form.js';
 import { requestKind } from './account-requests.js';
 import { createAccountPage } from './account-page.js';
 import { SAMPLE_REPORT_DATA } from './reports/sample-data.js';
+
+let pendingMailAction = null;
+function captureActionFragment() {
+  const path = location.pathname;
+  if (!['/verify-email', '/reset-password', '/verify-email/', '/reset-password/'].includes(path)) { pendingMailAction = null; return; }
+  const exact = ['/verify-email', '/reset-password'].includes(path);
+  if (location.hash || location.search || !pendingMailAction) {
+    const token = exact ? captureMailAction(location, history) : null;
+    pendingMailAction = { path: path.replace(/\/$/, ''), token };
+    if (!exact) history.replaceState(null, '', path.replace(/\/$/, ''));
+  }
+}
+captureActionFragment();
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
@@ -66,7 +80,7 @@ function signInForRecovery() {
   node.remove(); recoveryForm = null; recoveryOwnerId = null; recoveryCloseForAuth = true;
   navigateToURL('/login?next=' + encodeURIComponent('/contact?request=report-recovery'));
 }
-const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => {
+const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => {
   const kind = requestKind(doc.record);
   if (kind === 'testing') { if (requestPage.resume(doc.record, { ...doc, ownerId })) navigateToURL('/submit-sample'); }
   else if (kind === 'contact') { navigateToURL('/contact'); contactForm?.resume(doc, ownerId); }
@@ -201,6 +215,8 @@ function routeLocation(address) {
 }
 
 function renderCurrentRoute(focus = false, legacyError = false, checked = null) {
+  captureActionFragment();
+  const actionToken = pendingMailAction?.token; pendingMailAction = null;
   cancelPublishedLookup();
   historyFocusRevision++;
   const current = routeLocation(location.href);
@@ -252,8 +268,8 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
     requestPage.checkAccountSession(); requestPage.activate();
     if (accountClient) { const ticket = accountLoadRevision; const controller = new AbortController(); accountLoadController = controller; accountClient.getSession({ signal: controller.signal }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) requestPage.setAccountSession(null, 'session'); }); }
   }
-  if (!current.coa && ['/account', '/login', '/register', '/recover-account'].includes(page.path)) {
-    if (accountPage) void accountPage.activate(page.path, current.url.searchParams.get('next'));
+  if (!current.coa && ['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password'].includes(page.path)) {
+    if (accountPage) void accountPage.activate(page.path, current.url.searchParams.get('next'), actionToken);
     else { const content = pageViews[page.path]?.querySelector('[data-account-content]'); if (content) content.innerHTML = '<div class="ac-card"><h2>Accounts are unavailable in this view.</h2><p>Public testing information and COA lookup remain available.</p><a href="/submit-sample">Explore testing</a></div>'; }
   }
   if (!current.coa && page.path === '/contact') {

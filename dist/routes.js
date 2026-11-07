@@ -9,6 +9,8 @@ export const PAGE_ROUTES = Object.freeze([
   { path: '/account', view: 'account-view', heading: 'account-title', title: 'My account · AssayNova' },
   { path: '/login', view: 'login-view', heading: 'login-title', title: 'Sign in · AssayNova' },
   { path: '/register', view: 'register-view', heading: 'register-title', title: 'Create account · AssayNova' },
+  { path: '/verify-email', view: 'verify-email-view', heading: 'verify-email-title', title: 'Verify email · AssayNova' },
+  { path: '/reset-password', view: 'reset-password-view', heading: 'reset-password-title', title: 'Reset password · AssayNova' },
   { path: '/recover-account', view: 'recover-account-view', heading: 'recover-account-title', title: 'Account recovery · AssayNova' }
 ].map(Object.freeze));
 

@@ -1,3 +1,5 @@
+import { createMailOutbox } from './mail-outbox.mjs';
+import { createMailActions } from './mail-actions.mjs';
 import { openAccountDatabase } from './database.mjs';
 import { createAccountAuth } from './auth.mjs';
 import { createAccountRequests } from './requests.mjs';
@@ -15,11 +17,16 @@ async function jsonBody(request, target) {
   try { return JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks, bytes))); }
   catch { throw accountError(400, 'INVALID_JSON', 'Use a valid UTF-8 JSON account request.'); }
 }
-export async function createAccountHandler({ directory, origins, port, allowPrivate = false, production = false, projectRoot, clock = Date.now, authOptions = {} } = {}) {
+export async function createAccountHandler({ directory, origins, port, allowPrivate = false, production = false, projectRoot, clock = Date.now, authOptions = {}, mailOptions = {} } = {}) {
   if (!Array.isArray(origins) || !origins.length || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid account HTTP configuration.');
   for (const origin of origins) if (production && canonicalOrigin(origin).protocol !== 'https:') throw new Error('Production accounts require HTTPS.'); else canonicalOrigin(origin);
   const db = await openAccountDatabase({ directory, projectRoot });
-  const auth = createAccountAuth({ ...authOptions, db, clock }), requests = createAccountRequests({ db, clock });
+  const mail = createMailOutbox({ ...mailOptions, db, clock });
+  let actions;
+  const auth = createAccountAuth({ ...authOptions, db, clock, onSignup: user => actions.signup(user), onSecurityChange: userId => mail.invalidateUser(userId) });
+  actions = createMailActions({ db, auth, mail, clock });
+  const requests = createAccountRequests({ db, clock, mail });
+  const capabilities = data => ({ ...data, mail: { enabled: mail.enabled() } });
   const cookie = (kind, value, age, secure) => `${kind === 'session' ? 'an_customer_' : 'an_customer_csrf_'}${port}=${value}; Path=/api/account; HttpOnly; SameSite=Strict; Max-Age=${age}${secure ? '; Secure' : ''}`;
   async function handle(request, response) {
     const head = request.method === 'HEAD';
@@ -32,7 +39,7 @@ export async function createAccountHandler({ directory, origins, port, allowPriv
       const clear = () => [cookie('session', '', 0, secure), cookie('csrf', '', 0, secure)];
       if (target === '/api/account/session' && ['GET', 'HEAD'].includes(request.method)) {
         const result = auth.bootstrap(tokens, { peer: request.socket.remoteAddress });
-        send(200, result.data, [cookie('csrf', result.csrf, result.authenticated ? auth.cookieSeconds : auth.challengeSeconds, secure), ...(!result.authenticated ? [cookie('session', '', 0, secure)] : [])]); return true;
+        send(200, capabilities(result.data), [cookie('csrf', result.csrf, result.authenticated ? auth.cookieSeconds : auth.challengeSeconds, secure), ...(!result.authenticated ? [cookie('session', '', 0, secure)] : [])]); return true;
       }
       const specs = new Map([
         ['/api/account/signup', ['POST', ['email', 'password', 'name', 'company'], ['email', 'password']]],
@@ -41,8 +48,18 @@ export async function createAccountHandler({ directory, origins, port, allowPriv
         ['/api/account/recover', ['POST', ['email', 'recoveryCode', 'newPassword']]],
         ['/api/account/password', ['POST', ['currentPassword', 'newPassword']]],
         ['/api/account/recovery-codes', ['POST', ['currentPassword']]],
-        ['/api/account/profile', ['PATCH', ['name', 'company'], []]]
+        ['/api/account/profile', ['PATCH', ['name', 'company'], []]],
+        ['/api/account/email/verification', ['POST', []]],
+        ['/api/account/email/verify', ['POST', ['token']]],
+        ['/api/account/password/reset-request', ['POST', ['email']]],
+        ['/api/account/password/reset', ['POST', ['token', 'newPassword']]]
       ]);
+      const notificationId = /^\/api\/account\/requests\/([a-f0-9]{32})\/notifications$/.exec(target)?.[1];
+      if (notificationId) {
+        if (request.method !== 'POST') throw accountError(405, 'METHOD_NOT_ALLOWED', 'Account request method was rejected.');
+        const input = await jsonBody(request, target); exactInput(input, ['expectedRevision']); const user = auth.requireUser(tokens.session); auth.csrf(tokens, request.headers['x-account-csrf']);
+        send(200, requests.notifications(user, notificationId, input, request.socket.remoteAddress)); return true;
+      }
       const documentId = /^\/api\/account\/requests\/([a-f0-9]{32})$/.exec(target)?.[1];
       if (target === '/api/account/requests' || documentId) {
         if (['GET', 'HEAD'].includes(request.method)) { const user = auth.requireUser(tokens.session); send(200, documentId ? requests.get(user, documentId) : requests.list(user)); return true; }
@@ -59,21 +76,25 @@ export async function createAccountHandler({ directory, origins, port, allowPriv
       if (!spec) throw accountError(404, 'ACCOUNT_ROUTE_NOT_FOUND', 'Account page was not found.');
       if (request.method !== spec[0]) throw accountError(405, 'METHOD_NOT_ALLOWED', 'Account request method was rejected.');
       const input = await jsonBody(request, target); exactInput(input, spec[1], spec[2]);
-      const preauth = ['/api/account/signup', '/api/account/login', '/api/account/recover'].includes(target);
+      const preauth = ['/api/account/signup', '/api/account/login', '/api/account/recover', '/api/account/email/verify', '/api/account/password/reset-request', '/api/account/password/reset'].includes(target);
       const user = preauth ? auth.csrf(tokens, request.headers['x-account-csrf']) : auth.requireUser(tokens.session);
       if (!preauth) auth.csrf(tokens, request.headers['x-account-csrf']);
-      const context = { peer: request.socket.remoteAddress, csrf: tokens.csrf, session: tokens.session };
+      const context = { peer: request.socket.remoteAddress, csrf: tokens.csrf, session: tokens.session, userId: user?.id || null };
+      if (target === '/api/account/email/verify') { send(200, actions.verify(input, context)); return true; }
+      if (target === '/api/account/password/reset-request') { send(202, actions.requestReset(input, context)); return true; }
+      if (target === '/api/account/password/reset') { send(200, await actions.reset(input, context), clear()); return true; }
       if (target === '/api/account/signup' || target === '/api/account/login') {
-        const result = await auth[target.endsWith('/signup') ? 'signup' : 'login'](input, context); send(target.endsWith('/signup') ? 201 : 200, result.data, setSession(result)); return true;
+        const result = await auth[target.endsWith('/signup') ? 'signup' : 'login'](input, context); send(target.endsWith('/signup') ? 201 : 200, capabilities(result.data), setSession(result)); return true;
       }
       if (target === '/api/account/recover') { send(200, await auth.recover(input, context), clear()); return true; }
       if (!user) throw accountError(401, 'AUTH_REQUIRED', 'Sign in to continue.');
       if (target === '/api/account/logout' || target === '/api/account/logout-all') send(200, auth.logout(tokens, target.endsWith('/logout-all')), clear());
-      else if (target === '/api/account/profile') send(200, auth.profile(user, input));
-      else if (target === '/api/account/password') { const result = await auth.password(user, input, context); send(200, result.data, setSession(result)); }
+      else if (target === '/api/account/email/verification') send(200, actions.verification(user));
+      else if (target === '/api/account/profile') send(200, capabilities(auth.profile(user, input)));
+      else if (target === '/api/account/password') { const result = await auth.password(user, input, context); send(200, capabilities(result.data), setSession(result)); }
       else send(200, await auth.regenerate(user, input, context));
       return true;
     } catch (error) { if (!request.complete && !request.destroyed) request.resume(); accountFailure(response, error, head); return true; }
   }
-  return { handle, close: () => db.close() };
+  return { handle, startMail: () => mail.start(), pumpMail: () => mail.pump(), mailEnabled: mail.enabled, reportMailEnabled: mail.reportEnabled, reportMail: Object.freeze({ reportEnabled: mail.reportEnabled, reportStatus: mail.reportStatus, admitReport: mail.admitReport }), stopMail: () => mail.stop(), close() { const pending = mail.stop(); if (pending) return pending.finally(() => db.close()); db.close(); } };
 }

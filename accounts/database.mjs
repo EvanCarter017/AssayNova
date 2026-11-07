@@ -46,21 +46,51 @@ export async function privateDirectory(directory, { create = true, projectRoot =
   }
   return canonical;
 }
+  const normalizeSQL = value => {
+    let result = '', quoted = false;
+    for (let index = 0; index < value.length; index++) {
+      const character = value[index];
+      if (character === "'") { result += character; if (quoted && value[index + 1] === "'") result += value[++index]; else quoted = !quoted; }
+      else if (quoted || !/\s/.test(character)) result += character;
+    }
+    return result;
+  };
+export const accountSchemaObjects = connection => connection.prepare("SELECT name,type,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => [row.name, row.type, normalizeSQL(row.sql || '')]);
+  const expected = text => { const memory = new DatabaseSync(':memory:'); try { memory.exec(text); return JSON.stringify(accountSchemaObjects(memory)); } finally { memory.close(); } };
+
+export async function accountSchemaDefinitions() {
+  const schema = await readFile(new URL('./schema.sql', import.meta.url), 'utf8');
+  const migration = await readFile(new URL('./migrate-1-to-2.sql', import.meta.url), 'utf8');
+  const previousSchema = schema.split('-- Transactional mail tables')[0]
+    .replace(/,\s*email_verified_at INTEGER CHECK\(email_verified_at IS NULL OR email_verified_at>0\)/, '')
+    .replace(/,\s*notification_revision INTEGER CHECK\(notification_revision IS NULL OR notification_revision>0\)/, '');
+  return { schema, migration, oldShape: expected(previousSchema), newShape: expected(schema) };
+}
+
 export async function openAccountDatabase({ directory = DEFAULT_ACCOUNT_STORE, projectRoot = PROJECT_ROOT } = {}) {
+  const { schema, migration, oldShape, newShape } = await accountSchemaDefinitions();
   const root = await privateDirectory(directory, { projectRoot });
   let db;
   try {
     db = new DatabaseSync(path.join(root, 'accounts.sqlite'), { enableForeignKeyConstraints: true, allowExtension: false });
     db.exec('PRAGMA busy_timeout=3000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
-    const version = db.prepare('PRAGMA user_version').get().user_version;
-    if (version === 0) {
-      if (db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").get().n) throw new Error('Unknown account database schema.');
-      db.exec('BEGIN IMMEDIATE');
-      try { db.exec(await readFile(new URL('./schema.sql', import.meta.url), 'utf8')); db.exec('COMMIT'); }
-      catch (error) { db.exec('ROLLBACK'); throw error; }
-    } else if (version !== 1) throw new Error('Unsupported account database version.');
-    db.prepare('SELECT id,email,password_hash,security_version FROM account_users LIMIT 0').all();
-    db.prepare('SELECT token_hash,csrf_hash FROM account_sessions LIMIT 0').all();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      // Re-read under the writer lock: concurrent startups cannot reapply DDL.
+      const version = db.prepare('PRAGMA user_version').get().user_version;
+      if (version === 0) {
+        if (accountSchemaObjects(db).length) throw new Error('Unknown account database schema.');
+        db.exec(schema);
+      } else if (version === 1) {
+        if (JSON.stringify(accountSchemaObjects(db)) !== oldShape) throw new Error('Invalid previous account schema.');
+        db.exec(migration);
+      } else if (version !== 2) throw new Error('Unsupported account database version.');
+      if (db.prepare('PRAGMA user_version').get().user_version !== 2 || JSON.stringify(accountSchemaObjects(db)) !== newShape || db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Invalid account schema.');
+      db.prepare('SELECT id,email,email_verified_at,password_hash,security_version FROM account_users LIMIT 0').all();
+      db.prepare('SELECT token_hash,csrf_hash FROM account_sessions LIMIT 0').all();
+      db.prepare('SELECT event_key,nonce,tag,ciphertext,lease_id FROM account_mail_outbox LIMIT 0').all();
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
     await chmod(path.join(root, 'accounts.sqlite'), 0o600);
   } catch { db?.close(); throw new Error('Customer account storage is unavailable.'); }
   let closed = false;
@@ -69,6 +99,7 @@ export async function openAccountDatabase({ directory = DEFAULT_ACCOUNT_STORE, p
     get: (sql, ...values) => db.prepare(sql).get(...values),
     all: (sql, ...values) => db.prepare(sql).all(...values),
     run: (sql, ...values) => db.prepare(sql).run(...values),
+    exec: sql => db.exec(sql),
     transaction(fn) {
       db.exec('BEGIN IMMEDIATE');
       try { const result = fn(); if (result?.then) throw new Error('Account transactions must be synchronous.'); db.exec('COMMIT'); return result; }

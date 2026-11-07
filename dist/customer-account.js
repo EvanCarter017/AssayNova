@@ -14,19 +14,26 @@ export function validAccountPassword(value) {
   return true;
 }
 export function accountUser(value) {
-  if (!value || !opaque(value.id) || typeof value.email !== 'string' || value.email.length > 160 || value.emailVerified !== false || typeof value.name !== 'string' || value.name.length > 100 || typeof value.company !== 'string' || value.company.length > 160) throw new AccountError('invalid_response');
-  return { id: value.id, email: value.email, emailVerified: false, name: value.name, company: value.company };
+  if (!value || !opaque(value.id) || typeof value.email !== 'string' || value.email.length > 160 || typeof value.emailVerified !== 'boolean' || typeof value.name !== 'string' || value.name.length > 100 || typeof value.company !== 'string' || value.company.length > 160) throw new AccountError('invalid_response');
+  return { id: value.id, email: value.email, emailVerified: value.emailVerified, name: value.name, company: value.company };
 }
+const notificationStates = new Set(['not_requested','not_verified','not_configured','unsupported_address','backpressure','unavailable','queued','retrying','accepted','failed','expired','canceled']);
+export function accountNotifications(value) {
+  if (value === undefined) return { receipt: 'not_requested', support: 'not_requested', retryable: false };
+  if (!value || Array.isArray(value) || Object.keys(value).length !== 3 || !notificationStates.has(value.receipt) || !notificationStates.has(value.support) || typeof value.retryable !== 'boolean') throw new AccountError('invalid_response');
+  return { receipt: value.receipt, support: value.support, retryable: value.retryable };
+}
+function mailCapability(value) { if (value === undefined) return false; if (!value || Array.isArray(value) || Object.keys(value).length !== 1 || typeof value.enabled !== 'boolean') throw new AccountError('invalid_response'); return value.enabled; }
 export function accountRequest(value) {
   const record = parseAccountRequest(value?.record);
   if (!value || !opaque(value.id) || !Number.isSafeInteger(value.revision) || value.revision < 1 || !record || !iso(value.createdAt) || !iso(value.updatedAt)) throw new AccountError('invalid_response');
-  return { id: value.id, revision: value.revision, record, createdAt: value.createdAt, updatedAt: value.updatedAt };
+  return { id: value.id, revision: value.revision, record, createdAt: value.createdAt, updatedAt: value.updatedAt, notifications: accountNotifications(value.notifications) };
 }
 export class AccountError extends Error {
   constructor(code = 'request_failed', status = 0) { super('Customer account request could not be completed.'); this.name = 'AccountError'; this.code = typeof code === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(code) ? code.toLowerCase() : 'request_failed'; this.status = status; }
 }
 export function accountErrorMessage(error) {
-  const message = ({ invalid_credentials: 'The email and password could not be confirmed.', invalid_recovery: 'Those recovery details could not be confirmed.', recovery_failed: 'Those recovery details could not be confirmed.', account_exists: 'An account could not be created with these details. Try signing in or use account recovery.', email_exists: 'An account could not be created with these details. Try signing in or use account recovery.', draft_limit: 'Your account already has 50 requests. Remove an existing request before submitting another.', revision_conflict: 'This request has changed. Your details are still here. Reopen it from My account before replacing a newer version.', idempotency_conflict: 'This submission reference already has different details. Your details are still here. Reopen the request from My account.', request_deleted: 'This request was deleted. Your details are still here. Open My account before starting a new request.', request_not_found: 'This request is no longer available. Open My account to see your current requests.', account_changed: 'Account security changed. Please sign in again before continuing.', invalid_password: 'Use a password of 15–128 characters.', invalid_input: 'Check the details and try again.', validation_error: 'Check the details and try again.', invalid_record: 'Check the request details and try again.', invalid_revision: 'Reopen the request from My account before submitting again.', invalid_response: 'We could not confirm the submitted result. Please retry safely.', owner_changed: 'The signed-in account changed. Open the request again from My account.', network: 'The connection did not confirm the result. Your details are still here; retrying will not create another request.', aborted: 'The result was not confirmed here. Check My account or retry the submission safely.', unavailable: 'Account access is unavailable in this view.' })[error?.code];
+  const message = ({ invalid_action: 'This link is invalid, used or expired. Request a new link.', invalid_credentials: 'The email and password could not be confirmed.', invalid_recovery: 'Those recovery details could not be confirmed.', recovery_failed: 'Those recovery details could not be confirmed.', account_exists: 'An account could not be created with these details. Try signing in or use account recovery.', email_exists: 'An account could not be created with these details. Try signing in or use account recovery.', draft_limit: 'Your account already has 50 requests. Remove an existing request before submitting another.', revision_conflict: 'This request has changed. Your details are still here. Reopen it from My account before replacing a newer version.', idempotency_conflict: 'This submission reference already has different details. Your details are still here. Reopen the request from My account.', request_deleted: 'This request was deleted. Your details are still here. Open My account before starting a new request.', request_not_found: 'This request is no longer available. Open My account to see your current requests.', account_changed: 'Account security changed. Please sign in again before continuing.', invalid_password: 'Use a password of 15–128 characters.', invalid_input: 'Check the details and try again.', validation_error: 'Check the details and try again.', invalid_record: 'Check the request details and try again.', invalid_revision: 'Reopen the request from My account before submitting again.', invalid_response: 'We could not confirm the submitted result. Please retry safely.', owner_changed: 'The signed-in account changed. Open the request again from My account.', network: 'The connection did not confirm the result. Your details are still here; retrying will not create another request.', aborted: 'The result was not confirmed here. Check My account or retry the submission safely.', unavailable: 'Account access is unavailable in this view.' })[error?.code];
   if (message) return message;
   if (error?.status === 429) return 'Too many attempts. Please wait a moment and try again.';
   if (error?.status === 401) return 'Please sign in again. Your unsaved details are still here.';
@@ -36,10 +43,10 @@ export function accountErrorMessage(error) {
 }
 
 export function createCustomerAccountClient({ fetcher = (...args) => globalThis.fetch(...args), timeout = 12000 } = {}) {
-  let user = null, csrf = '', loaded = false, revision = 0;
+  let user = null, csrf = '', loaded = false, revision = 0, mailEnabled = false;
   const listeners = new Set();
   const notify = reason => { for (const listener of listeners) listener(user, reason); };
-  function setSession(nextUser, token, reason) { user = nextUser ? accountUser(nextUser) : null; csrf = typeof token === 'string' ? token : ''; loaded = true; notify(reason); }
+  function setSession(nextUser, token, reason, capability = mailEnabled) { mailEnabled = capability; user = nextUser ? accountUser(nextUser) : null; csrf = typeof token === 'string' ? token : ''; loaded = true; notify(reason); }
   async function call(method, suffix, body, { signal, token = csrf } = {}) {
     const requestRevision = revision;
     const controller = new AbortController();
@@ -52,7 +59,7 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
       const value = await response.json();
       if (controller.signal.aborted || requestRevision !== revision) throw new AccountError('aborted');
       if (!response.ok) {
-        const error = new AccountError(value?.error?.code, response.status);
+        const error = new AccountError(value?.error?.code, response.status); const retry = Number(response.headers?.get?.('Retry-After')); if (Number.isSafeInteger(retry) && retry > 0 && retry <= 86400) error.retryAfter = retry;
         // Rejected credentials/recovery details do not expire an existing session.
         if (response.status === 401 && !['invalid_credentials', 'invalid_recovery'].includes(error.code)) { revision++; setSession(null, '', 'expired'); }
         if (response.status === 403) csrf = '';
@@ -67,7 +74,7 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     const value = await call('GET', '/session', undefined, { signal });
     if (ticket !== revision || signal?.aborted) throw new AccountError('aborted');
     if (typeof value.authenticated !== 'boolean' || typeof value.csrfToken !== 'string' || !value.csrfToken || (!!value.user !== value.authenticated)) throw new AccountError('invalid_response');
-    setSession(value.user, value.csrfToken, 'session');
+    setSession(value.user, value.csrfToken, 'session', mailCapability(value.mail));
     return user;
   }
   async function mutate(suffix, body, options = {}, method = 'POST') {
@@ -79,7 +86,7 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     const value = await mutate(suffix, body, options);
     if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
     if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response');
-    setSession(value.user, value.csrfToken, 'login');
+    setSession(value.user, value.csrfToken, 'login', mailCapability(value.mail));
     return value;
   }
   const idPath = id => { if (!opaque(id)) throw new AccountError('invalid_input'); return '/requests/' + id; };
@@ -98,13 +105,18 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     return value;
   }
   const client = {
-    getSession, snapshot: () => ({ user, loaded }), subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    getSession, snapshot: () => ({ user, loaded, mail: { enabled: mailEnabled } }), subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     signup: (values, options) => authenticate('/signup', values, options), login: (values, options) => authenticate('/login', values, options),
     async logout(all = false, options) { const ticket = ++revision; const value = await mutate(all ? '/logout-all' : '/logout', {}, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'logout'); },
     async recover(values, options) { const ticket = ++revision; const value = await mutate('/recover', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'recovered'); return value; },
-    async profile(values, options) { const ticket = revision; const value = await mutate('/profile', values, options, 'PATCH'); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); setSession(value.user, csrf, 'profile'); return user; },
-    async password(values, options) { const ticket = ++revision; const value = await mutate('/password', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response'); setSession(value.user, value.csrfToken, 'password'); return user; },
+    async profile(values, options) { const ticket = revision; const value = await mutate('/profile', values, options, 'PATCH'); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); setSession(value.user, csrf, 'profile', mailCapability(value.mail)); return user; },
+    async password(values, options) { const ticket = ++revision; const value = await mutate('/password', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response'); setSession(value.user, value.csrfToken, 'password', mailCapability(value.mail)); return user; },
     async recoveryCodes(values, options) { const ticket = revision; const value = await mutate('/recovery-codes', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken === 'string') csrf = value.csrfToken; return value; },
+    async requestVerification(options) { const ownerId = user?.id; await confirmOwner(ownerId, options); const value = await mutate('/email/verification', {}, options); await confirmOwner(ownerId, options); if (value.ok !== true || !['verified','queued','not_configured','unsupported_address','backpressure','unavailable'].includes(value.status)) throw new AccountError('invalid_response'); return value; },
+    async requestPasswordReset(email, options) { const value = await mutate('/password/reset-request', { email }, options); if (value.ok !== true || Object.keys(value).length !== 1) throw new AccountError('invalid_response'); return value; },
+    async verifyEmail(token, options) { const ownerId = (await getSession(options))?.id || null; const value = await mutate('/email/verify', { token }, options); if (value.ok !== true || Object.keys(value).length !== 1) throw new AccountError('invalid_response'); const current = await getSession(options); if ((current?.id || null) !== ownerId) throw new AccountError('owner_changed'); return value; },
+    async resetPassword(token, newPassword, options) { const ticket = ++revision; const value = await mutate('/password/reset', { token, newPassword }, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'recovered'); return value; },
+    async retryNotifications(id, expectedRevision, options) { const ownerId = user?.id; await confirmOwner(ownerId, options); const value = await mutate(idPath(id) + '/notifications', { expectedRevision }, options); await confirmOwner(ownerId, options); return accountRequest(value.request); },
     async listDrafts(options) { const value = await readOwnedDrafts('/requests', options); if (!Array.isArray(value.requests) || value.requests.length > 50) throw new AccountError('invalid_response'); return value.requests.map(accountDraft); },
     async getDraft(id, options) { return accountRequest((await readOwnedDrafts(idPath(id), options)).request); },
     async saveDraft(record, { id, expectedRevision, idempotencyKey, ownerId, signal } = {}) {
@@ -116,7 +128,7 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
       await confirmOwner(ownerId, { signal });
       return accountRequest(value.request);
     },
-    async deleteDraft(id, expectedRevision, options) { const ownerId = user?.id; await confirmOwner(ownerId, options); const value = await mutate(idPath(id), { expectedRevision }, options, 'DELETE'); if (value.ok !== true) throw new AccountError('invalid_response'); }
+    async deleteDraft(id, expectedRevision, options) { const ownerId = user?.id; await confirmOwner(ownerId, options); const value = await mutate(idPath(id), { expectedRevision }, options, 'DELETE'); if (value.ok !== true) throw new AccountError('invalid_response'); await confirmOwner(ownerId, options); }
   };
   client.listRequests = client.listDrafts; client.getRequest = client.getDraft; client.saveRequest = client.saveDraft; client.deleteRequest = client.deleteDraft;
   return Object.freeze(client);

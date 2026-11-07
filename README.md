@@ -49,7 +49,7 @@ node server.mjs --host=0.0.0.0 --port=4318 --no-accounts
 
 ## 当前功能
 
-客户账户默认启用：`/register` 注册、`/login` 登录、`/account` 管理资料与自己的服务端请求草稿，`/recover-account` 使用恢复码重设密码。密码为 15–128 个 Unicode 字符；注册后显示 8 个一次性恢复码，请由用户妥善保存。没有邮件服务，邮箱始终未验证，也不会据此自动关联报告或后台客户。账户数据独立保存在被忽略的 `work/customer-accounts/accounts.sqlite`，与管理员密码、报告和图片无关。显式 `--no-accounts` 关闭账户 API 与入口；账户服务器不能静默退回浏览器假登录。详见 [客户账户与备份说明](docs/customer-accounts.md)。
+客户账户默认启用：`/register` 注册、`/login` 登录、`/account` 管理资料与自己的服务端请求，`/recover-account` 使用恢复码重设密码。密码为 15–128 个 Unicode 字符；注册后显示 8 个一次性恢复码，请由用户妥善保存。邮件默认关闭；启用后支持显式邮箱验证、已验证邮箱重设密码、账户请求回执及固定支持邮箱通知。邮箱不会自动关联报告或后台客户。账户数据独立保存在被忽略的 `work/customer-accounts/accounts.sqlite`，与管理员密码、报告和图片无关。显式 `--no-accounts` 关闭账户 API 与入口；账户服务器不能静默退回浏览器假登录。详见 [客户账户与备份说明](docs/customer-accounts.md)。
 
 管理后台基础页面位于 `/admin`，Reports 是首个实际模块：按产品原图生成 PDF/SVG、查看已发布记录，再通过普通 Verify COA 向客户展示。使用 `conference/start.ps1` 启动集成的本机 4317 服务，或显式传入 `--conference-reports --admin`；4317 是唯一报告写入进程及密码/会话管理进程。首次由管理员在本机页面设置一个密码，之后输入该密码解锁，无用户名或注册。客户页面没有管理入口。LAN 4318 可显式启用受限代理，让局域网设备在 `http://192.168.0.60:4318/admin` 使用相同密码登录；代理不建立第二个写入进程，且不能设置首个密码。登录页固定英文，进入 Reports 后可切换中英文。私有接口、图片和下载也受服务端会话保护。未来生产 TLS、角色、订单与客户管理另行建设。现阶段随机示例数据的说明只保留在私有管理区；清理生成数据不会移除后台页面。已忽略的 `work/report-studio` 保留原有 LC/PDF，重启不变。详见 [管理与报告模块说明](docs/conference-studio.md)。现有两个公开样例的披露保持原样。
 
@@ -70,7 +70,7 @@ node server.mjs --host=0.0.0.0 --port=4318 --conference-reports --admin-proxy=ht
 - COA Lookup Code 精确查询：`AN-7K9Q-2M4X` 与 `AN-8P6R-3N5Y` 分别打开不同的公开样例报告页。支持大小写和首尾空格处理，不做模糊匹配或默认首条回退。
 - 独立报告页、浏览器前进/后退、打印 / 保存示例 PDF、复制当前查找码或同源报告链接；剪贴板失败时显示可全选的手动复制文本。
 - Testing、Contact us 和 Nova Support 统一要求确认登录后显式提交，记录持久保存在当前账户的 My requests 中，可查看、编辑和确认删除。Submitted 仅表示平台 API 已持久接收，不代表邮件送达或实验室受理。
-- Contact us 提供账户咨询提交，并保留配置的 hello@assaynova.com、reports@assaynova.com 联系方式、办公时间与响应估计。mailto 仍交给外部邮件客户端；[联系配置与咨询处理说明](docs/partner-demo-content.md) 记录实际行为。
+- Contact us 提供账户咨询提交，并保留配置的 supports@assaynovalabs.com 联系方式、办公时间与响应估计。mailto 仍交给外部邮件客户端；[联系配置与咨询处理说明](docs/partner-demo-content.md) 记录实际行为。
 - 可直接访问 `/coa/AN-7K9Q-2M4X` 或 `/coa/AN-8P6R-3N5Y` 并刷新。旧链接 `/?coa=AN-2026-0042` 仅在这个显式兼容入口识别旧报告编号，并替换为对应的规范查找码 URL。
 - 键盘操作、焦点管理、减少动态效果的系统偏好支持。
 - 未实现用户参考图中的价格动画，遵循用户最新要求。
@@ -109,15 +109,15 @@ COA Lookup Code 与报告编号、送检请求编号是不同的标识。普通�
 
 页面白名单位于 `dist/routes.js`，浏览器与本地服务器共用。将来增加页面需同步维护视图、标题、导航和 HTTP 测试；实际部署托管需配置同样精确的路径重写与 404 状态规则。当前使用原生 Node HTTP、SQLite 与浏览器模块，没有框架或第三方路由依赖。
 
-当前固定报告内容是公开的虚构样例，不是有效检测报告。新 UI 仅创建严格的 version 3 账户请求，种类为 testing、contact、report-recovery。每个账户最多 50 条请求；引用为 AN-REQ-*，重试复用冻结的引用、时间、幂等键和载荷，后续修改使用版本号。旧账户 version 2 记录显示 Saved · Not submitted，显式复核提交后才转换，保留原引用、创建时间、服务端 ID 与请求种类。SQLite schema 1 无需迁移。
+当前固定报告内容是公开的虚构样例，不是有效检测报告。新 UI 仅创建严格的 version 3 账户请求，种类为 testing、contact、report-recovery。每个账户最多 50 条请求；引用为 AN-REQ-*，重试复用冻结的引用、时间、幂等键和载荷，后续修改使用版本号。旧账户 version 2 记录显示 Saved · Not submitted，显式复核提交后才转换，保留原引用、创建时间、服务端 ID 与请求种类。schema 1→2 仅原子添加验证标记与邮件表，保留旧记录原始 JSON；历史请求不会自动补发邮件。
 
 既有三个浏览器键 assaynova.prototype.requests.v1、assaynova.contact.enquiry.v1、assaynova.support.recovery.v1 保留原字节，活动表单不再读取、保存、恢复、清除或上传；旧入口安全转到账户。浏览器站点数据清除可由用户自行处理。无设备保存位置或自动导入。产品图仅作本地预览；只提交图像偏好与样式，不上传文件、文件名或 blob URL。未提交输入仅留在当前页面内存，同账户会话过期可安全重试；退出或换账户清除私人编辑内容。
 
-My requests 不会按邮箱、姓名或公司匹配私人报告。报告恢复请求需人工身份核实，不执行 COA 搜索或自动恢复。静态 mailto 链接、公开 COA 与隐私偏好行为保持不变。邮件、实验室处理和物流未接入；边界详见 docs/email-notifications.md。
+My requests 不会按邮箱、姓名或公司匹配私人报告。报告恢复请求需人工身份核实，不执行 COA 搜索或自动恢复。静态 mailto 链接、公开 COA 与隐私偏好行为保持不变。邮件需单独私密配置，接收状态与 Submitted 分开；实验室处理和物流未接入；边界详见 docs/email-notifications.md。
 
 本站面向 AssayNova。当前样例记录不构成身份验证、签发或访问控制后端；真实报告需在服务端查询实际已发布记录，并明确修订、撤回等状态。后续接入实际资料时应保持已分配查找码稳定。
 
-当前账户与数据库用于身份和账户请求，不包含支付、样品物流或实验室系统接入。服务范围、样品要求、报价、时效和实验室资质仍需以实际资料确认；页面不把平台持久接收描述为实验室已受理。联系地址、办公时间与响应估计作为站点配置维护，详见[联系配置与咨询处理说明](docs/partner-demo-content.md)；配置地址不代表网站已启用邮件投递。
+当前账户与数据库用于身份和账户请求，不包含支付、样品物流或实验室系统接入。服务范围、样品要求、报价、时效和实验室资质仍需以实际资料确认；页面不把平台持久接收描述为实验室已受理。联系地址、办公时间与响应估计作为站点配置维护，详见[联系配置与咨询处理说明](docs/partner-demo-content.md)；配置地址不代表已启用投递或收件箱已送达。
 
 ## 文件
 
@@ -132,7 +132,7 @@ server.mjs          零依赖 HTTP、账户与公开页面入口
 accounts/           客户账户、SQLite 与独立局域网账户代理
 scripts/account-backup.mjs  原生 SQLite 一致性备份
 start.ps1           PowerShell 启动入口
-docs/email-notifications.md  本机草稿、静态联系链接与后续邮件设计边界
+docs/email-notifications.md  事务邮件、私密配置、密钥备份和状态边界
 docs/partner-demo-content.md 联系配置与咨询处理说明
 ```
 
@@ -155,3 +155,5 @@ node --test tests/*.test.mjs
 测试使用 Node 内置测试运行器，不需要 npm 或第三方依赖；`package.json` 的 `test` 命令通过通配符覆盖现有全部测试文件。HTTP 测试在临时副本和随机本机端口运行，不会改写当前项目或占用 4317。浏览器验收另行检查联系邮箱校验、本机草稿、静态联系信息与草稿未发送说明、两个查找码对应的不同记录、URL/刷新/历史、未知码恢复、复制与打印、桌面/手机布局、Alt 源码提示和原有弹窗交互。
 
 本轮为本地开发预览，没有注册或部署托管网站。
+
+事务邮件由唯一账户服务运行有界加密队列，默认关闭。公开联系邮箱为 supports@assaynovalabs.com，报告母版中的 reports@assaynovalabs.com 保持不变。真实 SMTP 接收与收件箱送达不属于假提供方测试结果。schema2 上线前须原生备份并停止唯一写入服务；不能用 schema1 旧程序直接回退。详见 [邮件配置及回滚说明](docs/email-notifications.md)。

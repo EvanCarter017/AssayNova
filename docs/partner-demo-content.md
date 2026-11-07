@@ -1,13 +1,13 @@
 # Contact details and enquiry handling
 
-AssayNova contact addresses and service information are maintained below. The Contact page provides signed-in account enquiries and native email links. Email delivery remains a separate integration.
+AssayNova contact addresses and service information are maintained below. The Contact page provides signed-in account enquiries and native email links. Transactional email is separately configured and off by default.
 
 ## Current contact configuration
 
 | Item | Configured value | Source |
 | --- | --- | --- |
-| Client services address | hello@assaynova.com | dist/index.html, #contact-view .contact-sidebar: visible address and mailto href |
-| Nova Support address | reports@assaynova.com | dist/index.html, #contact-view .contact-sidebar: visible address and mailto href |
+| Client services address | supports@assaynovalabs.com | dist/index.html, #contact-view .contact-sidebar: visible address and mailto href |
+| Nova Support address | supports@assaynovalabs.com | dist/index.html, #contact-view .contact-sidebar: visible address and mailto href |
 | Office hours | Monday–Friday · 9:00 am–5:00 pm ET. | dist/index.html, #contact-view .contact-sidebar, Office hours |
 | Support response estimate | Typically within 1 business day. | dist/index.html, #contact-view .contact-sidebar, Nova Support response |
 
@@ -17,7 +17,7 @@ The homepage and testing pages use the existing ~1 Week Turnaround estimate. Pra
 
 ## Account enquiries and recovery
 
-Contact us submits Name, Email, Topic and Message through the signed-in account with Submit message. Nova Support submits testing email, company/project and optional context with Submit recovery request. Testing retains its three-step review and Submit request action. All three appear in My requests with view, edit and delete. Their Submitted status acknowledges durable platform storage only; no email, staff notification or laboratory processing is simulated.
+Contact us submits Name, Email, Topic and Message through the signed-in account with Submit message. Nova Support submits testing email, company/project and optional context with Submit recovery request. Testing retains its three-step review and Submit request action. All three appear in My requests with view, edit and delete. Their Submitted status acknowledges durable platform storage only; email outcomes are separate, and no laboratory processing is simulated.
 
 New records use strict version-3 envelopes. Older account version-2 records display Saved · Not submitted and require explicit review/resubmission. The server preserves ownership, reference, creation time, kind and revisions. No email/company matching attaches reports. Support requests never perform COA lookup; manual identity verification remains necessary.
 
@@ -27,6 +27,8 @@ Static contact and dynamically created recovery submit controls remain disabled 
 
 ## Delivery and validation
 
-The existing account API and SQLite schema-1 JSON column persist submitted requests. No mail provider or laboratory integration is configured. Native mailto links remain available independently. See [email-notifications.md](email-notifications.md) for the actual boundaries. Optional consent behavior is unchanged.
+The account API and schema2 JSON column persist submitted requests without rewriting old strict records. A private optional transactional provider can send verification/reset links, verified-account receipts and fixed-destination support alerts; status does not imply inbox delivery. No laboratory integration is configured. Native mailto links remain available independently. See [email-notifications.md](email-notifications.md) for the actual boundaries. Optional consent behavior is unchanged.
 
 Tests and browser review use fabricated accounts, synthetic fields and explicit disposable account/report directories. Actual customer records, account credentials, report stores and administrator data are never used for acceptance checks.
+
+The report-master contact reports@assaynovalabs.com is separate and unchanged. Admin publication notices require a separately typed recipient and explicit confirmation after publication; no recipient comes from testing reportRecipient, client name or catalog matching.

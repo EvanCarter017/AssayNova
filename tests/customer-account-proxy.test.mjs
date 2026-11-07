@@ -83,3 +83,5 @@ test('LAN bridge transports the same owned contact and recovery request records 
  }
  assert.equal((await local.call('/requests')).data.requests.length,2);
 });
+
+test('mail actions retain bridge CSRF/Origin boundaries, off capability and exact paths',async t=>{const primary=await accountFixture();t.after(()=>primary.close());const proxy=await bridge(primary.base);t.after(()=>proxy.close());const a=browser(proxy.base);assert.deepEqual((await a.call('/session')).data.mail,{enabled:false});assert.equal((await a.call('/password/reset-request','POST',{email:'unknown101@example.invalid'})).status,202);assert.equal((await a.call('/email/verify','POST',{token:'a'.repeat(64)})).status,400);assert.equal((await a.call('/email/verify?token='+ 'a'.repeat(64),'POST',{token:'a'.repeat(64)})).status,400);assert.equal((await a.call('/password/reset','POST',{token:'a'.repeat(64),newPassword:fixturePassword},{headers:{Origin:'https://foreign.invalid'}})).status,403);await a.signup('proxy101@example.invalid');assert.equal((await a.call('/email/verification','POST',{})).data.status,'not_configured');});

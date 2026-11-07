@@ -102,3 +102,5 @@ test('bound Contact and Recovery fields stay hidden on expiry while same-owner r
  }
  const guest=fixture({signedIn:false});assert.equal(guest.panel.hidden,false);guest.fill();assert.equal(guest.values().message,valid.message);assert.equal(guest.nodes.get('#contact-message').disabled,false);
 });
+
+test('public contact links use the selected supports mailbox without changing report-master contact',async()=>{const {readFile}=await import('node:fs/promises');const html=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');assert.equal((html.match(/href="mailto:supports@assaynovalabs.com"/g)||[]).length,2);assert.doesNotMatch(html,/mailto:(?:hello|reports)@assaynova\.com/);const master=await readFile(new URL('../templates/coa/lab-contact.json',import.meta.url),'utf8');assert.match(master,/reports@assaynovalabs.com/);});

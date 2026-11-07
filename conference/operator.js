@@ -7,6 +7,7 @@ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const language=createAdminI18n({storage:()=>localStorage,browserLanguage:navigator.language});
 const t=(key,values)=>language.t(key,values);
 let session,selected,result,busy=false,currentCustomerId='',catalogLoading=false,catalogEpoch=0;
+let reportNotice;
 let importer,correction,reportLibrary,importing=false;
 let statusState={key:'loading',error:false};
 const fieldNames=['lot','received','reported','purity1','purity2'];
@@ -27,6 +28,7 @@ function renderLive(){
 function liveStatus(key){live.key=key;renderLive();}
 function invalidateLive(){++live.epoch;clearTimeout(live.timer);live.timer=null;live.desired=null;}
 function clearPaper(){
+  reportNotice?.clear();
   result=null;$('result').hidden=true;$('live-result').hidden=true;$('empty').hidden=false;$('paper').hidden=true;$('paper').removeAttribute('src');
   for(const id of ['code','result-name','result-state'])$(id).textContent='';
   for(const id of ['pdf','public-link'])$(id).removeAttribute('href');
@@ -93,6 +95,7 @@ async function drainLive(signal){
   if(live.stopped||signal?.aborted)throw new Error('Request cancelled.');
 }
 function stopLive(){
+  reportNotice?.clear();
   live.stopped=true;invalidateLive();live.controller?.abort();clearTimeout(live.requestTimer);live.cancelRequest?.(new Error('Request cancelled.'));clearTimeout(live.gateTimer);live.gateTimer=null;live.releaseGate?.();live.releaseGate=null;
 }
 async function libraryFetch(url,options){
@@ -110,7 +113,7 @@ function applyLanguage(){
   language.apply(document,'reportsTitle');
   document.querySelector('.brand span').textContent=t('admin');
   $('admin-language').value=language.locale;
-  renderSelectionLanguage();renderResultLanguage();reportLibrary?.applyLanguage();renderStatus();renderLive();
+  renderSelectionLanguage();renderResultLanguage();reportLibrary?.applyLanguage();reportNotice?.applyLanguage();renderStatus();renderLive();
   if(session&&currentCustomerId){const value=$('product').value,state=catalogPickerState(session.products,session.entries,$('search').value,value);renderProductOptions({...state,chosen:state.ready.some(product=>product.id===value)?value:'',requireChoice:!selected});}
   importer?.applyLanguage();correction?.applyLanguage();renderCatalogAction();
 }
@@ -120,7 +123,7 @@ function updateControls(){
   for(const id of ['reload-products','catalog-manage','search','product'])$(id).disabled=busy||catalogLoading||importing||!session||!currentCustomerId;
   for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||catalogLoading||importing||!selected||!currentCustomerId;
   if(live.stopped)$('publish').disabled=true;
-  importer?.refresh();correction?.refresh();reportLibrary?.refresh();renderCatalogAction();
+  importer?.refresh();correction?.refresh();reportLibrary?.refresh();reportNotice?.refresh();renderCatalogAction();
 }
 function selectProduct(){
   selected=session.products.find(product=>product.id===$('product').value&&(!product.status||product.status==='ready'));
@@ -170,6 +173,7 @@ async function adminFetch(url,options){
   return response;
 }
 function showResult(value){
+  reportNotice?.select(value);
   invalidateLive();live.suspended=true;liveStatus('liveSaved');$('live-result').hidden=true;
   result=value;$('empty').hidden=true;$('result').hidden=false;
   $('code').textContent=value.report.lookupCode;$('result-name').textContent=value.label;renderResultLanguage();
@@ -183,6 +187,7 @@ async function history(){
 }
 function showSavedReport(row,state){const code=row.lookupCode;showResult({published:state==='published',removed:state==='removed',report:{lookupCode:code},label:row.label,previewURL:'/admin/bundles/'+state+'/'+code+'/report.svg',pdfURL:'/admin/bundles/'+state+'/'+code+'/report.pdf',publicURL:session.publicOrigin+'/coa/'+code});}
 function clearUncertainReport({lookupCode}){
+  reportNotice?.clear();
   if(result?.report.lookupCode!==lookupCode)return;
   result=null;$('result').hidden=true;$('empty').hidden=false;
   $('paper').hidden=true;$('paper').removeAttribute('src');
@@ -229,7 +234,8 @@ $('copy-code').addEventListener('click',async()=>{
 });
 try{
   const response=await adminFetch('/admin/api/session',{cache:'no-store'});if(!response.ok)throw new Error('');
-  session=await response.json();session.entries=session.entries||[];session.catalogRevision=session.catalogRevision||null;currentCustomerId=session.defaultCustomerId;renderCustomers();filter();updateControls();
+  session=await response.json();
+  if(session.mail?.reportNoticesEnabled){const {createReportMailUI}=await import('./report-mail-ui.mjs');reportNotice=createReportMailUI({document,request:adminFetch,language,context:()=>session?{token:session.token,enabled:!!session.mail?.reportNoticesEnabled,blocked:busy||catalogLoading||importing}:null,setPending:value=>{busy=value;updateControls();}});}session.entries=session.entries||[];session.catalogRevision=session.catalogRevision||null;currentCustomerId=session.defaultCustomerId;renderCustomers();filter();updateControls();
   if(session.catalogError)statusError(session.catalogError,'catalogFallback');else status(currentCustomerId?'ready':'emptyCustomers');
   try{await history();}catch(error){statusError(error.message,'historyFallback');}
   await importer.loadPending();

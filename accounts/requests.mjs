@@ -12,13 +12,13 @@ function record(value) {
   return parsed;
 }
 function revision(value) { if (!Number.isSafeInteger(value) || value < 1) throw accountError(400, 'INVALID_REVISION', 'Reopen the request and try again.'); return value; }
-export function createAccountRequests({ db, clock = Date.now }) {
+export function createAccountRequests({ db, clock = Date.now, mail }) {
   function document(row) {
     if (!row) throw missing();
     let parsed;
     try { parsed = parseAccountRequest(JSON.parse(row.record_json)); } catch {}
     if (!parsed) throw accountError(503, 'STORAGE_UNAVAILABLE', 'Account requests are unavailable. Try again later.');
-    return { id: row.id, revision: row.revision, record: parsed, createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() };
+    return { id: row.id, revision: row.revision, record: parsed, createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString(), notifications: mail ? mail.requestStatus(row) : { receipt: 'not_requested', support: 'not_requested', retryable: false } };
   }
   function owned(user, id) { if (!validId(id)) throw missing(); return db.get('SELECT * FROM account_requests WHERE user_id=? AND id=?', user.id, id); }
   function current(user) {
@@ -42,8 +42,9 @@ export function createAccountRequests({ db, clock = Date.now }) {
         if (db.get('SELECT count(*) AS n FROM account_requests WHERE user_id=?', user.id).n >= 50) throw accountError(409, 'DRAFT_LIMIT', 'Your account already has 50 requests. Remove a request before adding another.');
         if (db.get('SELECT count(*) AS n FROM account_idempotency WHERE user_id=?', user.id).n >= 1000) throw accountError(429, 'SAVE_LIMIT', 'This account has reached its submission reference limit.');
         const id = randomBytes(16).toString('hex'), now = clock();
-        db.run('INSERT INTO account_requests VALUES(?,?,1,?,?,?)', id, user.id, serialized, now, now);
+        db.run('INSERT INTO account_requests(id,user_id,revision,record_json,created_at,updated_at,notification_revision) VALUES(?,?,1,?,?,?,?)', id, user.id, serialized, now, now, parsed.version === 3 ? 1 : null);
         db.run('INSERT INTO account_idempotency VALUES(?,?,?,?)', user.id, key, hash, id);
+        if (parsed.version === 3) mail?.requestAdmission(owned(user, id));
         return { status: 201, data: { request: document(owned(user, id)) } };
       });
     },
@@ -53,8 +54,19 @@ export function createAccountRequests({ db, clock = Date.now }) {
         current(user); const old = owned(user, id); if (!old) throw missing(); if (old.revision !== expected) throw conflict();
         const previous = document(old).record;
         if (parsed.id !== previous.id || parsed.createdAt !== previous.createdAt || requestKind(parsed) !== requestKind(previous)) throw accountError(400, 'INVALID_RECORD', 'The original request reference, date and kind must remain unchanged.');
-        db.run('UPDATE account_requests SET revision=revision+1,record_json=?,updated_at=? WHERE user_id=? AND id=? AND revision=?', JSON.stringify(parsed), clock(), user.id, id, expected);
+        const submitted = previous.version === 2 && parsed.version === 3;
+        db.run('UPDATE account_requests SET revision=revision+1,record_json=?,updated_at=?,notification_revision=? WHERE user_id=? AND id=? AND revision=?', JSON.stringify(parsed), clock(), submitted ? expected + 1 : old.notification_revision, user.id, id, expected);
+        if (submitted) mail?.requestAdmission(owned(user, id));
         return { request: document(owned(user, id)) };
+      });
+    },
+    notifications(user, id, input, peer) {
+      const expected = revision(input.expectedRevision);
+      return db.transaction(() => {
+        current(user); const row = owned(user, id); if (!row) throw missing(); if (row.revision !== expected) throw conflict();
+        mail?.rate([['notifications-user', user.id, 10, 3600000], ['notifications-peer', peer, 100, 3600000], ['notifications-global', 'all', 1000, 3600000]]);
+        if (row.notification_revision) mail?.requestAdmission(row);
+        return { request: document(row) };
       });
     },
     delete(user, id, input) {

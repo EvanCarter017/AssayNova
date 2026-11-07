@@ -1,3 +1,4 @@
+import { captureMailAction } from '../dist/account-mail.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -224,7 +225,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   const internals = {};
   if (accountTransport) node('meta[name="assaynova-accounts"]').setAttribute('content','enabled');
   runInNewContext(runnable + '\nObject.assign(testInternals, { accountClient, getRecovery: () => recoveryForm, getReturn: () => recoveryReturn, navigateToURL });', {
-    ...reportData, ...pageData, ...supportData, ...submissionData, SAMPLE_REPORT_DATA, createRequestPage, createContactForm, requestKind, createCustomerAccountClient: () => createCustomerAccountClient({ fetcher: accountTransport }), createAccountPage: () => ({ leave() {}, activate() {} }), testInternals: internals, document, window, location, history, URL,
+    ...reportData, ...pageData, ...supportData, ...submissionData, captureMailAction, SAMPLE_REPORT_DATA, createRequestPage, createContactForm, requestKind, createCustomerAccountClient: () => createCustomerAccountClient({ fetcher: accountTransport }), createAccountPage: () => ({ leave() {}, activate() {} }), testInternals: internals, document, window, location, history, URL,
     navigator: { clipboard: { writeText(value) { copied.push(value); if (clipboardWrite) return clipboardWrite(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
     fetch: remoteFetch ?? unexpectedNetwork, AbortController, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
     localStorage: {

@@ -1,6 +1,6 @@
 # Customer account interface
 
-The shared lazy account client keeps CSRF and session state in memory. Importing modules does not access DOM, storage or network. Exact account routes use same-origin credentials and no-store responses. Password limits, unverified immutable email, profile changes and recovery-code handling are unchanged. Email or company matching never grants report ownership.
+The shared lazy account client keeps CSRF and session state in memory. Importing modules does not access DOM, storage or network. Exact account routes use same-origin credentials and no-store responses. Password limits, immutable email, profile changes and recovery-code handling remain. Verification truth is a strict boolean; mail capability is separately bounded and defaults off for older fixtures. Email or company matching never grants report ownership.
 
 ## Account request workflow
 
@@ -17,3 +17,9 @@ Private reads confirm the captured owner before and after GET. Writes use owner 
 Signup and account recovery show eight one-time codes in a private pane. Copy/manual fallback and deliberate acknowledgement remain; leaving clears codes and ignores late clipboard results. Report recovery cannot reset account access. Necessary cookies, consent lifetimes and privacy-controller behavior are unchanged; privacy copy describes retained legacy bytes and explicit account submission.
 
 Tests use disposable synthetic accounts and actual-source controllers. Coverage includes three kinds, owned CRUD, strict payload bounds, escaped/Unicode input, exact retries, revision/owner changes, closed views, legacy preservation, disabled mode, no browser persistence, account security and public COA navigation.
+
+## Mail actions and status
+
+Mail-enabled registration highlights Check your email while preserving the one-time private code pane. Recovery offers email reset first with a saved-code fallback. Provider-off recovery retains its original code form. Verify/reset fragments are captured in volatile memory and removed before fetch or rendered links; exact action pages use no-referrer/no-store. GET/HEAD and opening a page never consume a token; explicit confirmation and CSRF-protected POST are required. Malformed links clear too. Reload/leave/owner change clears private action/password/code state; a deliberate initial-session Retry retains the same-page volatile token. Reset finishes at sign-in with eight replacement codes.
+
+Security shows verified truth and bounded resend cooldown. My requests shows receipt/support status separately from Submitted. Mail server accepted does not confirm inbox delivery. Manual owner-confirmed Refresh never enqueues; bounded Retry notifications only admits eligible blocked/missing events. There is no polling or historical backfill. Strict record equality and submission-intent replay do not include this external metadata.

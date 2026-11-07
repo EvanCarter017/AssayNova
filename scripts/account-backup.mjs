@@ -2,10 +2,11 @@ import { DatabaseSync, backup } from 'node:sqlite';
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { privateDirectory, noSymlinks } from '../accounts/database.mjs';
+import { privateDirectory, noSymlinks, accountSchemaDefinitions, accountSchemaObjects } from '../accounts/database.mjs';
 
 export async function backupAccounts({ directory, output, projectRoot } = {}) {
   if (typeof output !== 'string' || !path.isAbsolute(output)) throw new Error('Choose an absolute new account-backup filename.');
+  const definitions = await accountSchemaDefinitions();
   const root = await privateDirectory(directory, { create: false, projectRoot });
   const parent = await privateDirectory(path.dirname(output), { projectRoot });
   const destination = path.join(parent, path.basename(output)), source = path.join(root, 'accounts.sqlite');
@@ -17,11 +18,12 @@ export async function backupAccounts({ directory, output, projectRoot } = {}) {
   let db, check;
   try {
     db = new DatabaseSync(source, { readOnly: true, allowExtension: false });
-    if (db.prepare('PRAGMA user_version').get().user_version !== 1) throw new Error();
+    const version = db.prepare('PRAGMA user_version').get().user_version;
+    if (![1, 2].includes(version) || JSON.stringify(accountSchemaObjects(db)) !== (version === 1 ? definitions.oldShape : definitions.newShape)) throw new Error();
     await backup(db, destination);
     check = new DatabaseSync(destination, { readOnly: true, allowExtension: false });
-    if (check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok' || check.prepare('PRAGMA user_version').get().user_version !== 1) throw new Error();
-    return { ok: true, schemaVersion: 1 };
+    if (check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok' || check.prepare('PRAGMA user_version').get().user_version !== version || check.prepare('PRAGMA foreign_key_check').all().length) throw new Error();
+    return { ok: true, schemaVersion: version };
   } catch { throw new Error('Customer account backup failed. Retain the incomplete destination for owner inspection.'); }
   finally { check?.close(); db?.close(); }
 }

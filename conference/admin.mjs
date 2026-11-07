@@ -15,7 +15,7 @@ const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 };
-const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs'], ['/admin/catalog-correction-ui.mjs', 'catalog-correction-ui.mjs'], ['/admin/report-removal-ui.mjs', 'report-removal-ui.mjs']]);
+const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs'], ['/admin/catalog-correction-ui.mjs', 'catalog-correction-ui.mjs'], ['/admin/report-removal-ui.mjs', 'report-removal-ui.mjs'], ['/admin/report-mail-ui.mjs', 'report-mail-ui.mjs']]);
 const inNamespace = pathname => pathname === '/admin' || pathname.startsWith('/admin/');
 export const isLoopbackPeer = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
 
@@ -43,7 +43,7 @@ async function bodyJSON(request) {
 }
 
 // One catalog/store writer and one security boundary, shared by both HTTP hosts.
-export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEFAULT_STORE, authStore = DEFAULT_AUTH_STORE, authOptions, publicOrigin, render, codeFactory } = {}) {
+export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEFAULT_STORE, authStore = DEFAULT_AUTH_STORE, authOptions, publicOrigin, render, codeFactory, reportMail } = {}) {
   if (process.env.NODE_ENV === 'production') throw new Error('Local administration is disabled in production.');
   if (!path.isAbsolute(images) && !/^[a-z]:[\\/]/i.test(images)) throw new Error('Choose an absolute admin image directory.');
   const publicURL = plainOrigin(publicOrigin);
@@ -200,6 +200,20 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       } catch (error) { send(response, error.status || 400, { error: error.code ? 'Report operation failed; previous reports are preserved.' : error.message }); }
       return true;
     }
+    const noticeCode = /^\/admin\/api\/reports\/(AN-[A-Z0-9]{4}-[A-Z0-9]{4})\/notification$/.exec(pathname)?.[1];
+    if (noticeCode) {
+      if (request.url !== pathname) { send(response, 400, { error: 'Use an exact notification route.' }, undefined, head); return true; }
+      if (!['GET', 'POST'].includes(request.method)) { send(response, 405, { error: 'Method not allowed.' }, undefined, head); return true; }
+      if (request.method === 'POST' && (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token']))) { send(response, 403, { error: 'Run token required.' }); return true; }
+      try {
+        if (request.method === 'GET' && (Number(request.headers['content-length']) > 0 || request.headers['transfer-encoding'])) throw Object.assign(new Error('Body rejected.'), { status: 400 });
+        const input = request.method === 'POST' ? await bodyJSON(request) : null;
+        if (input && (!input || Array.isArray(input) || Object.keys(input).length !== 2 || !Object.hasOwn(input, 'recipientEmail') || input.confirm !== true || typeof input.recipientEmail !== 'string' || input.recipientEmail.length > 254 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(input.recipientEmail))) throw Object.assign(new Error('Supply a recipient email and explicit confirmation.'), { status: 400 });
+        if (request.method === 'POST' && !input) throw Object.assign(new Error('Supply a recipient email and explicit confirmation.'), { status: 400 });
+        send(response, 200, !reportMail ? { state: 'not_configured' } : request.method === 'GET' ? reportMail.status(noticeCode) : await reportMail.request(noticeCode, input));
+      } catch (error) { send(response, error.status || 400, { error: error.status ? error.message : 'Publication notice could not be queued.' }); }
+      return true;
+    }
     if (pathname === '/admin/api/reports' || pathname.startsWith('/admin/api/reports/')) {
       const route = /^\/admin\/api\/reports\/(AN-[A-Z0-9]{4}-[A-Z0-9]{4})\/(remove|restore)$/.exec(pathname);
       if (!route || request.url !== pathname) { send(response, 400, { error: 'Use an exact report operation route.' }, undefined, head); return true; }
@@ -223,7 +237,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
           try { initial = catalogResponse(await customers.scan(defaultCustomerId)); }
           catch (error) { initial = { customer: profiles[0], products: [], catalogRevision: null, entries: [], counts: { total: 0, ready: 0, blocked: 0 }, catalogError: error.message }; }
         }
-        send(response, 200, { token, customers: profiles, defaultCustomerId, ...initial, publicOrigin: publicURL }, undefined, head); return true;
+        send(response, 200, { token, customers: profiles, defaultCustomerId, ...initial, publicOrigin: publicURL, mail: { reportNoticesEnabled: !!reportMail?.enabled() } }, undefined, head); return true;
       }
       if (pathname === '/admin/api/catalog') {
         const query = new URL(request.url, currentOrigin).searchParams;

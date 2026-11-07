@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCustomerAccountClient, safeAccountNext, validAccountPassword, accountDraft, AccountError, accountErrorMessage } from '../dist/customer-account.js';
 import { createAccountPage } from '../dist/account-page.js';
+import { captureMailAction, createMailActionState, notificationText } from '../dist/account-mail.js';
+import { accountUser, accountNotifications } from '../dist/customer-account.js';
 import { newSubmission, createRequestRecord } from '../dist/submission.js';
 import { sanitizeMarkup } from '../dev/prompt.js';
 import { accountFixture, browser, draftRecord, fixturePassword } from './support/customer-account-fixture.mjs';
@@ -18,6 +20,30 @@ const browserFetcher = (active, hook = () => {}) => async (url, options) => {
   await hook(route, 'after', options);
   return response(result.data, result.status);
 };
+
+test('mail DTOs preserve boolean verification, default old capabilities and reject malformed metadata',async()=>{
+ assert.equal(accountUser({...user,emailVerified:true}).emailVerified,true);assert.equal(accountUser(user).emailVerified,false);for(const value of[null,1,'true',undefined])assert.throws(()=>accountUser({...user,emailVerified:value}));
+ assert.deepEqual(accountNotifications(),{receipt:'not_requested',support:'not_requested',retryable:false});for(const value of[{receipt:'delivered',support:'queued',retryable:false},{receipt:'accepted',support:'queued',retryable:1},{receipt:'accepted',support:'queued',retryable:false,to:'private'}])assert.throws(()=>accountNotifications(value));
+ const client=createCustomerAccountClient({fetcher:async()=>response({authenticated:true,user:{...user,emailVerified:true},csrfToken:'synthetic',mail:{enabled:true}})});await client.getSession();assert.equal(client.snapshot().mail.enabled,true);assert.equal(client.snapshot().user.emailVerified,true);
+ const invalid=createCustomerAccountClient({fetcher:async()=>response({authenticated:true,user,csrfToken:'synthetic',mail:{enabled:'true'}})});await assert.rejects(invalid.getSession(),e=>e.code==='invalid_response');assert.equal(invalid.snapshot().user,null);
+});
+test('mail fragments are captured and removed synchronously, malformed links clear too, actions require explicit submit',async()=>{
+ for(const [search,hash,valid]of[['','#token='+'a'.repeat(64),true],['','#token=bad',false],['?extra=1','#token='+'a'.repeat(64),false],['','#token='+'a'.repeat(64)+'&x=1',false]]){const events=[],token=captureMailAction({pathname:'/verify-email',search,hash},{replaceState(...args){events.push(args);}});assert.equal(!!token,valid);assert.deepEqual(events,[[null,'','/verify-email']]);}
+ const state=createMailActionState();state.enter('a'.repeat(64));let calls=0,finish;assert.equal(calls,0);const first=state.submit(async token=>{calls++;assert.equal(token.length,64);return new Promise(resolve=>finish=resolve);});assert.equal(await state.submit(()=>{calls++;}),null);state.clear();finish({ok:true});assert.equal(await first,null);assert.equal(calls,1);assert.equal(state.ready(),false);assert.equal(notificationText('accepted'),'Mail server accepted');
+});
+test('actual action page submits only on click, suppresses late acknowledgement and resets to sign-in with new codes',async()=>{
+ let calls=0,finish;const h=pageHarness({overrides:{verifyEmail:()=>{calls++;return new Promise(resolve=>finish=resolve);}}});await h.page.activate('/verify-email',null,'a'.repeat(64));assert.equal(calls,0);assert.ok(h.root.querySelector('[data-account-action="verify-email"]'));assert.doesNotMatch(h.root.innerHTML,/a{64}/);h.root.click('[data-account-action="verify-email"]');h.root.click('[data-account-action="verify-email"]');assert.equal(calls,1);h.page.leave();finish({ok:true});await tick();assert.equal(h.root.innerHTML,'');
+ const k=pageHarness({overrides:{resetPassword:async()=>({ok:true,recoveryCodes:codes})}});await k.page.activate('/reset-password',null,'b'.repeat(64));const form=k.root.querySelector('[data-account-form="reset"]');for(const name of['newPassword','confirmPassword'])form.elements.namedItem(name).value='New synthetic password 101';k.root.emit('submit',form);await tick();assert.match(k.root.innerHTML,/Your eight recovery codes/);const ack=k.root.querySelector('[data-account-confirm-codes]');ack.checked=true;k.root.emit('change',ack);k.root.click('[data-account-action="ack-codes"]');assert.equal(k.navigations.at(-1)[0],'/login');await k.page.activate('/reset-password');assert.match(k.root.innerHTML,/invalid, used or expired/);
+});
+test('mail-first recovery keeps saved-code fallback and verification/notifications stay separate from Submitted',async()=>{
+ const doc={id:'mail-doc',revision:1,record:createAccountRequest('contact',{name:'Synthetic',email:user.email,topic:'testing',message:'Test'},{id:'AN-REQ-UIMAIL101',createdAt:'2026-11-07T00:00:00.000Z'}),notifications:{receipt:'not_verified',support:'accepted',retryable:true}};let refreshed=0;
+ const h=pageHarness({initialUser:user,overrides:{snapshot:()=>({user,mail:{enabled:true}}),listRequests:async()=>[doc],requestVerification:async()=>({ok:true,status:'queued'}),retryNotifications:async()=>{refreshed++;return{...doc,notifications:{receipt:'queued',support:'accepted',retryable:false}};}}});await h.page.activate('/recover-account');assert.ok(h.root.querySelector('[data-account-form="reset-request"]'));h.root.click('[data-account-action="use-code"]');assert.ok(h.root.querySelector('[data-account-form="recover"]'));await h.page.activate('/account');assert.match(h.root.innerHTML,/Submitted/);assert.match(h.root.innerHTML,/Mail server accepted/);assert.match(h.root.innerHTML,/Inbox delivery is not confirmed/);h.root.click('[data-account-action="retry-notifications"]');await tick();assert.equal(refreshed,1);assert.match(h.root.innerHTML,/Receipt: Queued/);h.root.click('[data-account-tab="security"]');h.root.click('[data-account-action="resend-verification"]');await tick();assert.match(h.root.querySelector('[data-account-status]').textContent,/Check your email/);
+});
+test('a bootstrap connection failure retains the same volatile action through deliberate Retry',async()=>{let sessions=0,verified=0;const h=pageHarness({overrides:{getSession:async()=>{if(++sessions===1)throw new AccountError('network');return null;},verifyEmail:async token=>{assert.equal(token,'c'.repeat(64));verified++;return{ok:true};}}});await h.page.activate('/verify-email',null,'c'.repeat(64));assert.ok(h.root.querySelector('[data-account-action="retry"]'));h.root.click('[data-account-action="retry"]');await tick();h.root.click('[data-account-action="verify-email"]');await tick();assert.equal(verified,1);assert.match(h.root.innerHTML,/Email verified/);});
+test('actual app startup removes action fragments before its first DOM work, preserving only volatile capture',async()=>{
+ const {readFile}=await import('node:fs/promises'),vm=await import('node:vm');const app=(await readFile(new URL('../dist/app.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');const prefix=app.slice(0,app.indexOf("const dialog = document.querySelector"));
+ for(const target of['/verify-email#token='+'a'.repeat(64),'/reset-password?extra=1#token='+'a'.repeat(64),'/verify-email/#token='+'a'.repeat(64)]){let url=new URL('https://fixture.invalid'+target);const calls=[];const context=vm.createContext({captureMailAction,location:{get pathname(){return url.pathname;},get search(){return url.search;},get hash(){return url.hash;}},history:{replaceState(state,title,path){calls.push([state,title,path]);url=new URL(path,url);}}});vm.runInContext(prefix+';globalThis.captured=pendingMailAction;',context);assert.equal(url.hash,'');assert.equal(url.search,'');assert.equal(calls[0][0],null);assert.equal(context.captured.token,target.startsWith('/verify-email#')?'a'.repeat(64):null);vm.runInContext('captureActionFragment();',context);assert.equal(context.captured.token,target.startsWith('/verify-email#')?'a'.repeat(64):null);}
+});
 
 test('account client is lazy, has strict safe returns and validates Unicode password limits without trimming', () => {
   let calls = 0; createCustomerAccountClient({ fetcher: () => { calls++; } }); assert.equal(calls, 0);
@@ -37,7 +63,7 @@ test('transport uses same-origin no-store fixed paths and session-bound CSRF; no
     if (url.endsWith('/session')) return response({ authenticated: true, user, csrfToken: 'synthetic-csrf' });
     return response({ request: document }, 201);
   } });
-  assert.equal(calls.length, 0); const saved = await client.saveDraft(record, { ownerId: user.id, idempotencyKey: 'intent-a' }); assert.deepEqual(saved, document);
+  assert.equal(calls.length, 0); const saved = await client.saveDraft(record, { ownerId: user.id, idempotencyKey: 'intent-a' }); assert.deepEqual(saved, accountDraft(document));
   assert.deepEqual(calls.map(c => c.url), ['/api/account/session', '/api/account/requests', '/api/account/session']);
   for (const call of calls) { assert.equal(call.options.credentials, 'same-origin'); assert.equal(call.options.cache, 'no-store'); assert.equal(call.options.redirect, 'error'); }
   assert.equal(calls[1].options.headers['X-Account-CSRF'], 'synthetic-csrf'); assert.deepEqual(JSON.parse(calls[1].options.body), { record, idempotencyKey: 'intent-a' });
@@ -168,7 +194,7 @@ function pageHarness({ initialUser = null, overrides = {}, clipboard } = {}) {
   const emit = (value, reason) => { currentUser = value; for (const fn of listeners) fn(value, reason); };
   const client = { getSession: async () => currentUser, snapshot: () => ({ user: currentUser }), subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }, listRequests: async () => [],
     signup: async () => { emit(user, 'login'); return { user, recoveryCodes: codes }; }, recover: async () => { emit(null, 'recovered'); return { ok: true, recoveryCodes: codes }; }, ...overrides };
-  const page = createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account'].map(path => [path, root])), client, navigate: (...args) => navigations.push(args), onResume() {}, onNewRequest() {}, onDeviceDrafts: () => deviceReads++, clipboard });
+  const page = createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password'].map(path => [path, root])), client, navigate: (...args) => navigations.push(args), onResume() {}, onNewRequest() {}, onDeviceDrafts: () => deviceReads++, clipboard });
   return { root, page, client, emit, navigations, deviceReads: () => deviceReads };
 }
 

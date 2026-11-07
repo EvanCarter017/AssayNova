@@ -64,7 +64,8 @@
             <p class="eyebrow" data-i18n="lastReport">LAST GENERATED REPORT · SAVED SNAPSHOT</p>
             <p id="result-state"></p><h2 id="code" tabindex="-1"></h2><p id="result-name"></p>
             <div class="buttons"><button id="copy-code" data-i18n="copyLC">Copy LC</button><a data-i18n="openCustomer" id="public-link" target="_blank" rel="noopener">Open customer report</a><a data-i18n="downloadPDF" id="pdf" target="_blank" rel="noopener">Download PDF</a></div>
-            <label id="manual-label" hidden><span data-i18n="manualCopy">Manual copy</span><input id="manual-copy" readonly></label>
+      <section id="report-notice" class="report-notice" hidden><label for="notice-email" data-i18n="noticeEmail">Notification email</label><input id="notice-email" type="email" maxlength="254" autocomplete="off" value=""><label class="notice-confirm"><input id="notice-confirm" type="checkbox"><span data-i18n="noticeConfirm">Send the public report link to this recipient.</span></label><button id="notice-send" type="button" data-i18n="noticeSend">Send publication notice</button><button id="notice-refresh" type="button" data-i18n="refreshReports">Refresh</button><p id="notice-status" role="status"></p></section>
+      <label id="manual-label" hidden><span data-i18n="manualCopy">Manual copy</span><input id="manual-copy" readonly></label>
           </div>
           <div id="live-result" hidden><p class="eyebrow" data-i18n="livePreview">LIVE PREVIEW</p><p id="live-name"></p><p class="hint" data-i18n="liveTemporary">Temporary preview · not saved or published · temporary Lookup Code</p></div>
           <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2 data-i18n="reviewTitle">Review your report here</h2><p><span data-i18n="reviewIntro">Choose a product to preview its report.</span><br><span data-i18n="reviewActions">The preview updates automatically. Publish when ready.</span></p></div>
