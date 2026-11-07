@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image
 from pypdf import PdfReader
-from reportlab.graphics.shapes import Drawing, Group, Image as DrawingImage, Rect, String
+from reportlab.graphics.shapes import Drawing, Group, Image as DrawingImage, Path as VectorPath, Rect, String
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("layout_renderer", ROOT / "conference" / "render_report.py")
@@ -55,6 +55,42 @@ class ReportLayoutTests(unittest.TestCase):
 
     def strings(self, drawing):
         return [node for node in drawing.contents if isinstance(node, String)]
+
+    def contact_nodes(self, drawing, contact=None):
+        contact = contact or master.load_contact()
+        values = {contact["title"], contact["email"], contact["phone"], *contact["addressLines"]}
+        return [node for node in self.strings(drawing) if node.text in values and node.y <= 112]
+
+    def contact_icons(self, drawing):
+        return [node for node in drawing.contents if isinstance(node, Group) and node.contents
+                and all(isinstance(child, (Rect, VectorPath)) for child in node.contents)
+                and node.getBounds()[3] <= 118 and node.getBounds()[2] - node.getBounds()[0] < 10]
+
+    def assert_contact_geometry(self, drawing, contact):
+        nodes = self.contact_nodes(drawing, contact)
+        right = master.PAGE_W - 36 - 78 - 12
+        widest = max(master.pdfmetrics.stringWidth(node.text, node.fontName, node.fontSize) for node in nodes)
+        expected_x = right - widest
+        self.assertTrue(all(abs(node.x - expected_x) < .000001 for node in nodes))
+        self.assertAlmostEqual(max(self.bounds(node)[2] for node in nodes), right)
+        self.assertAlmostEqual(master.REPORT_QR_FRAME_BOUNDS[0] - right, 12)
+        icons = self.contact_icons(drawing)
+        self.assertEqual(len(icons), 2 if contact["phone"] else 1)
+        details = [node for node in nodes if node.fontSize == 8.5]
+        for icon, line in zip(icons, details):
+            x0, y0, x1, y1 = icon.getBounds()
+            self.assertAlmostEqual(x0, expected_x - 14)
+            self.assertAlmostEqual(x1 - x0, 9)
+            self.assertAlmostEqual(y1 - y0, 7.5)
+            self.assertAlmostEqual(line.x - x1, 5)
+            self.assertAlmostEqual((y0 + y1) / 2, (self.bounds(line)[1] + self.bounds(line)[3]) / 2)
+            self.assertGreater(x0 - .375, 204)
+            self.assertGreater(y0 - .375, 55.5)
+            self.assertLess(x1 + .375, master.REPORT_QR_FRAME_BOUNDS[0])
+            self.assertTrue(all(child.strokeColor == master.TEAL and child.strokeWidth == .75 for child in icon.contents))
+            self.assertTrue(all(isinstance(child, (Rect, VectorPath)) for child in icon.contents))
+        self.assertEqual(sum(isinstance(node, DrawingImage) for node in drawing.contents), 3)
+        return nodes
 
     def bounds(self, node):
         width = master.pdfmetrics.stringWidth(node.text, node.fontName, node.fontSize)
@@ -149,22 +185,27 @@ class ReportLayoutTests(unittest.TestCase):
     def test_contact_empty_fields_omitted_full_block_fits_and_configuration_is_fresh(self):
         for dynamic in (False, True):
             drawing = self.drawing(dynamic)
-            default = [n for n in self.strings(drawing) if n.x == 222 and n.y <= 112]
-            self.assertEqual([n.text for n in default], ["reports@assaynovalabs.com", "+1 6813343721"])
+            default = self.assert_contact_geometry(drawing, master.load_contact())
+            self.assertEqual([n.text for n in default], ["reports@assaynovalabs.com", "+1-681-334-3721"])
+            self.assertAlmostEqual(default[0].x, 346.8183151605562)
             self.assertEqual([n.y for n in default], [112, 100])
             self.assertTrue(all(n.fontSize == 8.5 and n.fontName == "SampleVera" for n in default))
             self.assertNotIn("Contact the laboratory", [n.text for n in self.strings(drawing)])
             drawing = self.drawing(dynamic, contact=self.full_contact)
-            footer = [n for n in self.strings(drawing) if n.x == 222 and n.y <= 112]
+            footer = self.assert_contact_geometry(drawing, self.full_contact)
             self.assertEqual([n.y for n in footer], [112, 100.5, 88.5, 76.5, 64.5])
             self.assert_disjoint(footer)
             for node in footer:
                 left, bottom, right, top = self.bounds(node)
-                self.assertEqual(left, 222)
                 self.assertGreater(bottom, 55.5)
-                self.assertLessEqual(right, 222 + master.PAGE_W - 36 - 315)
+                self.assertLessEqual(right, master.PAGE_W - 36 - 78 - 12)
                 self.assertLess(top, 121)
                 self.assertGreaterEqual(node.fontSize, 8)
+            empty_phone = dict(self.full_contact, title="", phone="", addressLines=["Fixture address line one"])
+            drawing = self.drawing(dynamic, contact=empty_phone)
+            contact = self.assert_contact_geometry(drawing, empty_phone)
+            self.assertEqual([node.text for node in contact], [empty_phone["email"], "Fixture address line one"])
+            self.assertEqual([node.y for node in contact], [112, 100])
         path = self.directory / "contact.json"
         with patch.object(master, "CONTACT_FILE", path):
             for email in ("first@example.test", "second@example.test"):
@@ -185,13 +226,13 @@ class ReportLayoutTests(unittest.TestCase):
         self.assertAlmostEqual(master.CONTACT_WIDTH, old_width)
         for dynamic in (False, True):
             drawing = self.drawing(dynamic, contact=config)
-            contact = [n for n in self.strings(drawing) if n.x == 222 and n.y <= 112]
+            contact = self.assert_contact_geometry(drawing, config)
             self.assertEqual([n.text for n in contact], [title, email, detail, detail, detail])
             self.assertEqual([n.y for n in contact], [112, 100.5, 88.5, 76.5, 64.5])
             self.assert_disjoint(contact)
             for node in contact:
-                self.assertLessEqual(self.bounds(node)[2], 222 + old_width)
-                self.assertGreater(self.bounds(node)[2], 222 + old_width - 10)
+                self.assertLessEqual(self.bounds(node)[2], master.PAGE_W - 36 - 78 - 12)
+                self.assertGreater(self.bounds(node)[2], master.PAGE_W - 36 - 78 - 22)
         with self.assertRaises(ValueError):
             master.load_contact(dict(config, title=title + "W"))
         with self.assertRaises(ValueError):
@@ -215,7 +256,13 @@ class ReportLayoutTests(unittest.TestCase):
             self.assertGreater(min(self.bounds(node)[1] for node in footer), 55.5)
             self.assert_disjoint(paragraph + footer)
             signature = next(node for node in drawing.contents if isinstance(node, DrawingImage) and "signature" in str(node.path))
-            self.assertEqual((signature.width, signature.height), (132, 44))
+            with Image.open(master.ROOT / "assets" / "dylan-greene-signature.png") as source:
+                self.assertEqual((source.mode, source.size), ("RGBA", (2164, 727)))
+                self.assertEqual(source.getextrema()[-1], (0, 254))
+                scale = min(150 / source.width, 44 / source.height)
+                self.assertAlmostEqual(signature.width, source.width * scale)
+                self.assertAlmostEqual(signature.height, source.height * scale)
+            self.assertAlmostEqual(signature.x + signature.width / 2, 120)
             self.assertEqual((signature.y, signature.y + signature.height), (73, 117))
             self.assertGreater(signature.y, 55.5)
             self.assertEqual(next(node.y for node in footer if node.text == "Chief Chemist"), 64)
@@ -229,6 +276,27 @@ class ReportLayoutTests(unittest.TestCase):
             paths = lambda root: Counter(node.attrib["d"] for node in root.iter("{http://www.w3.org/2000/svg}path"))
             self.assertGreater(sum(paths(outlined).values()), 400)
             self.assertFalse(paths(outlined) - paths(actual))
+
+    def test_new_signature_asset_and_actual_svg_embedding_preserve_pixels(self):
+        import base64
+        from io import BytesIO
+        signature = master.ROOT / "assets" / "dylan-greene-signature.png"
+        expected_sha = "A06D10367C433B6EA951F6DBCB1E1AA16A20B0681F5B5D16CC4E8A99FA7A8158"
+        self.assertEqual(hashlib.sha256(signature.read_bytes()).hexdigest().upper(), expected_sha)
+        with Image.open(signature) as source:
+            expected = source.tobytes()
+        for dynamic in (False, True):
+            drawing = self.drawing(dynamic)
+            _, svg = renderer.render(drawing, "AN-TEST-0001", "Signature fixture") if dynamic else master.render(drawing, "AN-TEST-0001")
+            root = ET.fromstring(svg)
+            embedded = []
+            for node in root.iter("{http://www.w3.org/2000/svg}image"):
+                data = node.attrib.get("href", node.attrib.get("{http://www.w3.org/1999/xlink}href"))
+                self.assertTrue(data.startswith("data:image/png;base64,"))
+                with Image.open(BytesIO(base64.b64decode(data.split(",", 1)[1]))) as image:
+                    if image.size == (2164, 727):
+                        embedded.append(image.tobytes())
+            self.assertEqual(embedded, [expected])
 
     def test_lower_analytical_shapes_only_translate_eighteen_points(self):
         # Golden node hashes come from pre-task 81871fb9 source, including every
@@ -320,7 +388,7 @@ class ReportLayoutTests(unittest.TestCase):
 
     def test_actual_static_mother_assets_and_cli_equivalent_exports(self):
         for code, stem, amount in (("AN-7K9Q-2M4X", "sample-a", "80.91"), ("AN-8P6R-3N5Y", "sample-c", "78.35")):
-            expected = [amount, "Measured content", "Two determinations of the same sample", "reports@assaynovalabs.com", "+1 6813343721", "Chief Chemist"]
+            expected = [amount, "Measured content", "Two determinations of the same sample", "reports@assaynovalabs.com", "+1-681-334-3721", "Chief Chemist"]
             self.assert_actual_exports(ROOT / "dist" / "reports" / (stem + ".pdf"), ROOT / "dist" / "reports" / (stem + ".svg"), expected)
             pdf, svg = master.build(code, self.directory / stem)
             self.assert_actual_exports(pdf, svg, expected)

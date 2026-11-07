@@ -46,7 +46,6 @@ WHITE = colors.white
 DATA_FILE = ROOT / "sample_reports.json"
 CONTACT_FILE = ROOT / "lab-contact.json"
 REPORT_ORIGIN = "https://assaynovalabs.com"
-CONTACT_X = 222
 # Preserve the former contact capacity independently of its new placement.
 CONTACT_WIDTH = PAGE_W - MARGIN - 315
 REPORT_QR_FRAME_BOUNDS = (PAGE_W - MARGIN - 78, 67, 78, 78)
@@ -178,13 +177,48 @@ def load_contact(config=None):
             "addressLines": [line(value, "address line", 90) for value in addresses]}
 
 
+def draw_contact_icon(drawing, kind, x, baseline):
+    """Small decorative vectors; the adjacent text remains the contact label."""
+    ascent, descent = pdfmetrics.getAscentDescent("SampleVera", 8.5)
+    icon = Group()
+    if kind == "email":
+        icon.add(Rect(0, 0, 9, 7.5, fillColor=None, strokeColor=TEAL, strokeWidth=.75))
+        flap = VectorPath(fillColor=None, strokeColor=TEAL, strokeWidth=.75)
+        flap.moveTo(0, 7.5); flap.lineTo(4.5, 3.6); flap.lineTo(9, 7.5)
+        icon.add(flap)
+    elif kind == "phone":
+        receiver = VectorPath(fillColor=None, strokeColor=TEAL, strokeWidth=.75)
+        receiver.moveTo(6.4, 0)
+        receiver.curveTo(7.1, 0, 8.5, .6, 9, 1.6)
+        receiver.lineTo(6.8, 3.2); receiver.lineTo(5.9, 2.3)
+        receiver.curveTo(4.4, 3, 3, 4.2, 2.4, 5.5)
+        receiver.lineTo(3.5, 6.3); receiver.lineTo(1.8, 7.5)
+        receiver.curveTo(.7, 7.3, 0, 6.4, 0, 5.6)
+        receiver.curveTo(0, 3.4, 3.7, 0, 6.4, 0)
+        receiver.closePath()
+        icon.add(receiver)
+    else:
+        raise ValueError("Unsupported contact icon")
+    icon.translate(x, baseline + (ascent + descent - 7.5) / 2)
+    drawing.add(icon)
+
+
 def draw_contact(drawing, contact):
-    if contact["title"]:
-        text(drawing, contact["title"], CONTACT_X, 112, 9, True, TEAL)
     lines = [contact["email"]] + ([contact["phone"]] if contact["phone"] else []) + contact["addressLines"]
+    widths = [pdfmetrics.stringWidth(value, "SampleVera", 8.5) for value in lines]
+    if contact["title"]:
+        widths.append(pdfmetrics.stringWidth(contact["title"], "SampleVeraBold", 9))
+    x = REPORT_QR_FRAME_BOUNDS[0] - 12 - max(widths)
+    if contact["title"]:
+        text(drawing, contact["title"], x, 112, 9, True, TEAL)
     first_baseline = 100.5 if contact["title"] else 112
     for index, value in enumerate(lines):
-        text(drawing, value, CONTACT_X, first_baseline - index * 12, 8.5, color=NAVY)
+        baseline = first_baseline - index * 12
+        text(drawing, value, x, baseline, 8.5, color=NAVY)
+        if index == 0:
+            draw_contact_icon(drawing, "email", x - 14, baseline)
+        elif index == 1 and contact["phone"]:
+            draw_contact_icon(drawing, "phone", x - 14, baseline)
 
 
 def draw_footer_statement(drawing):

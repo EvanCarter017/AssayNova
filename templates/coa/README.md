@@ -167,15 +167,19 @@ This presentation changes no stored measurements or chemistry data. The legacy
 
 `lab-contact.json` is read fresh for each build or generated report. Its only
 keys are `title`, `email`, `phone` and `addressLines`. The current title is empty,
-so the block prints reports@assaynovalabs.com followed by +1 6813343721 without
+so the block prints reports@assaynovalabs.com followed by +1-681-334-3721 without
 a heading. addressLines is an empty list. Absent phone/address values print no
 labels or placeholders. Put the future
 formatted address into at most two address lines and the supplied telephone
 number into phone. Do not invent contact details.
 
-The borderless block starts at x=222 pt, between the raised lower-left signature
-and the lower-right QR frame. Its original 244.2756 pt line capacity and fonts
-are preserved. With no heading, contact baselines start at 112 pt with 12 pt
+The borderless contact group ends 12 pt left of the lower-right QR frame. Its
+shared left edge is measured from the widest present line, including any title,
+so the current two-line block sits close to the QR rather than in the middle of
+the footer. Original envelope and telephone vectors sit 5 pt before their text;
+the muted teal icons add no raster images or external dependencies. An absent
+phone omits its icon too. The original 244.2756 pt line capacity and fonts are
+preserved. With no heading, contact baselines start at 112 pt with 12 pt
 spacing. An optional title uses baseline 112 pt, followed by contact baselines
 100.5/88.5/76.5/64.5 pt. The title uses 9 pt and contact lines use
 8.5 pt. Configuration accepts bounded printable ASCII supported by the embedded
@@ -188,8 +192,11 @@ The current master and future generated reports place a vector QR in an original
 78 pt AssayNova corner frame at the lower right. Navy corner brackets and slim
 "Scan report" / "ASSAYNOVA" bands enclose the unchanged 60 pt white QR square;
 the bands and their measured 6 pt bold labels stay outside its quiet zone. The
-frame spans y=67..145 pt; the QR spans y=76..136 pt. The signature keeps its
-original dimensions with its top at 117 pt and Chief Chemist baseline at 64 pt.
+frame spans y=67..145 pt; the QR spans y=76..136 pt. The new original Dylan Greene
+graphic uses restrained semi-connected ballpoint handwriting without decorative
+swashes. The supplied transparent high-resolution PNG is embedded unchanged;
+it retains the existing fit box, top at 117 pt, center at x=120 pt and Chief
+Chemist baseline at 64 pt. Its native aspect ratio determines the fitted width.
 The QR target is exactly
 `https://assaynovalabs.com/coa/<LOOKUP-CODE>/report.pdf`, generated from the
 strict uppercase Lookup Code by the shared `report_pdf_url` helper. The QR has

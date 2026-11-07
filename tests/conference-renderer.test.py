@@ -193,7 +193,7 @@ class ReportRendererTests(unittest.TestCase):
         text = reader.pages[0].extract_text()
         for value in ("BPC-157 10mg", self.request["lookupCode"], "Certificate of Analysis", "Chief Chemist"):
             self.assertIn(value, text)
-        for value in ("Two determinations of the same sample", "Replicate 1:", "Replicate 2:", "Mean", "Measured content", "mg/vial", "reports@assaynovalabs.com", "+1 6813343721"):
+        for value in ("Two determinations of the same sample", "Replicate 1:", "Replicate 2:", "Mean", "Measured content", "mg/vial", "reports@assaynovalabs.com", "+1-681-334-3721"):
             self.assertIn(value, text)
         self.assertNotIn("Contact the laboratory", text)
         self.assertNotRegex(text, r"Sample [12]|Reported summary|Coming soon")

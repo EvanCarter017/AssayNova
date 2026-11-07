@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image
 from pypdf import PdfReader
-from reportlab.graphics.shapes import Drawing, Group, Image as DrawingImage, Line, Rect, String
+from reportlab.graphics.shapes import Drawing, Group, Image as DrawingImage, Line, Path as VectorPath, Rect, String
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("qr_renderer", ROOT / "conference" / "render_report.py")
@@ -121,15 +121,26 @@ class ReportQRTests(unittest.TestCase):
                 signature = next(node for node in drawing.contents if isinstance(node, DrawingImage) and "signature" in str(node.path))
                 self.assertAlmostEqual(signature.y + signature.height, 117)
                 self.assertLessEqual(signature.x + signature.width, 204)
-                contact = [node for node in strings if node.x == 222 and node.y <= 112]
+                values = {self.contact["title"], self.contact["email"], self.contact["phone"], *self.contact["addressLines"]}
+                contact = [node for node in strings if node.text in values and node.y <= 112]
                 self.assertEqual([node.y for node in contact], [112, 100.5, 88.5, 76.5, 64.5])
                 self.assertEqual([node.fontSize for node in contact], [9, 8.5, 8.5, 8.5, 8.5])
                 self.assertEqual(contact[0].fontName, "SampleVeraBold")
                 self.assertTrue(all(node.fontName == "SampleVera" for node in contact[1:]))
-                self.assertEqual(contact[0].x - 204, 18)
-                self.assertAlmostEqual(frame.x - (contact[0].x + (master.PAGE_W - 36 - 315)), 15)
+                self.assertTrue(all(node.x == contact[0].x for node in contact))
+                self.assertAlmostEqual(frame.x - max(self.text_bounds(node)[2] for node in contact), 12)
+                icons = [node for node in drawing.contents if isinstance(node, Group) and node.contents
+                         and all(isinstance(child, (Rect, VectorPath)) for child in node.contents)
+                         and node.getBounds()[3] <= 118 and node.getBounds()[2] - node.getBounds()[0] < 10]
+                self.assertEqual(len(icons), 2)
+                for icon, line in zip(icons, contact[1:3]):
+                    ix0, iy0, ix1, iy1 = icon.getBounds()
+                    self.assertAlmostEqual(ix0, line.x - 14)
+                    self.assertAlmostEqual(line.x - ix1, 5)
+                    self.assertGreater(ix0 - .375, 204)
+                    self.assert_outside((ix0 - .375, iy0 - .375, ix1 + .375, iy1 + .375), quiet_box)
                 for node in contact:
-                    self.assertLessEqual(self.text_bounds(node)[2], frame.x - 15)
+                    self.assertLessEqual(self.text_bounds(node)[2], frame.x - 12)
                     self.assert_outside(self.text_bounds(node), signature.getBounds())
                 body = [node for node in strings if node.x >= 315 and node.y >= 121 and node.fontSize >= 8]
                 self.assertTrue(body)
