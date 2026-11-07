@@ -1,13 +1,12 @@
-import { filterProducts } from './product-search.mjs';
 import { createAdminI18n } from './admin-i18n.mjs';
 import { createImportUI } from './import-ui.mjs';
-import { createCatalogCorrectionUI, catalogPickerState, catalogIssueText } from './catalog-correction-ui.mjs';
+import { createCatalogCorrectionUI, catalogPickerState } from './catalog-correction-ui.mjs';
 const $=id=>document.getElementById(id);
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const language=createAdminI18n({storage:()=>localStorage,browserLanguage:navigator.language});
 const t=(key,values)=>language.t(key,values);
 let session,selected,result,busy=false,historyRows=[],currentCustomerId='',catalogLoading=false,catalogEpoch=0;
-let importer,correction,importing=false,blockedRows=[],blockedPage=0;
+let importer,correction,importing=false;
 let statusState={key:'loading',error:false};
 const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 for(const name of ['received','reported']) $('generate').elements.namedItem(name).value=today;
@@ -32,14 +31,15 @@ function applyLanguage(){
   document.querySelector('.brand span').textContent=t('admin');
   $('admin-language').value=language.locale;
   renderSelectionLanguage();renderResultLanguage();renderHistoryLanguage();renderStatus();
-  importer?.applyLanguage();correction?.applyLanguage();renderBlocked();
+  if(session&&currentCustomerId){const value=$('product').value,state=catalogPickerState(session.products,session.entries,$('search').value,value);renderProductOptions({...state,chosen:state.ready.some(product=>product.id===value)?value:''});}
+  importer?.applyLanguage();correction?.applyLanguage();renderCatalogAction();
 }
 function updateControls(){
   for(const control of document.querySelectorAll('main input,main select,main button'))if(!importer?.owns(control))control.disabled=busy||catalogLoading||importing||!session;
   $('customer').disabled=busy||importing||!session||!currentCustomerId;
   for(const id of ['reload-products','catalog-manage','search','product'])$(id).disabled=busy||catalogLoading||importing||!session||!currentCustomerId;
   for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||catalogLoading||importing||!selected||!currentCustomerId;
-  importer?.refresh();correction?.refresh();renderBlocked();
+  importer?.refresh();correction?.refresh();renderCatalogAction();
 }
 function selectProduct(){
   selected=session.products.find(product=>product.id===$('product').value&&(!product.status||product.status==='ready'));
@@ -48,21 +48,18 @@ function selectProduct(){
   updateControls();
 }
 function filter(preferredId){
-  if(!currentCustomerId){selected=undefined;blockedRows=[];$('product').innerHTML='';$('product').value='';$('search').value='';$('count').textContent='(0/0)';renderSelectionLanguage();updateControls();status('emptyCustomers');return;}
+  if(!currentCustomerId){selected=undefined;$('product').innerHTML='';$('product').value='';$('search').value='';$('count').textContent='(0/0)';renderSelectionLanguage();updateControls();status('emptyCustomers');return;}
   const previous=typeof preferredId==='string'?preferredId:$('product').value,state=catalogPickerState(session.products,session.entries,$('search').value,previous),products=state.ready,chosen=state.chosen;
-  blockedRows=state.blocked;blockedPage=0;
-  $('product').innerHTML=(products.length>1&&!chosen?'<option value="" disabled selected data-i18n="chooseMatching">'+escape(t('chooseMatching'))+'</option>':'')+products.map(product=>`<option value="${escape(product.id)}">${escape(product.sku?product.sku+' · '+product.name:product.name)}</option>`).join('')+blockedRows.map(entry=>'<option disabled class="is-blocked" value="blocked-'+escape(entry.id)+'">'+escape((entry.values?.sku||entry.raw?.sku||'')+' · '+(entry.values?.product||entry.raw?.product||'')+' · '+t('catalogBlocked'))+'</option>').join('');
-  $('product').value=chosen;
+  renderProductOptions(state);
   $('count').textContent=`(${products.length}/${session.products.length})`;
-  selectProduct();status(!products.length?'noMatches':chosen?'selectedReady':'chooseBelow');
+  selectProduct();status(!products.length?state.blocked.length?'catalogOnlyBlocked':'noMatches':chosen?'selectedReady':'chooseBelow');
 }
-function renderBlocked(){
-  $('catalog-blocked').hidden=!blockedRows.length;
-  const pages=Math.max(1,Math.ceil(blockedRows.length/5));blockedPage=Math.min(blockedPage,pages-1);
-  $('catalog-blocked-count').textContent=t('blockedCount',{count:blockedRows.length});
-  $('catalog-blocked-list').innerHTML=blockedRows.slice(blockedPage*5,(blockedPage+1)*5).map(entry=>'<li><div><strong>'+escape(entry.values?.sku||entry.raw?.sku||t('catalogUnnamed'))+'</strong><span>'+escape(entry.values?.product||entry.raw?.product||'')+'</span><small>'+escape((entry.issues||[]).map(issue=>catalogIssueText(issue,language)).join(' ')||t('catalogBlocked'))+'</small></div><button type="button" data-correct-entry="'+escape(entry.id)+'"'+(busy||catalogLoading||importing||!session?' disabled':'')+'>'+escape(t('correctEntry'))+'</button></li>').join('');
-  $('catalog-blocked-page').textContent=t('catalogPage',{page:blockedPage+1,pages});
-  $('catalog-blocked-prev').disabled=busy||catalogLoading||importing||blockedPage===0;$('catalog-blocked-next').disabled=busy||catalogLoading||importing||blockedPage+1===pages;
+function renderProductOptions({ready,blocked,chosen}){
+  $('product').innerHTML=(ready.length>1&&!chosen?'<option value="" disabled selected data-i18n="chooseMatching">'+escape(t('chooseMatching'))+'</option>':'')+ready.map(product=>`<option value="${escape(product.id)}">${escape(product.sku?product.sku+' · '+product.name:product.name)}</option>`).join('')+blocked.map(entry=>'<option disabled class="is-blocked" value="blocked-'+escape(entry.id)+'">'+escape(t('catalogMissingOption')+' · '+(entry.values?.sku||entry.raw?.sku||'')+' · '+(entry.values?.product||entry.raw?.product||''))+'</option>').join('');
+  $('product').value=chosen;
+}
+function renderCatalogAction(){
+  $('catalog-manage').textContent=t('resolveCatalogIssues',{count:(session?.entries||[]).filter(entry=>entry.status!=='ready').length});
 }
 function acceptCatalog(value){
   session.products=value.products||[];session.entries=value.entries||[];session.catalogRevision=value.catalogRevision||null;session.counts=value.counts;
@@ -75,7 +72,7 @@ function renderCustomers(){
 async function loadCustomer(id,reload=false){
   if(busy||importing||!session||!id)return;
   const revision=++catalogEpoch,previous=reload?$('product').value:'',query=reload?$('search').value:'';
-  correction?.close();currentCustomerId=id;$('customer').value=id;catalogLoading=true;session.products=[];session.entries=[];session.catalogRevision=null;blockedRows=[];selected=undefined;
+  correction?.close();currentCustomerId=id;$('customer').value=id;catalogLoading=true;session.products=[];session.entries=[];session.catalogRevision=null;selected=undefined;
   $('product').innerHTML='';$('product').value='';$('search').value='';$('count').textContent='(0/0)';renderSelectionLanguage();updateControls();status('catalogLoading');
   try{
     const response=await adminFetch('/admin/api/catalog?customerId='+encodeURIComponent(id),{cache:'no-store'}),value=await response.json();
@@ -115,10 +112,8 @@ $('customer').addEventListener('change',()=>loadCustomer($('customer').value));
 $('reload-products').addEventListener('click',()=>loadCustomer(currentCustomerId,true));
 $('admin-language').addEventListener('change',event=>language.setLocale(event.target.value));
 importer=createImportUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&session?{customerId:currentCustomerId,token:session.token}:null,setPending:value=>{importing=value;updateControls();},onConfirmed:value=>{session.customers=value.customers;acceptCatalog(value);currentCustomerId=value.customer.id;renderCustomers();$('search').value='';$('product').value='';filter();}});
-correction=createCatalogCorrectionUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&!importing&&session?{customerId:currentCustomerId,token:session.token,entries:session.entries||[],catalogRevision:session.catalogRevision}:null,onSaved:value=>{const previous=selected?.id;acceptCatalog(value);if(value.customers)session.customers=value.customers;renderCustomers();filter(previous);}});
+correction=createCatalogCorrectionUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&!importing&&session?{customerId:currentCustomerId,customerName:session.customers.find(customer=>customer.id===currentCustomerId)?.name||currentCustomerId,token:session.token,entries:session.entries||[],catalogRevision:session.catalogRevision}:null,onSaved:value=>{const previous=selected?.id;acceptCatalog(value);if(value.customers)session.customers=value.customers;renderCustomers();filter(previous);}});
 $('catalog-manage').addEventListener('click',event=>correction.open(undefined,event.currentTarget));
-$('catalog-blocked-list').addEventListener('click',event=>{const button=event.target.closest('[data-correct-entry]');if(button)correction.open(button.dataset.correctEntry,button);});
-$('catalog-blocked-prev').addEventListener('click',()=>{blockedPage=Math.max(0,blockedPage-1);renderBlocked();});$('catalog-blocked-next').addEventListener('click',()=>{blockedPage++;renderBlocked();});
 language.subscribe(applyLanguage);applyLanguage();updateControls();
 $('generate').addEventListener('submit',async event=>{
   event.preventDefault();if(busy||catalogLoading||importing||!selected||!currentCustomerId)return;busy=true;

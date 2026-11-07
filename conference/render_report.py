@@ -368,6 +368,7 @@ def spectrum_plot(drawing, spectrum, x, y, width, height):
 
 
 def make_drawing(code, record, product_image, contact_config=None):
+    master.report_pdf_url(code)
     master.register_fonts()
     contact = master.load_contact(contact_config)
     d = Drawing(PAGE_W, PAGE_H)
@@ -455,6 +456,7 @@ def make_drawing(code, record, product_image, contact_config=None):
     master.title(d, "Method", ledger_x, 141, PAGE_W - MARGIN - ledger_x)
     wrapped(d, record["method"], ledger_x, 123, PAGE_W - MARGIN - ledger_x, 8.5, color=MUTED, max_lines=2)
     master.draw_contact(d, contact)
+    master.draw_report_qr(d, code)
     signature = master.ROOT / "assets" / "dylan-greene-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
@@ -465,6 +467,7 @@ def make_drawing(code, record, product_image, contact_config=None):
 
 
 def render(drawing, code, label):
+    target = master.report_pdf_url(code)
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=master.A4, invariant=1, pageCompression=1)
     pdf.setTitle("Certificate of Analysis - " + code)
@@ -476,6 +479,8 @@ def render(drawing, code, label):
             self._canvas.drawImage(ImageReader(image.path), image.x, image.y, image.width, image.height, mask="auto")
 
     TransparentImageRenderer().draw(drawing, pdf, 0, 0)
+    x, y, width, height = master.REPORT_QR_BOUNDS
+    pdf.linkURL(target, (x, y, x + width, y + height), relative=0, thickness=0)
     pdf.showPage()
     pdf.save()
     root = ET.fromstring(renderSVG.drawToString(master.svg_drawing(drawing)))
@@ -486,7 +491,7 @@ def render(drawing, code, label):
     title = ET.Element("{http://www.w3.org/2000/svg}title", {"id": "report-title"})
     title.text = "Certificate of Analysis - " + label
     description = ET.Element("{http://www.w3.org/2000/svg}desc", {"id": "report-description"})
-    description.text = "Portrait report with quantitative results, chromatogram, mass profiles, screening outcomes and signoff. Lookup Code " + code
+    description.text = "Portrait report with quantitative results, chromatogram, mass profiles, screening outcomes and signoff. Lookup Code " + code + ". Footer QR opens " + target
     metadata = ET.Element("{http://www.w3.org/2000/svg}metadata")
     metadata.text = "Font outlines derived from Bitstream Vera; license distributed with the platform."
     root.insert(0, title)

@@ -181,8 +181,19 @@ unknown keys, non-ASCII text, oversized lines or more than two address lines fai
 before any output is replaced. Python build/make_drawing functions accept an
 optional `contact_config` dictionary or JSON path for isolated fixture checks.
 
-A QR code would be useful for the unique report verification page once a
-canonical HTTPS domain is supplied. Its future target should be that domain's
-`/coa/` path followed by the report's Lookup Code, with the human-readable code
-retained. No QR is generated or reserved on the current paper. Do not use a
-localhost/LAN URL, generic marketing URL or invented verification domain.
+The current footer includes a vector QR beside the unchanged signature and
+laboratory contact block. Its target is exactly
+`https://assaynovalabs.com/coa/<LOOKUP-CODE>/report.pdf`, generated from the
+strict uppercase Lookup Code by the shared `report_pdf_url` helper. The QR has
+standard dark modules, medium error correction and a four-module white quiet
+zone; it stays vector in both PDF and SVG. The PDF QR area is also clickable.
+SVG remains self-contained and describes the URL without loading remote assets.
+
+The supplied domain need not be deployed for local building or decode checks.
+Local servers expose the same exact path: the two built-in master PDFs are
+always available, while generated PDFs require the existing report-reader
+opt-in and a published record. Future deployment must route this path and retain
+the published store. Runtime localhost/LAN origins never change the encoded URL.
+Only rebuilt masters and future generated snapshots gain the QR; existing
+immutable reports are not rewritten automatically. A later change of the
+canonical domain must deliberately update `REPORT_ORIGIN` and revalidate exports.

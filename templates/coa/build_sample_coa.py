@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image as PILImage
 from reportlab.graphics import renderPDF, renderSVG
+from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing, Group, Rect, Line, String, Image, Path as VectorPath, Ellipse
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -44,6 +45,8 @@ PALE = colors.HexColor("#EFF6F7")
 WHITE = colors.white
 DATA_FILE = ROOT / "sample_reports.json"
 CONTACT_FILE = ROOT / "lab-contact.json"
+REPORT_ORIGIN = "https://assaynovalabs.com"
+REPORT_QR_BOUNDS = (229, 37, 60, 60)
 EXPECTED = {
     "AN-7K9Q-2M4X": ("Reference sample A", "AN-2026-0042", "SAMPLE-2401", "2026-10-26", "2026-10-30", "99.32", "Consistent", "8.42"),
     "AN-8P6R-3N5Y": ("Reference sample C", "AN-2026-0043", "SAMPLE-2402", "2026-10-27", "2026-10-31", "97.84", "Partial match", "9.16")
@@ -167,6 +170,27 @@ def draw_contact(drawing, contact):
     lines = [contact["email"]] + ([contact["phone"]] if contact["phone"] else []) + contact["addressLines"]
     for index, value in enumerate(lines):
         text(drawing, value, 315, 80.5 - index * 12, 8.5, color=NAVY)
+
+
+def report_pdf_url(code):
+    """Use the owner's canonical domain, never an operator/LAN request origin."""
+    if not isinstance(code, str) or not re.fullmatch(r"AN-[A-Z0-9]{4}-[A-Z0-9]{4}", code):
+        raise ValueError("Use an exact uppercase Lookup Code for the report link")
+    return REPORT_ORIGIN + "/coa/" + code + "/report.pdf"
+
+
+def draw_report_qr(drawing, code):
+    target = report_pdf_url(code)
+    x, y, width, height = REPORT_QR_BOUNDS
+    widget = QrCodeWidget(target, barLevel="M", barBorder=4, barFillColor=NAVY)
+    # Expand the widget into vector rectangles shared by PDF and SVG. The
+    # 4-module white quiet zone is part of this measured square.
+    qr = widget.draw()
+    left, bottom, right, top = widget.getBounds()
+    qr.transform = (width / (right - left), 0, 0, height / (top - bottom), x, y)
+    drawing.add(Rect(x, y, width, height, fillColor=WHITE, strokeColor=None))
+    drawing.add(qr)
+    text(drawing, "Scan report", x + width / 2, 27.5, 8, color=MUTED, anchor="middle")
 
 
 def product(drawing, x, top, image=None):
@@ -379,6 +403,7 @@ def spectrum_plot(drawing,spectrum,x,y,width):
 
 
 def make_drawing(code, record, product_image=None, contact_config=None):
+    report_pdf_url(code)
     contact = load_contact(contact_config)
     register_fonts()
     drawing = Drawing(PAGE_W, PAGE_H)
@@ -442,6 +467,7 @@ def make_drawing(code, record, product_image=None, contact_config=None):
     title(drawing, "Method", ledger_x, 141, PAGE_W - MARGIN - ledger_x)
     text(drawing, record["method"], ledger_x, 123, 9, color=MUTED)
     draw_contact(drawing, contact)
+    draw_report_qr(drawing, code)
     signature = ROOT / "assets" / "dylan-greene-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
@@ -543,6 +569,7 @@ def svg_drawing(drawing):
 
 
 def render(drawing, code):
+    target = report_pdf_url(code)
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, invariant=1, pageCompression=1)
     pdf.setTitle("Fictional sample COA - " + code)
@@ -555,6 +582,8 @@ def render(drawing, code):
             self._canvas.drawImage(ImageReader(image.path), image.x, image.y,
                                    image.width, image.height, mask="auto")
     TransparentImageRenderer().draw(drawing, pdf, 0, 0)
+    x, y, width, height = REPORT_QR_BOUNDS
+    pdf.linkURL(target, (x, y, x + width, y + height), relative=0, thickness=0)
     pdf.showPage(); pdf.save()
     svg = renderSVG.drawToString(svg_drawing(drawing))
     ET.register_namespace("", "http://www.w3.org/2000/svg")
@@ -568,7 +597,7 @@ def render(drawing, code):
     heading = ET.Element("{http://www.w3.org/2000/svg}title", {"id": "sample-title"})
     heading.text = "Fictional sample COA - " + code
     description = ET.Element("{http://www.w3.org/2000/svg}desc", {"id": "sample-description"})
-    description.text = "Single-page portrait report with fixed fictional sample data, illustrative chromatogram and mass spectra, and the Dylan Greene handwritten signature at the lower left. Lookup Code " + code + ". An illustrative vial image appears beside the analytical results."
+    description.text = "Single-page portrait report with fixed fictional sample data, illustrative chromatogram and mass spectra, and the Dylan Greene handwritten signature at the lower left. Lookup Code " + code + ". An illustrative vial image appears beside the analytical results. Footer QR opens " + target
     metadata = ET.Element("{http://www.w3.org/2000/svg}metadata")
     metadata.text = "Font outlines derived from Bitstream Vera; see bitstream-vera-license.txt."
     root.insert(0, heading); root.insert(1, description)

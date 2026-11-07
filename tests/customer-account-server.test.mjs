@@ -14,7 +14,7 @@ const project = fileURLToPath(new URL('../', import.meta.url));
 async function freePort() { const listener = net.createServer(); listener.listen(0, '127.0.0.1'); await once(listener, 'listening'); const port = listener.address().port; await new Promise(resolve => listener.close(resolve)); return port; }
 async function fixtureSource() {
   const root = path.join(fixtureBase, randomUUID()); await mkdir(root, { recursive: true });
-  for (const file of ['server.mjs', 'package.json', 'accounts', 'dist/data.js', 'dist/routes.js', 'dist/index.html', 'dist/submission.js', 'conference/reader.mjs', 'conference/admin-proxy.mjs', 'conference/import-limits.mjs']) {
+  for (const file of ['server.mjs', 'report-pdf.mjs', 'package.json', 'accounts', 'dist/data.js', 'dist/routes.js', 'dist/index.html', 'dist/submission.js', 'conference/reader.mjs', 'conference/admin-proxy.mjs', 'conference/import-limits.mjs']) {
     const destination = path.join(root, file); await mkdir(path.dirname(destination), { recursive: true }); await cp(path.join(project, file), destination, { recursive: true });
   }
   return root;

@@ -427,7 +427,7 @@ async function withServer(mode, callback) {
   let child;
   let exited;
   try {
-    for (const name of ['server.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, name), path.join(fixture, name), { recursive: true });
+    for (const name of ['server.mjs', 'report-pdf.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, name), path.join(fixture, name), { recursive: true });
     const socket = createServer();
     await new Promise((resolve, reject) => socket.listen(0, '127.0.0.1', resolve).once('error', reject));
     const port = socket.address().port;

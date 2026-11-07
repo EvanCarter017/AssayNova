@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCOARoute } from './dist/data.js';
 import { resolvePageRoute } from './dist/routes.js';
+import { parseReportPDFRoute, builtinReportPDF, sendReportPDF } from './report-pdf.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
 const conferenceEnabled = process.argv.includes('--conference-reports');
@@ -96,6 +97,13 @@ const server = http.createServer(async (request, response) => {
     response.writeHead(405, { Allow: 'GET, HEAD' });
     response.end('Method not allowed');
     return;
+  }
+  const reportPDFCode = parseReportPDFRoute(request.url);
+  const builtinPDF = reportPDFCode && builtinReportPDF(reportPDFCode);
+  if (builtinPDF) {
+    let bytes;
+    try { bytes = await readFile(path.join(root, 'reports', builtinPDF)); } catch {}
+    sendReportPDF(request, response, reportPDFCode, bytes); return;
   }
   if (conference && await conference.handlePublicReport(request, response, pathname, conferenceStore)) return;
   if (pathname === '/privacy/signals') {

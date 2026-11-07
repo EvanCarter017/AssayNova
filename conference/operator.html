@@ -23,7 +23,7 @@
           <div class="section-heading"><h2 id="create-title" data-i18n="createReport">Create report</h2><span class="data-badge" data-i18n="synthetic">Synthetic data</span></div>
           <p class="notice" data-i18n="syntheticNotice">Generated values are examples, not instrument measurements. Choose a product and review the full report preview before publishing. Customer reports use the normal COA experience.</p>
           <label for="customer" data-i18n="customer">Customer</label><select id="customer"></select>
-          <div class="customer-tools"><button id="reload-products" type="button" data-i18n="reloadProducts">Reload products</button><button id="catalog-manage" type="button" data-i18n="manageProducts">Manage products</button></div>
+          <div class="customer-tools"><button id="reload-products" type="button" data-i18n="reloadProducts">Reload products</button><button id="catalog-manage" type="button">Resolve issues (0)</button></div>
           <details id="catalog-import"><summary data-i18n="importTitle">Upload folder / SKU table</summary>
             <form id="import-form">
               <label for="import-target" data-i18n="importTarget">Import into</label><select id="import-target"><option value="current" data-i18n="importCurrent">Selected customer</option><option value="new" data-i18n="importNew">New customer</option></select>
@@ -42,8 +42,7 @@
           </details>
           <label for="search" data-i18n="searchLabel">Search products by name or SKU</label><input id="search" data-i18n-placeholder="searchPlaceholder" type="search" placeholder="e.g. TR10, BC10, sema, NAD+" autocomplete="off" aria-describedby="product-help">
           <label for="product"><span data-i18n="product">Product</span> <span id="count"></span></label><select id="product" size="7" aria-describedby="product-help"></select>
-          <p id="product-help" class="hint" data-i18n="productHelp">Use a full SKU for an exact dose, or a family such as TR / SM. Unavailable entries are marked below and can be corrected in Manage products.</p>
-          <section id="catalog-blocked" class="catalog-blocked" hidden aria-labelledby="catalog-blocked-title"><h3 id="catalog-blocked-title" data-i18n="blockedProducts">Needs correction · unavailable for reports</h3><p id="catalog-blocked-count" class="hint"></p><ul id="catalog-blocked-list"></ul><div class="catalog-pagination"><button id="catalog-blocked-prev" type="button" data-i18n="previousPage">Previous</button><span id="catalog-blocked-page"></span><button id="catalog-blocked-next" type="button" data-i18n="nextPage">Next</button></div></section>
+          <p id="product-help" class="hint" data-i18n="productHelp">Use a full SKU for an exact dose, or a family such as TR / SM. Unavailable entries are marked in this list. Use Resolve issues to correct them for the selected customer.</p>
           <div class="selected-summary"><span class="eyebrow" data-i18n="selectedProduct">SELECTED PRODUCT</span><strong id="selected-name">Choose a product</strong></div>
           <form id="generate">
 
@@ -74,8 +73,8 @@
     </div>
   </div>
   <dialog id="catalog-dialog" class="catalog-dialog" aria-labelledby="catalog-dialog-title" aria-describedby="catalog-dialog-intro">
-    <header class="catalog-dialog-header"><div><p class="eyebrow" data-i18n="catalogWorkspace">CATALOG WORKSPACE</p><h2 id="catalog-dialog-title" data-i18n="manageProducts">Manage products</h2></div><div class="catalog-dialog-actions"><select id="catalog-language" aria-label="Admin language" data-i18n-aria-label="language"><option value="en">English</option><option value="zh-CN">中文</option></select><button id="catalog-close" type="button" data-i18n="closeCatalog">Close</button></div></header>
-    <p id="catalog-dialog-intro" class="hint" data-i18n="catalogIntro">Keep every source row. Correct its details and image before using it in a report.</p><button id="catalog-cleanup" type="button" data-i18n="catalogCleanup" hidden>Retry image upload cleanup</button>
+    <header class="catalog-dialog-header"><div><p class="eyebrow" data-i18n="catalogWorkspace">CATALOG WORKSPACE</p><h2 id="catalog-dialog-title">Resolve issues</h2></div><div class="catalog-dialog-actions"><select id="catalog-language" aria-label="Admin language" data-i18n-aria-label="language"><option value="en">English</option><option value="zh-CN">中文</option></select><button id="catalog-close" type="button" data-i18n="closeCatalog">Close</button></div></header>
+    <p id="catalog-dialog-intro" class="hint">Keep every source row. Correct its details and image before using it in a report.</p><button id="catalog-cleanup" type="button" data-i18n="catalogCleanup" hidden>Retry image upload cleanup</button>
     <div class="catalog-dialog-layout"><section class="catalog-record-picker" aria-label="Catalog entries" data-i18n-aria-label="catalogEntries">
       <label for="catalog-search" data-i18n="catalogSearch">Search SKU or product</label><input id="catalog-search" type="search" autocomplete="off">
       <label for="catalog-filter" data-i18n="catalogFilter">Show</label><select id="catalog-filter"><option value="all" data-i18n="catalogAll">All entries</option><option value="blocked" data-i18n="catalogBlocked">Needs correction</option><option value="ready" data-i18n="catalogReady">Ready</option></select>

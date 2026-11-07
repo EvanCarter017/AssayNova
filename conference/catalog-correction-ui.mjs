@@ -50,6 +50,11 @@ export function createCatalogCorrectionUI({ document, request, language, context
   const current = () => { const now = context(); return opened && now?.customerId === capture?.customerId && now?.token === capture?.token; };
   function message(id, values) { feedback = { key: id, values }; renderMessage(); }
   function renderMessage() { $('message').textContent = feedback.error ? language.error(feedback.error, 'catalogFailure') : t(feedback.key, feedback.values); }
+  function renderBrand() {
+    const name = capture?.customerName || capture?.customerId || '', count = entries.filter(row => row.status !== 'ready').length;
+    $('dialog-title').textContent = t('catalogBrandTitle', { name });
+    $('dialog-intro').textContent = t(count ? 'catalogBrandIntro' : 'catalogBrandReady', { name, count });
+  }
   function error(error) { feedback = { error: error.message }; renderMessage(); $('message').focus(); }
   function update() {
     $('dialog').setAttribute?.('aria-busy', String(busy));
@@ -61,10 +66,11 @@ export function createCatalogCorrectionUI({ document, request, language, context
     renderList();
   }
   function renderList() {
+    renderBrand();
     const matched = filterCatalogEntries(entries, $('search').value).filter(row => $('filter').value === 'all' || !$('filter').value || ($('filter').value === 'ready' ? row.status === 'ready' : row.status !== 'ready'));
     const pages = Math.max(1, Math.ceil(matched.length / pageSize)); page = Math.min(page, pages - 1);
     $('record-count').textContent = t('catalogEntryCount', { total: entries.length, count: matched.length });
-    $('record-list').innerHTML = matched.slice(page * pageSize, (page + 1) * pageSize).map(row => '<li><button type="button" data-entry-id="' + esc(row.id) + '" class="catalog-record ' + (row.status === 'ready' ? 'is-ready' : 'is-blocked') + '"' + (busy ? ' disabled' : '') + (entry?.id === row.id ? ' aria-current="true"' : '') + '><strong>' + esc(row.values?.sku || row.raw?.sku || t('catalogUnnamed')) + '</strong><span>' + esc(row.values?.product || row.raw?.product || t('catalogUnnamed')) + '</span><small>' + esc(t(row.status === 'ready' ? 'catalogReady' : 'catalogBlocked')) + '</small></button></li>').join('');
+    $('record-list').innerHTML = matched.slice(page * pageSize, (page + 1) * pageSize).map(row => '<li><button type="button" data-entry-id="' + esc(row.id) + '" class="catalog-record ' + (row.status === 'ready' ? 'is-ready' : 'is-blocked') + '"' + (busy ? ' disabled' : '') + (entry?.id === row.id ? ' aria-current="true"' : '') + '><strong>' + esc(row.values?.sku || row.raw?.sku || t('catalogUnnamed')) + '</strong><span>' + esc(row.values?.product || row.raw?.product || t('catalogUnnamed')) + '</span><small>' + esc(t(row.status === 'ready' ? 'catalogReady' : 'catalogBlocked')) + '</small></button></li>').join('') || '<li class="hint">' + esc(t($('filter').value === 'blocked' && !$('search').value ? 'catalogNoIssues' : 'catalogNoMatches')) + '</li>';
     $('page').textContent = t('catalogPage', { page: page + 1, pages }); $('prev').disabled = busy || page === 0; $('next').disabled = busy || page + 1 === pages;
   }
   function renderIssues() {
@@ -139,7 +145,7 @@ export function createCatalogCorrectionUI({ document, request, language, context
   }
   async function open(id, from) {
     const now = context(); if (!now?.customerId || !now.token || busy) return;
-    if (opened) close(); capture = { customerId: now.customerId, token: now.token }; entries = now.entries || []; revision = now.catalogRevision; opened = true; trigger = from || document.activeElement; $('search').value = ''; $('filter').value = 'all'; $('language').value = language.locale; page = 0; feedback = { key: 'catalogChooseEntry' }; renderMessage(); renderList(); $('dialog').showModal(); $('search').focus();
+    if (opened) close(); capture = { customerId: now.customerId, customerName: now.customerName || now.customerId, token: now.token }; entries = now.entries || []; revision = now.catalogRevision; opened = true; trigger = from || document.activeElement; $('search').value = ''; $('filter').value = 'blocked'; $('language').value = language.locale; page = 0; feedback = { key: 'catalogChooseEntry' }; renderMessage(); renderList(); $('dialog').showModal(); $('search').focus();
     void drainCleanup(); if (id) await select(id);
   }
   function edits() { return { values: Object.fromEntries(['sku', 'product', 'dose'].map(name => [name, $(name).value])), hold: $('hold').checked, image: imageIntent, imageId: $('image').value, file, fileURL }; }

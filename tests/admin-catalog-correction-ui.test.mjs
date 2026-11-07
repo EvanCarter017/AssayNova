@@ -10,7 +10,7 @@ const entry = (n, extra = {}) => ({ id: id(n), source: { sheet: 'Products', row:
 const ok = value => ({ ok: true, status: 200, json: async () => structuredClone(value) });
 const fail = (status, error) => ({ ok: false, status, json: async () => ({ error }) });
 function fixture(request, entries = [entry(1)], extra = {}) {
-  const nodes = new Map(); let context = { customerId: 'customer', token: 'test-token', catalogRevision: rev(1), entries }, saved = [];
+  const nodes = new Map(); let context = { customerId: 'customer', customerName: 'Brand A', token: 'test-token', catalogRevision: rev(1), entries }, saved = [];
   const document = { activeElement: null, getElementById: value => node(value.replace(/^catalog-/, '')) };
   function node(name) {
     if (!nodes.has(name)) nodes.set(name, { id: 'catalog-' + name, value: '', hidden: false, disabled: false, files: [], checked: false, attrs: {}, events: new Map(), classList: { toggle() {} }, textContent: '', innerHTML: '', isConnected: true,
@@ -77,6 +77,7 @@ test('locale switches and revision conflict preserve typed values and File; expl
   const api = adapter(), app = fixture(api.request), picture = { name: 'ADA10.png', size: 600000, slice: (a, b) => new Blob([Buffer.alloc(Math.min(b, 600000) - a)]) };
   await app.ui.open(id(1)); app.node('sku').value = 'ADA10'; app.node('product').value = 'Reviewed Adamax 10mg'; app.node('image-upload').files = [picture]; await app.ui.chooseFile();
   app.node('product').focus(); app.language.setLocale('zh-CN');
+  assert.match(app.node('dialog-title').textContent,/处理异常 · Brand A/);assert.equal(app.node('filter').value,'blocked');
   assert.equal(app.node('product').value, 'Reviewed Adamax 10mg'); assert.equal(app.node('image-upload').files[0], picture); assert.equal(app.document.activeElement, app.node('product')); assert.match(app.node('image-preview').src, /^data:/);
   api.changeRevision(); await app.ui.save();
   assert.equal(app.saved.length, 0); assert.equal(app.node('sku').value, 'ADA10'); assert.equal(app.node('image-upload').files[0], picture); assert.equal(app.node('reload').hidden, false); assert.equal(app.node('fields').disabled, false);
@@ -84,6 +85,16 @@ test('locale switches and revision conflict preserve typed values and File; expl
   await app.ui.reload(); assert.equal(app.node('sku').value, 'ADA1'); assert.equal(app.node('unsaved').hidden, false);
   app.node('restore-edits').events.get('click')(); assert.equal(app.node('sku').value, 'ADA10'); assert.equal(app.node('product').value, 'Reviewed Adamax 10mg'); assert.match(app.node('image-preview').src, /^data:/);
   await app.ui.save(); assert.equal(app.saved.at(-1).entry.status, 'ready'); assert.equal(api.calls.at(-1).body.expectedRevision, rev(99));
+});
+
+test('brand-scoped modal defaults to blocked entries, retains all/ready tools and shows a clear zero-issue state', async () => {
+  const rows=[entry(1),entry(2,{status:'ready',issues:[]})],app=fixture(async()=>ok({}),rows);
+  await app.ui.open();assert.equal(app.node('filter').value,'blocked');assert.equal(app.node('dialog-title').textContent,'Resolve issues · Brand A');assert.match(app.node('dialog-intro').textContent,/Brand A: 1/);assert.match(app.node('record-list').innerHTML,/ADA1/);assert.doesNotMatch(app.node('record-list').innerHTML,/ADA2/);
+  app.node('filter').value='all';app.node('filter').events.get('change')();assert.match(app.node('record-list').innerHTML,/ADA1/);assert.match(app.node('record-list').innerHTML,/ADA2/);
+  app.node('filter').value='ready';app.node('filter').events.get('change')();assert.doesNotMatch(app.node('record-list').innerHTML,/ADA1/);assert.match(app.node('record-list').innerHTML,/ADA2/);
+  app.context({customerId:'brand-b',customerName:'Brand B <scope>',token:'test-token',catalogRevision:rev(2),entries:[rows[1]]});app.ui.refresh();assert.equal(app.node('dialog').open,false);
+  await app.ui.open();assert.equal(app.node('filter').value,'blocked');assert.equal(app.node('dialog-title').textContent,'Resolve issues · Brand B <scope>');assert.match(app.node('dialog-intro').textContent,/no entries need correction/);assert.match(app.node('record-list').innerHTML,/No entries need correction/);assert.doesNotMatch(app.node('record-list').innerHTML,/data-entry-id=/);
+  app.language.setLocale('zh-CN');assert.equal(app.node('dialog-title').textContent,'处理异常 · Brand B <scope>');assert.match(app.node('record-list').innerHTML,/没有待处理异常/);
 });
 
 test('late detail/save responses cannot update a closed modal, switched customer or superseded selection', async () => {

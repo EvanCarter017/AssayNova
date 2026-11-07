@@ -60,10 +60,11 @@ function documentFixture(html) {
     const attrs=new Map(attributes);let inputValue=attrs.get('value')||'';
     const node={tagName:tag.toUpperCase(),parent,children:[],attributes:attrs,dataset:{},events:new Map(),isConnected:true,hidden:attrs.has('hidden'),disabled:attrs.has('disabled'),text:decode(text),html:'',focusCalls:0,
       get value(){return inputValue;},set value(value){inputValue=this.tagName==='SELECT'&&!this.options.some(option=>option.getAttribute('value')===value)?'':value;},
-      getAttribute(key){return attrs.get(key)??null;},setAttribute(key,value){attrs.set(key,String(value));},get content(){return attrs.get('content')??'';},addEventListener(type,callback){this.events.set(type,callback);},focus(){document.activeElement=this;this.focusCalls++;},select(){},classList:{toggle(){}},
+      getAttribute(key){return attrs.get(key)??null;},setAttribute(key,value){attrs.set(key,String(value));},removeAttribute(key){attrs.delete(key);},get content(){return attrs.get('content')??'';},addEventListener(type,callback){this.events.set(type,callback);},focus(){document.activeElement=this;this.focusCalls++;},select(){},showModal(){this.open=true;},close(){this.open=false;},reset(){},classList:{toggle(){}},
       get textContent(){return this.text;},set textContent(value){for(const child of this.children)disconnect(child);this.children=[];this.text=String(value);},
       get innerHTML(){return this.html;},set innerHTML(value){for(const child of this.children)disconnect(child);this.children=[];this.html=String(value);parse(this.html,this);},
       get options(){return this.children.filter(child=>child.tagName==='OPTION'&&child.isConnected);},
+      get selectedOptions(){return this.options.filter(option=>option.value===this.value);},
       get elements(){return {namedItem:name=>all.find(item=>item.isConnected&&item.getAttribute('name')===name&&within(item,this))};},
       querySelectorAll(selector){return all.filter(item=>item.isConnected&&within(item,this)&&matches(item,selector));}
     };
@@ -116,21 +117,59 @@ test('actual Reports locale switch preserves values, selection, snapshot, manual
   assert.ok(app.storage.writes.every(([key,value])=>key===LOCALE_KEY&&['en','zh-CN'].includes(value)));
 });
 
-test('actual v2 chooser cannot select a blocked entry and sends the current catalog revision for ready generation', async () => {
+test('actual v2 chooser keeps 22 problem entries in the dropdown and permits ready generation with the current revision', async () => {
   const revision = 'c'.repeat(32), ready = { ...catalogDTO({ id: 'adamax', name: 'Adamax 10mg', ...parseProduct('Adamax 10mg') }), sku: 'ADA10', status: 'ready', aliases: { skus: ['ADA10'], families: ['ADA'] } }, entryId = '1'.repeat(20), calls = [];
   const sameName = ['LC120', 'LC526', 'LC553'].map(sku => ({ ...ready, id: sku.toLowerCase(), name: 'L-Carnitine 120mg', sku, aliases: { skus: [sku], families: ['LC'] } }));
   const blocked = { id: entryId, raw: { sku: 'ADA10mg', product: 'Unreviewed', dose: '' }, values: { sku: 'ADA10mg', product: 'Unreviewed', dose: '' }, status: 'blocked', hold: false, issues: [{ code: 'MISSING_IMAGE' }] };
+  const entries = [blocked, ...Array.from({length:21},(_,n)=>({...blocked,id:(n+2).toString(16).padStart(20,'0'),values:{sku:'MISSING'+n,product:'Unrelated product '+n,dose:''}}))];
   const ok = value => ({ status: 200, ok: true, json: async () => value });
   const app = await boot(operatorJS, operatorHTML, { fetch: async (url, options) => {
-    calls.push([url, options]); if (url.endsWith('/session')) return ok({ products: [ready, ...sameName], entries: [blocked], catalogRevision: revision, customers: [{ id: 'fixture', name: 'Customer' }], defaultCustomerId: 'fixture', token: 'synthetic', publicOrigin: 'http://customer.invalid' });
+    calls.push([url, options]); if (url.endsWith('/session')) return ok({ products: [ready, ...sameName], entries, catalogRevision: revision, customers: [{ id: 'fixture', name: 'Customer' }], defaultCustomerId: 'fixture', token: 'synthetic', publicOrigin: 'http://customer.invalid' });
     if (url.endsWith('/history')) return ok([]); if (url === '/admin/api/imports') return ok({ imports: [] });
     return { status: 409, ok: false, json: async () => ({ error: 'Catalog changed. Reload products before saving corrections.' }) };
-  }, extra: 'globalThis.ui={filter,selectProduct,selected:()=>selected};' });
+  }, extra: 'globalThis.ui={language,filter,selectProduct,selected:()=>selected};' });
+  assert.equal(app.node('catalog-blocked'),undefined);assert.doesNotMatch(operatorJS,/renderBlocked|blockedPage|data-correct-entry|catalog-blocked-list/);
+  assert.equal(app.node('catalog-manage').textContent,'Resolve issues (22)');
+  const options=app.node('product').options;
+  assert.equal(options.filter(option=>option.disabled&&option.getAttribute('class')==='is-blocked').length,22);
+  assert.ok(options.filter(option=>option.getAttribute('class')==='is-blocked').every(option=>option.textContent.startsWith('Content missing · unavailable · ')));
+  assert.equal(options.find(option=>option.value==='adamax').disabled,false);
   for (const sku of ['LC120', 'LC526', 'LC553']) assert.match(app.node('product').innerHTML, new RegExp(sku + ' · L-Carnitine 120mg'));
-  app.node('search').value = 'ADA10mg'; app.context.ui.filter(); assert.equal(app.context.ui.selected(), undefined); assert.match(app.node('product').innerHTML, /option disabled class="is-blocked"/); assert.match(app.node('catalog-blocked-list').innerHTML, /data-correct-entry/);
+  for(const query of ['ADA10mg','ADA-10mg']){app.node('search').value=query;app.context.ui.filter();assert.equal(app.context.ui.selected(),undefined);assert.match(app.node('product').innerHTML,/option disabled class="is-blocked"/);assert.match(app.node('status').textContent,/Resolve issues/);assert.equal(app.node('catalog-manage').textContent,'Resolve issues (22)');}
   app.node('product').value = 'blocked-' + entryId; app.context.ui.selectProduct(); await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } }); assert.equal(calls.some(([url]) => url.endsWith('/generate')), false);
-  app.node('search').value = ''; app.context.ui.filter(); app.node('product').value = 'adamax'; app.context.ui.selectProduct(); await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } });
-  assert.equal(JSON.parse(calls.find(([url]) => url.endsWith('/generate'))[1].body).catalogRevision, revision);
+  app.node('search').value = ''; app.context.ui.filter();app.node('product').value='adamax';const readyOption=app.node('product').options.find(option=>option.value==='adamax');readyOption.disabled=true;app.context.ui.selectProduct();assert.equal(app.context.ui.selected(),undefined);readyOption.disabled=false;
+  app.node('product').value='adamax';app.context.ui.selectProduct();app.node('product').focus();const focused=app.document.activeElement;
+  app.context.ui.language.setLocale('zh-CN');assert.equal(app.node('product').value,'adamax');assert.equal(app.document.activeElement,focused);assert.equal(app.node('catalog-manage').textContent,'处理异常（22）');assert.ok(app.node('product').options.filter(option=>option.disabled&&option.getAttribute('class')==='is-blocked').every(option=>option.textContent.startsWith('内容缺失 · 无法选择 · ')));
+  await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } });
+  const payload=JSON.parse(calls.find(([url])=>url.endsWith('/generate'))[1].body);assert.equal(payload.catalogRevision,revision);assert.equal(payload.customerId,'fixture');assert.equal(payload.productId,'adamax');
+  const css=await readFile(new URL('../conference/operator.css',import.meta.url),'utf8');assert.match(css,/#product option\.is-blocked:disabled\{[^}]*color:#a32e25/);assert.doesNotMatch(css,/#catalog-blocked/);
+});
+
+test('actual operator routes brand corrections through the modal and refreshes ready options without losing a valid selection', async () => {
+  const revision='a'.repeat(32), nextRevision='b'.repeat(32), ready={...catalogDTO({id:'ready',name:'Adamax 10mg',...parseProduct('Adamax 10mg')}),sku:'ADA10',status:'ready'}, entryId='2'.repeat(20), assetId='3'.repeat(32);
+  const blocked={id:entryId,source:{sheet:'Products',row:2},raw:{sku:'FIX10',product:'Reviewed product',dose:'10mg'},values:{sku:'FIX10',product:'Reviewed product 10mg',dose:'10mg'},status:'blocked',hold:false,issues:[{code:'MISSING_IMAGE'}]}, leftover={...blocked,id:'4'.repeat(20),values:{...blocked.values,sku:'OTHER10'}};
+  const customers=[{id:'brand-a',name:'Brand A & Labs'},{id:'brand-b',name:'Brand B'}], calls=[], ok=value=>({status:200,ok:true,json:async()=>value});
+  const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options)=>{
+    calls.push([url,options]);if(url.endsWith('/session'))return ok({products:[ready],entries:[blocked,leftover],catalogRevision:revision,customers,defaultCustomerId:'brand-a',token:'synthetic',publicOrigin:'http://customer.invalid'});
+    if(url.endsWith('/history'))return ok([]);if(url==='/admin/api/imports')return ok({imports:[]});
+    if(url==='/admin/api/catalog?customerId=brand-b')return ok({customer:customers[1],products:[ready],entries:[],catalogRevision:nextRevision});
+    if(url.endsWith('/entries/'+entryId)&&options.method==='GET')return ok({entry:blocked,catalogRevision:revision,images:[{id:assetId,filename:'FIX10.png',url:'/admin/catalog-assets/synthetic'}]});
+    if(url.endsWith('/entries/'+entryId)&&options.method==='PATCH'){
+      const body=JSON.parse(options.body);assert.equal(body.expectedRevision,revision);assert.deepEqual(body.image,{assetId});
+      const corrected={...blocked,status:'ready',issues:[],image:{id:assetId}};
+      return ok({entry:corrected,entries:[corrected,leftover],products:[ready,{...ready,id:entryId,sku:'FIX10',name:'Reviewed product 10mg'}],catalogRevision:nextRevision,customers});
+    }
+    throw new Error('Unexpected synthetic request: '+url);
+  },extra:'globalThis.ui={language,correction,selectProduct,loadCustomer,selected:()=>selected};'});
+  app.node('product').value='ready';app.context.ui.selectProduct();assert.equal(app.node('catalog-manage').textContent,'Resolve issues (2)');
+  await app.node('catalog-manage').events.get('click')({currentTarget:app.node('catalog-manage')});
+  assert.equal(app.node('catalog-dialog').open,true);assert.equal(app.node('catalog-filter').value,'blocked');assert.equal(app.node('catalog-dialog-title').textContent,'Resolve issues · Brand A & Labs');assert.match(app.node('catalog-dialog-intro').textContent,/Brand A & Labs: 2/);
+  await app.context.ui.correction.select(entryId);app.node('catalog-image').value=assetId;app.node('catalog-image').events.get('change')();await app.context.ui.correction.save();
+  assert.equal(app.context.ui.selected().id,'ready');assert.equal(app.node('product').value,'ready');assert.equal(app.node('product').options.find(option=>option.value===entryId).disabled,false);assert.equal(app.node('product').options.find(option=>option.value==='blocked-'+leftover.id).disabled,true);assert.equal(app.node('catalog-manage').textContent,'Resolve issues (1)');assert.match(app.node('catalog-dialog-intro').textContent,/Brand A & Labs: 1/);
+  assert.ok(calls.some(([url,options])=>url==='/admin/api/catalog/brand-a/entries/'+entryId&&options.method==='PATCH'));
+  await app.context.ui.loadCustomer('brand-b');assert.equal(app.node('catalog-dialog').open,false);assert.equal(app.node('catalog-manage').textContent,'Resolve issues (0)');
+  await app.node('catalog-manage').events.get('click')({currentTarget:app.node('catalog-manage')});assert.match(app.node('catalog-dialog-title').textContent,/Brand B/);assert.match(app.node('catalog-dialog-intro').textContent,/no entries need correction/);assert.doesNotMatch(app.node('catalog-record-list').innerHTML,/data-entry-id=/);
+  app.context.ui.language.setLocale('zh-CN');assert.equal(app.node('product').value,'ready');assert.match(app.node('catalog-dialog-title').textContent,/处理异常 · Brand B/);assert.match(app.node('catalog-record-list').innerHTML,/没有待处理异常/);
 });
 
 test('actual empty-customer boot enables a localized first import without bogus catalog requests and preserves report history', async () => {
@@ -152,7 +191,7 @@ test('actual empty-customer boot enables a localized first import without bogus 
   }, extra: 'globalThis.ui={language,loadCustomer,selected:()=>selected};' });
   const { ui } = app.context;
   assert.equal(app.node('customer').options.length, 1); assert.equal(app.node('customer').options[0].textContent, 'No customers yet');
-  for (const id of ['customer', 'reload-products', 'search', 'product']) assert.equal(app.node(id).disabled, true, id);
+  for (const id of ['customer', 'reload-products', 'catalog-manage', 'search', 'product']) assert.equal(app.node(id).disabled, true, id);
   assert.ok(app.node('generate').querySelectorAll('#generate button').every(button => button.disabled));
   assert.equal(app.node('import-target').value, 'new'); assert.equal(app.node('import-target').options.find(option => option.value === 'current').disabled, true);
   for (const id of ['import-name', 'import-folder', 'import-sheet', 'import-upload', 'logout']) assert.equal(app.node(id).disabled, false, id);

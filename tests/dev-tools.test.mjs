@@ -154,7 +154,7 @@ async function withServer(mode, callback, host) {
   let exit;
   let output = '';
   try {
-    for (const file of ['server.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, file), path.join(fixture, file), { recursive: true });
+    for (const file of ['server.mjs', 'report-pdf.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, file), path.join(fixture, file), { recursive: true });
     const port = await freePort();
     assert.notEqual(port, 4317);
     child = spawn(process.execPath, ['server.mjs', '--no-accounts', `--port=${port}`, ...(host === undefined ? [] : [`--host=${host}`]), ...(mode === 'default' ? [] : ['--watch'])], {

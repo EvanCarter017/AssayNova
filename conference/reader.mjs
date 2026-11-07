@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseReportPDFRoute, sendReportPDF } from '../report-pdf.mjs';
 
 export const DEFAULT_STORE = fileURLToPath(new URL('../work/report-studio', import.meta.url));
 export const validCode = value => typeof value === 'string' && /^AN-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(value);
@@ -33,6 +34,15 @@ export async function readPublished(store, code, asset = 'bundle.json') {
 }
 
 export async function handlePublicReport(request, response, pathname, store) {
+  const pdfCode = parseReportPDFRoute(request.url);
+  if (pdfCode) {
+    if (!['GET', 'HEAD'].includes(request.method)) {
+      response.writeHead(405, { Allow: 'GET, HEAD' }); response.end('Method not allowed'); return true;
+    }
+    const published = await readPublished(store, pdfCode);
+    const bytes = published ? await readPublished(store, pdfCode, 'report.pdf') : null;
+    sendReportPDF(request, response, pdfCode, bytes); return true;
+  }
   if (!pathname.startsWith('/__reports')) return false;
   const match = /^\/__reports\/(AN-[A-Za-z0-9]{4}-[A-Za-z0-9]{4})(?:\/(report\.svg|report\.pdf))?$/i.exec(pathname);
   const code = match?.[1].toUpperCase();

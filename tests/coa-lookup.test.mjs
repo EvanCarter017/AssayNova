@@ -705,7 +705,7 @@ async function withCOAServer(mode, callback) {
   let exited;
   let output = '';
   try {
-    for (const entry of ['server.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, entry), path.join(fixture, entry), { recursive: true });
+    for (const entry of ['server.mjs', 'report-pdf.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, entry), path.join(fixture, entry), { recursive: true });
     const port = await availablePort();
     child = spawn(process.execPath, ['server.mjs', '--no-accounts', `--port=${port}`, ...(mode === 'default' ? [] : ['--watch'])], {
       cwd: fixture, env: { ...process.env, NODE_ENV: mode === 'production' ? 'production' : 'test' }, stdio: ['ignore', 'pipe', 'pipe']
