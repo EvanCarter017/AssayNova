@@ -188,9 +188,18 @@ class ReportLayoutTests(unittest.TestCase):
             default = self.assert_contact_geometry(drawing, master.load_contact())
             self.assertEqual([n.text for n in default], ["reports@assaynovalabs.com", "+1-681-334-3721"])
             self.assertAlmostEqual(default[0].x, 346.8183151605562)
-            self.assertEqual([n.y for n in default], [112, 100])
+            self.assertEqual([n.y for n in default], [96, 84])
             self.assertTrue(all(n.fontSize == 8.5 and n.fontName == "SampleVera" for n in default))
             self.assertNotIn("Contact the laboratory", [n.text for n in self.strings(drawing)])
+            # The compact group sits between complete Method text and statement,
+            # with balanced white space instead of crowding either block.
+            method = [node for node in self.strings(drawing) if node.x == 315 and node.y in (141, 131)]
+            statement = [node for node in self.strings(drawing) if node.fontSize == 6.75]
+            top_gap = min(self.bounds(node)[1] for node in method) - max(self.bounds(node)[3] for node in default)
+            bottom_gap = min(self.bounds(node)[1] for node in default) - max(self.bounds(node)[3] for node in statement)
+            self.assertGreater(top_gap, 25)
+            self.assertGreater(bottom_gap, 25)
+            self.assertLess(abs(top_gap - bottom_gap), 1)
             drawing = self.drawing(dynamic, contact=self.full_contact)
             footer = self.assert_contact_geometry(drawing, self.full_contact)
             self.assertEqual([n.y for n in footer], [112, 100.5, 88.5, 76.5, 64.5])
@@ -205,7 +214,11 @@ class ReportLayoutTests(unittest.TestCase):
             drawing = self.drawing(dynamic, contact=empty_phone)
             contact = self.assert_contact_geometry(drawing, empty_phone)
             self.assertEqual([node.text for node in contact], [empty_phone["email"], "Fixture address line one"])
-            self.assertEqual([node.y for node in contact], [112, 100])
+            self.assertEqual([node.y for node in contact], [96, 84])
+            expanded = dict(self.full_contact, title="")
+            drawing = self.drawing(dynamic, contact=expanded)
+            contact = self.assert_contact_geometry(drawing, expanded)
+            self.assertEqual([node.y for node in contact], [112, 100, 88, 76])
         path = self.directory / "contact.json"
         with patch.object(master, "CONTACT_FILE", path):
             for email in ("first@example.test", "second@example.test"):

@@ -211,7 +211,7 @@ def draw_contact(drawing, contact):
     x = REPORT_QR_FRAME_BOUNDS[0] - 12 - max(widths)
     if contact["title"]:
         text(drawing, contact["title"], x, 112, 9, True, TEAL)
-    first_baseline = 100.5 if contact["title"] else 112
+    first_baseline = 100.5 if contact["title"] else (96 if len(lines) <= 2 else 112)
     for index, value in enumerate(lines):
         baseline = first_baseline - index * 12
         text(drawing, value, x, baseline, 8.5, color=NAVY)

@@ -179,8 +179,10 @@ so the current two-line block sits close to the QR rather than in the middle of
 the footer. Original envelope and telephone vectors sit 5 pt before their text;
 the muted teal icons add no raster images or external dependencies. An absent
 phone omits its icon too. The original 244.2756 pt line capacity and fonts are
-preserved. With no heading, contact baselines start at 112 pt with 12 pt
-spacing. An optional title uses baseline 112 pt, followed by contact baselines
+preserved. With no heading and at most two detail lines, contact baselines start
+at 96 pt with 12 pt spacing, centered between the analytical content and footer
+statement. Longer heading-free blocks still start at 112 pt. An optional title
+uses baseline 112 pt, followed by contact baselines
 100.5/88.5/76.5/64.5 pt. The title uses 9 pt and contact lines use
 8.5 pt. Configuration accepts bounded printable ASCII supported by the embedded
 font, an optional empty title and valid email text. Each line must fit the footer width;
