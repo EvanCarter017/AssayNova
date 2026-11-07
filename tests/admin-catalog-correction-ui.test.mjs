@@ -10,16 +10,16 @@ const entry = (n, extra = {}) => ({ id: id(n), source: { sheet: 'Products', row:
 const ok = value => ({ ok: true, status: 200, json: async () => structuredClone(value) });
 const fail = (status, error) => ({ ok: false, status, json: async () => ({ error }) });
 function fixture(request, entries = [entry(1)], extra = {}) {
-  const nodes = new Map(); let context = { customerId: 'customer', customerName: 'Brand A', token: 'test-token', catalogRevision: rev(1), entries }, saved = [];
+  const nodes = new Map(); let context = { customerId: 'customer', customerName: 'Brand A', token: 'test-token', customers: [{ id: 'customer', name: 'Brand A' }, { id: 'brand-b', name: 'Brand B' }], catalogRevision: rev(1), entries }, saved = [], switched = [];
   const document = { activeElement: null, getElementById: value => node(value.replace(/^catalog-/, '')) };
   function node(name) {
     if (!nodes.has(name)) nodes.set(name, { id: 'catalog-' + name, value: '', hidden: false, disabled: false, files: [], checked: false, attrs: {}, events: new Map(), classList: { toggle() {} }, textContent: '', innerHTML: '', isConnected: true,
       addEventListener(type, fn) { this.events.set(type, fn); }, setAttribute(name, value) { this.attrs[name] = value; }, removeAttribute(name) { delete this[name]; }, focus() { document.activeElement = this; }, showModal() { this.open = true; }, close() { this.open = false; }, reset() {} });
     return nodes.get(name);
   }
-  const language = createAdminI18n(), ui = createCatalogCorrectionUI({ document, request, context: () => context, onSaved(value) { saved.push(value); context = { ...context, entries: value.entries, catalogRevision: value.catalogRevision }; }, language, readFile: async () => 'data:image/png;base64,dGVzdA==', ...extra });
+  const language = createAdminI18n(), ui = createCatalogCorrectionUI({ document, request, context: () => context, onSaved(value) { saved.push(value); context = { ...context, entries: value.entries, catalogRevision: value.catalogRevision }; }, onBrandChanged(value) { switched.push(value); context = { ...context, customerId: value.customer.id, customerName: value.customer.name, entries: value.entries, catalogRevision: value.catalogRevision }; ui.refresh(); }, language, readFile: async () => 'data:image/png;base64,dGVzdA==', ...extra });
   language.subscribe(() => ui.applyLanguage());
-  return { ui, node, nodes, document, saved, language, context: next => context = next, current: () => context };
+  return { ui, node, nodes, document, saved, switched, language, context: next => context = next, current: () => context };
 }
 function adapter(start = [entry(1)]) {
   let entries = structuredClone(start), revision = rev(1); const calls = [], uploads = [], jobs = new Map();
@@ -231,4 +231,151 @@ test('replacement reconciles a lost creation before using a fresh intent, and cl
   await attachImage(app, 'REPLACEMENT.png'); await app.ui.save();
   const creates = api.calls.filter(call => call.url === '/admin/api/imports'); assert.equal(api.deletes, 1); assert.equal(api.created, 2); assert.equal(creates[1].body.uploadIntent, oldIntent); assert.notEqual(creates.at(-1).body.uploadIntent, oldIntent); assert.equal(app.saved.length, 1);
   const missed = uploadAdapter({ missedCreates: 1 }), closed = fixture(missed.request, [entry(1)], { wait: async () => {} }); await closed.ui.open(id(1)); await attachImage(closed); await closed.ui.save(); assert.equal(missed.created, 0); closed.ui.close(); await closed.ui.cleanup(); assert.equal(missed.created, 1); assert.equal(missed.deletes, 1); assert.equal(missed.jobs.size, 0);
+});
+
+function brandAdapter() {
+  const calls = [], assetA = { ...image, url: '/admin/catalog-assets/customer/' + image.id }, assetB = { ...image, id: rev(11), url: '/admin/catalog-assets/brand-b/' + rev(11) };
+  const rowA = entry(1, { values: { sku: 'SHARED10', product: 'Brand A product 10mg', dose: '10mg' }, image: assetA });
+  const rowB = entry(2, { values: { sku: 'SHARED10', product: 'Brand B product 10mg', dose: '10mg' }, image: assetB });
+  const catalog = { customer: { id: 'brand-b', name: 'Brand B <scope>' }, entries: [rowB], products: [], catalogRevision: rev(8) };
+  const request = async (url, options) => {
+    calls.push({ url, options });
+    if (url === '/admin/api/catalog?customerId=brand-b') return ok(catalog);
+    if (url === '/admin/api/catalog/customer/entries/' + rowA.id) return ok({ entry: rowA, catalogRevision: rev(1), images: [assetA] });
+    if (url === '/admin/api/catalog/brand-b/entries/' + rowB.id) return ok(options.method === 'PATCH' ? { ...catalog, entry: rowB } : { entry: rowB, catalogRevision: rev(8), images: [assetB] });
+    throw new Error('Unexpected synthetic request ' + url);
+  };
+  return { request, calls, catalog, rowA, rowB, assetA, assetB };
+}
+
+test('internal brand switch uses only saved enabled IDs, resets the editor and isolates identical SKUs and image filenames', async () => {
+  const api = brandAdapter(), app = fixture(api.request, [api.rowA]);
+  app.context({ ...app.current(), customers: [...app.current().customers, { id: 'bad"<id>', name: '<unsafe & name>' }, { id: 'disabled', name: 'Disabled', enabled: false }] });
+  await app.ui.open(api.rowA.id);
+  assert.equal(app.node('brand').value, 'customer'); assert.match(app.node('brand').innerHTML, /bad&quot;&lt;id&gt;/); assert.match(app.node('brand').innerHTML, /&lt;unsafe &amp; name&gt;/); assert.doesNotMatch(app.node('brand').innerHTML, /Disabled/);
+  await app.ui.switchBrand('missing'); await app.ui.switchBrand('disabled'); assert.equal(api.calls.length, 1);
+  app.node('search').value = 'SHARED10'; app.node('filter').value = 'all';
+  await app.ui.switchBrand('brand-b');
+  assert.equal(app.switched.length, 1); assert.equal(app.current().customerId, 'brand-b'); assert.equal(app.node('brand').value, 'brand-b'); assert.equal(app.node('dialog').open, true);
+  assert.equal(api.calls.at(-1).options.headers['X-Studio-Token'], 'test-token'); assert.equal(app.node('search').value, ''); assert.equal(app.node('filter').value, 'blocked');
+  assert.match(app.node('dialog-title').textContent, /Brand B <scope>/); assert.match(app.node('record-list').innerHTML, /Brand B product/); assert.doesNotMatch(app.node('record-list').innerHTML, /Brand A product/);
+  assert.equal(app.node('form').hidden, true); assert.equal(app.node('sku').value, ''); assert.equal(app.node('raw-sku').textContent, ''); assert.equal(app.node('source-line').textContent, ''); assert.equal(app.node('related').innerHTML, ''); assert.equal(app.node('image-preview').src, undefined);
+  await app.ui.select(api.rowB.id); assert.match(app.node('image').innerHTML, new RegExp(api.assetB.id)); assert.doesNotMatch(app.node('image').innerHTML, new RegExp(api.assetA.id)); assert.equal(app.node('image-preview').src, api.assetB.url);
+  await app.ui.save(); const patch = api.calls.at(-1); assert.equal(patch.url, '/admin/api/catalog/brand-b/entries/' + api.rowB.id); assert.equal(JSON.parse(patch.options.body).expectedRevision, rev(8)); assert.equal(Object.hasOwn(JSON.parse(patch.options.body), 'image'), false);
+});
+
+test('dirty identity, hold, image choice, removal and File require explicit switch confirmation; Keep editing and Escape preserve every edit', async () => {
+  for (const kind of ['identity', 'hold', 'image', 'remove', 'file']) {
+    const api = brandAdapter(), app = fixture(api.request, [api.rowA]); await app.ui.open(api.rowA.id);
+    let picture;
+    if (kind === 'identity') app.node('product').value = 'My unsaved product';
+    if (kind === 'hold') app.node('hold').checked = true;
+    if (kind === 'image') { app.node('image').value = api.assetA.id; app.node('image').events.get('change')(); }
+    if (kind === 'remove') app.node('remove-image').events.get('click')();
+    if (kind === 'file') picture = await attachImage(app);
+    const before = { product: app.node('product').value, hold: app.node('hold').checked, image: app.node('image').value, preview: app.node('image-preview').src };
+    for (const cancel of ['keep', 'escape']) {
+      await app.ui.switchBrand('brand-b'); assert.equal(api.calls.length, 1, kind); assert.equal(app.node('brand-confirm').hidden, false); assert.equal(app.node('brand').value, 'customer'); assert.equal(app.document.activeElement, app.node('brand-keep')); assert.equal(app.node('fields').disabled, true);
+      if (cancel === 'keep') app.node('brand-keep').events.get('click')(); else app.node('dialog').events.get('cancel')({ preventDefault() {} });
+      assert.equal(app.node('dialog').open, true); assert.equal(app.node('brand-confirm').hidden, true); assert.equal(app.document.activeElement, app.node('brand')); assert.equal(app.node('fields').disabled, false);
+      assert.deepEqual({ product: app.node('product').value, hold: app.node('hold').checked, image: app.node('image').value, preview: app.node('image-preview').src }, before, kind);
+      if (picture) assert.equal(app.node('image-upload').files[0], picture);
+    }
+    await app.ui.switchBrand('brand-b'); await app.node('brand-discard').events.get('click')(); assert.equal(app.current().customerId, 'brand-b'); assert.equal(app.node('image-upload').value, ''); assert.equal(app.node('hold').checked, false); assert.equal(app.node('image-preview').src, undefined);
+    assert.equal(api.calls.some(call => call.options.method !== 'GET'), false, kind);
+  }
+});
+
+test('failed brand reads keep the old entry, File, preview, filters and revision; retry commits only after success', async () => {
+  const api = brandAdapter(); let rejectBrand = true;
+  const app = fixture((url, options) => url.includes('?customerId=') && rejectBrand ? fail(503, 'internal detail must not leak') : api.request(url, options), [api.rowA]);
+  await app.ui.open(api.rowA.id); const picture = await attachImage(app); app.node('product').value = 'Unsaved identity'; app.node('search').value = 'SHARED10'; app.node('filter').value = 'all';
+  const preview = app.node('image-preview').src;
+  await app.ui.switchBrand('brand-b'); await app.node('brand-discard').events.get('click')();
+  assert.equal(app.current().customerId, 'customer'); assert.equal(app.node('brand').value, 'customer'); assert.equal(app.node('product').value, 'Unsaved identity'); assert.equal(app.node('image-upload').files[0], picture); assert.equal(app.node('image-preview').src, preview); assert.equal(app.node('form').hidden, false); assert.equal(app.node('search').value, 'SHARED10'); assert.equal(app.node('filter').value, 'all'); assert.equal(app.node('brand').disabled, false); assert.equal(app.node('brand-retry').hidden, false); assert.equal(app.document.activeElement, app.node('brand-status')); assert.match(app.node('brand-status').textContent, /preserved/); assert.doesNotMatch(app.node('brand-status').textContent, /internal detail/); assert.equal(app.switched.length, 0);
+  rejectBrand = false; await app.node('brand-retry').events.get('click')(); assert.equal(app.node('brand-confirm').hidden, false); await app.node('brand-discard').events.get('click')(); assert.equal(app.switched.length, 1); assert.equal(app.node('brand-retry').hidden, true); assert.equal(app.document.activeElement, app.node('search'));
+});
+
+test('closed, token-changed and externally changed contexts reject late brand reads and clear operation state', async () => {
+  for (const change of ['close', 'token', 'customer', 'unavailable']) {
+    const api = brandAdapter(); let release;
+    const app = fixture((url, options) => url.includes('?customerId=') ? new Promise(resolve => release = resolve) : api.request(url, options), [api.rowA]);
+    await app.ui.open(api.rowA.id); const pending = app.ui.switchBrand('brand-b'); assert.equal(app.node('brand').disabled, true); assert.match(app.node('brand-status').textContent, /Reading/);
+    if (change === 'close') app.ui.close(); else { app.context(change === 'unavailable' ? null : { ...app.current(), ...(change === 'token' ? { token: 'new-token' } : { customerId: 'other' }) }); app.ui.refresh(); }
+    release(ok(api.catalog)); await pending;
+    assert.equal(app.switched.length, 0, change); assert.equal(app.node('dialog').open, false, change); assert.equal(app.node('dialog').attrs['aria-busy'], 'false'); assert.equal(app.node('brand-status').textContent, '');
+  }
+});
+
+test('out-of-order brand reads and an old FileReader never replace a newer brand', async () => {
+  const api = brandAdapter(); let releaseOld, releaseFile;
+  const app = fixture((url, options) => url.includes('?customerId=') ? new Promise(resolve => releaseOld = resolve) : api.request(url, options), [api.rowA], { readFile: () => new Promise(resolve => releaseFile = resolve) });
+  await app.ui.open(api.rowA.id); app.node('image-upload').files = [{ name: 'SHARED10.png', size: 20 }]; const fileRead = app.ui.chooseFile();
+  await app.ui.switchBrand('brand-b'); const old = app.node('brand-discard').events.get('click')(); app.ui.close();
+  app.context({ ...app.current(), customerId: 'brand-b', customerName: 'New Brand B', entries: [api.rowB], catalogRevision: rev(8) }); await app.ui.open(api.rowB.id);
+  releaseOld(ok(api.catalog)); releaseFile('data:image/png;base64,b2xk'); await Promise.all([old, fileRead]);
+  assert.equal(app.node('dialog').open, true); assert.equal(app.node('sku').value, 'SHARED10'); assert.equal(app.node('product').value, api.rowB.values.product); assert.equal(app.node('image-preview').src, api.assetB.url); assert.equal(app.switched.length, 0);
+});
+
+test('a delayed replacement FileReader completes for the retained editor when the confirmed brand read fails', async () => {
+  for (const timing of ['during-read', 'after-failure']) {
+    const api = brandAdapter(); let releaseBrand, releaseFile;
+    const app = fixture((url, options) => url.includes('?customerId=') ? new Promise(resolve => releaseBrand = resolve) : api.request(url, options), [api.rowA], { readFile: () => new Promise(resolve => releaseFile = resolve) });
+    await app.ui.open(api.rowA.id); assert.equal(app.node('image-preview').src, api.assetA.url);
+    const picture = { name: 'REPLACEMENT.png', size: 20 }; app.node('image-upload').files = [picture]; const reading = app.ui.chooseFile();
+    assert.equal(app.node('image-preview').hidden, true); assert.equal(app.node('image-preview').src, undefined); assert.equal(app.node('image-name').textContent, picture.name);
+    await app.ui.switchBrand('brand-b'); const switching = app.node('brand-discard').events.get('click')();
+    if (timing === 'during-read') { releaseFile('data:image/png;base64,cmVwbGFjZW1lbnQ='); await reading; }
+    releaseBrand(fail(503, 'Catalog unavailable.')); await switching;
+    if (timing === 'after-failure') { releaseFile('data:image/png;base64,cmVwbGFjZW1lbnQ='); await reading; }
+    assert.equal(app.current().customerId, 'customer'); assert.equal(app.node('brand').value, 'customer'); assert.equal(app.node('form').hidden, false); assert.equal(app.node('image-upload').files[0], picture);
+    assert.equal(app.node('image-preview').src, 'data:image/png;base64,cmVwbGFjZW1lbnQ='); assert.equal(app.node('image-preview').hidden, false); assert.equal(app.node('image-name').textContent, picture.name); assert.match(app.node('brand-status').textContent, /preserved/); assert.equal(app.switched.length, 0);
+  }
+});
+
+test('FileReader ownership rejects stale replacement previews after successful switch, close or external context changes', async () => {
+  for (const change of ['success', 'close', 'token', 'customer']) {
+    const api = brandAdapter(); let releaseFile;
+    const app = fixture(api.request, [api.rowA], { readFile: () => new Promise(resolve => releaseFile = resolve) });
+    await app.ui.open(api.rowA.id); app.node('image-upload').files = [{ name: 'OLD.png', size: 20 }]; const reading = app.ui.chooseFile();
+    if (change === 'success') { await app.ui.switchBrand('brand-b'); await app.node('brand-discard').events.get('click')(); await app.ui.select(api.rowB.id); }
+    else if (change === 'close') app.ui.close();
+    else { app.context({ ...app.current(), ...(change === 'token' ? { token: 'new-token' } : { customerId: 'other' }) }); app.ui.refresh(); }
+    releaseFile('data:image/png;base64,b2xk'); await reading;
+    if (change === 'success') { assert.equal(app.node('image-preview').src, api.assetB.url); assert.equal(app.node('image-name').textContent, api.assetB.filename); assert.equal(app.current().customerId, 'brand-b'); }
+    else { assert.equal(app.node('dialog').open, false); assert.equal(app.node('image-preview').src, undefined); }
+  }
+});
+
+test('save, pre-PATCH upload and uncertain PATCH lock brand switching until exact retry or cleanup resolves it', async () => {
+  const api = uploadAdapter({ uncertainPatch: true }); let releasePatch, started;
+  const began = new Promise(resolve => started = resolve);
+  const app = fixture((url, options) => { if (options.method === 'PATCH') { started(); return new Promise(resolve => releasePatch = resolve); } return api.request(url, options); }, [entry(1)], { timeout: 30 });
+  await app.ui.open(id(1)); const saving = app.ui.save(); await began; assert.equal(app.node('brand').disabled, true); await app.ui.switchBrand('brand-b'); assert.equal(app.node('brand-confirm').hidden, true);
+  await saving; assert.equal(app.node('brand').disabled, true); assert.match(app.node('brand-status').textContent, /retry the current save/); await app.ui.switchBrand('brand-b'); assert.equal(app.switched.length, 0);
+  releasePatch(ok({ entry: entry(1), entries: [entry(1)], products: [], catalogRevision: rev(2) }));
+  const failed = uploadAdapter({ failPut: true }), uploadApp = fixture(failed.request); await uploadApp.ui.open(id(1)); await attachImage(uploadApp); await uploadApp.ui.save(); assert.equal(uploadApp.node('brand').disabled, true); await uploadApp.ui.switchBrand('brand-b'); assert.equal(uploadApp.switched.length, 0);
+  uploadApp.node('clear-upload').events.get('click')(); await uploadApp.ui.cleanup(); assert.equal(uploadApp.node('brand').disabled, false); assert.equal(failed.deletes, 1);
+});
+
+test('changing entries or reopening cannot bypass an unresolved brand save; its exact receipt retry unlocks switching', async () => {
+  const patches = [], rows = [entry(1), entry(2)];
+  const app = fixture(async (url, options) => {
+    const row = rows.find(row => url.endsWith(row.id));
+    if (options.method === 'GET') return ok({ entry: row, images: [], catalogRevision: rev(1) });
+    patches.push(options.body); if (patches.length === 1) throw new Error('Failed to fetch');
+    return ok({ entry: row, entries: rows, products: [], catalogRevision: rev(2) });
+  }, rows);
+  await app.ui.open(id(1)); app.node('sku').value = 'FROZEN-RETRY'; await app.ui.save();
+  assert.equal(app.node('brand').disabled, true); await app.ui.select(id(2)); assert.equal(app.node('fields').disabled, false); assert.equal(app.node('brand').disabled, true); await app.ui.switchBrand('brand-b'); assert.equal(app.switched.length, 0);
+  app.ui.close(); await app.ui.open(); assert.equal(app.node('brand').disabled, true); await app.ui.select(id(1)); assert.equal(app.node('sku').value, 'FROZEN-RETRY'); assert.equal(app.node('fields').disabled, true);
+  await app.ui.save(); assert.equal(patches[1], patches[0]); assert.equal(app.node('brand').disabled, false); assert.equal(app.saved.length, 1);
+});
+
+test('all-ready and empty switched brands retain localized filters; confirmation locale changes preserve focus and File', async () => {
+  const api = brandAdapter(), app = fixture(api.request, [api.rowA]); api.catalog.entries = [{ ...api.rowB, status: 'ready', issues: [] }];
+  await app.ui.open(api.rowA.id); const picture = await attachImage(app); await app.ui.switchBrand('brand-b'); app.language.setLocale('zh-CN'); assert.equal(app.document.activeElement, app.node('brand-keep')); assert.match(app.node('brand-confirm-text').textContent, /放弃未保存/); assert.equal(app.node('image-upload').files[0], picture);
+  await app.node('brand-discard').events.get('click')(); assert.match(app.node('record-list').innerHTML, /没有待处理异常/); assert.match(app.node('dialog-intro').textContent, /Brand B/);
+  app.node('filter').value = 'ready'; app.node('filter').events.get('change')(); assert.match(app.node('record-list').innerHTML, /Brand B product/);
+  app.ui.close(); app.context({ ...app.current(), customerId: 'customer', customerName: 'Brand A', entries: [] }); api.catalog.entries = []; await app.ui.open(); await app.ui.switchBrand('brand-b'); assert.match(app.node('record-count').textContent, /0/); assert.match(app.node('record-list').innerHTML, /没有待处理异常/); app.node('filter').value = 'all'; app.node('filter').events.get('change')(); assert.doesNotMatch(app.node('record-list').innerHTML, /data-entry-id=/);
 });

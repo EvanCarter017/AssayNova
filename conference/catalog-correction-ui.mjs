@@ -42,12 +42,18 @@ function readImage(file) {
   return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('Image preview is unavailable.')); reader.readAsDataURL(file); });
 }
 function randomUploadIntent() { return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''); }
-export function createCatalogCorrectionUI({ document, request, language, context, onSaved, readFile = readImage, timeout = 15000, pageSize = 20, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), cleanupAttempts = 3 }) {
+export function createCatalogCorrectionUI({ document, request, language, context, onSaved, onBrandChanged, readFile = readImage, timeout = 15000, pageSize = 20, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), cleanupAttempts = 3 }) {
   const $ = id => document.getElementById('catalog-' + id), t = (id, values) => language.t(id, values), esc = escapeHTML;
   let opened = false, capture, entries = [], revision, entry, images = [], page = 0, busy = false, epoch = 0, controller, trigger, file, fileURL = '', imageIntent, upload, retryBody, backup, feedback = { key: 'catalogChooseEntry' };
   const retiredUploads = new Set(), pendingSaves = new Map(); let cleaning = false;
+  let baseline, pendingBrand, failedBrand, switching = false;
   const saveKey = (customerId, entryId) => customerId + '/' + entryId;
   const current = () => { const now = context(); return opened && now?.customerId === capture?.customerId && now?.token === capture?.token; };
+  const brands = () => (context()?.customers || []).filter(row => row.enabled !== false && row.disabled !== true);
+  const allowedBrand = id => brands().find(row => row.id === id);
+  const unresolvedSave = () => [...pendingSaves.keys()].some(key => key.startsWith(capture?.customerId + '/'));
+  const switchLocked = () => busy || Boolean(retryBody) || unresolvedSave() || Boolean(upload && !upload.complete) || cleaning || Boolean(retiredUploads.size);
+  const editingLocked = () => busy || Boolean(pendingBrand);
   function message(id, values) { feedback = { key: id, values }; renderMessage(); }
   function renderMessage() { $('message').textContent = feedback.error ? language.error(feedback.error, 'catalogFailure') : t(feedback.key, feedback.values); }
   function renderBrand() {
@@ -55,14 +61,24 @@ export function createCatalogCorrectionUI({ document, request, language, context
     $('dialog-title').textContent = t('catalogBrandTitle', { name });
     $('dialog-intro').textContent = t(count ? 'catalogBrandIntro' : 'catalogBrandReady', { name, count });
   }
+  function renderSwitch() {
+    $('brand').innerHTML = brands().map(row => '<option value="' + esc(row.id) + '">' + esc(row.name || row.id) + '</option>').join('');
+    $('brand').value = capture?.customerId || '';
+    $('brand').disabled = !onBrandChanged || switchLocked() || Boolean(pendingBrand);
+    $('brand-confirm').hidden = !pendingBrand;
+    $('brand-confirm-text').textContent = pendingBrand ? t('catalogBrandConfirm', { name: allowedBrand(pendingBrand)?.name || pendingBrand }) : '';
+    $('brand-status').textContent = switching ? t('catalogBrandLoading') : switchLocked() ? t('catalogBrandLocked') : failedBrand ? t('catalogBrandFailed') : '';
+    $('brand-retry').hidden = !failedBrand; $('brand-retry').disabled = switchLocked() || Boolean(pendingBrand);
+  }
   function error(error) { feedback = { error: error.message }; renderMessage(); $('message').focus(); }
   function update() {
     $('dialog').setAttribute?.('aria-busy', String(busy));
-    $('fields').disabled = busy || Boolean(retryBody); $('save').disabled = busy || !entry;
-    $('reload').disabled = busy; $('close').disabled = false;
+    $('fields').disabled = editingLocked() || Boolean(retryBody); $('save').disabled = editingLocked() || !entry;
+    $('reload').disabled = editingLocked(); $('close').disabled = false;
     $('cleanup').hidden = !retiredUploads.size; $('cleanup').disabled = cleaning;
-    for (const id of ['search', 'filter', 'prev', 'next']) $(id).disabled = busy;
-    $('clear-upload').disabled = busy || !file; $('remove-image').disabled = busy;
+    for (const id of ['search', 'filter', 'prev', 'next']) $(id).disabled = editingLocked();
+    $('clear-upload').disabled = editingLocked() || !file; $('remove-image').disabled = editingLocked();
+    renderSwitch();
     renderList();
   }
   function renderList() {
@@ -70,8 +86,8 @@ export function createCatalogCorrectionUI({ document, request, language, context
     const matched = filterCatalogEntries(entries, $('search').value).filter(row => $('filter').value === 'all' || !$('filter').value || ($('filter').value === 'ready' ? row.status === 'ready' : row.status !== 'ready'));
     const pages = Math.max(1, Math.ceil(matched.length / pageSize)); page = Math.min(page, pages - 1);
     $('record-count').textContent = t('catalogEntryCount', { total: entries.length, count: matched.length });
-    $('record-list').innerHTML = matched.slice(page * pageSize, (page + 1) * pageSize).map(row => '<li><button type="button" data-entry-id="' + esc(row.id) + '" class="catalog-record ' + (row.status === 'ready' ? 'is-ready' : 'is-blocked') + '"' + (busy ? ' disabled' : '') + (entry?.id === row.id ? ' aria-current="true"' : '') + '><strong>' + esc(row.values?.sku || row.raw?.sku || t('catalogUnnamed')) + '</strong><span>' + esc(row.values?.product || row.raw?.product || t('catalogUnnamed')) + '</span><small>' + esc(t(row.status === 'ready' ? 'catalogReady' : 'catalogBlocked')) + '</small></button></li>').join('') || '<li class="hint">' + esc(t($('filter').value === 'blocked' && !$('search').value ? 'catalogNoIssues' : 'catalogNoMatches')) + '</li>';
-    $('page').textContent = t('catalogPage', { page: page + 1, pages }); $('prev').disabled = busy || page === 0; $('next').disabled = busy || page + 1 === pages;
+    $('record-list').innerHTML = matched.slice(page * pageSize, (page + 1) * pageSize).map(row => '<li><button type="button" data-entry-id="' + esc(row.id) + '" class="catalog-record ' + (row.status === 'ready' ? 'is-ready' : 'is-blocked') + '"' + (editingLocked() ? ' disabled' : '') + (entry?.id === row.id ? ' aria-current="true"' : '') + '><strong>' + esc(row.values?.sku || row.raw?.sku || t('catalogUnnamed')) + '</strong><span>' + esc(row.values?.product || row.raw?.product || t('catalogUnnamed')) + '</span><small>' + esc(t(row.status === 'ready' ? 'catalogReady' : 'catalogBlocked')) + '</small></button></li>').join('') || '<li class="hint">' + esc(t($('filter').value === 'blocked' && !$('search').value ? 'catalogNoIssues' : 'catalogNoMatches')) + '</li>';
+    $('page').textContent = t('catalogPage', { page: page + 1, pages }); $('prev').disabled = editingLocked() || page === 0; $('next').disabled = editingLocked() || page + 1 === pages;
   }
   function renderIssues() {
     if (!entry) return;
@@ -93,6 +109,7 @@ export function createCatalogCorrectionUI({ document, request, language, context
     $('source-line').textContent = t('catalogSourceLine', entry.source); $('hold').checked = Boolean(entry.hold);
     $('image').innerHTML = '<option value="">' + esc(t('catalogNoImage')) + '</option>' + images.map(row => '<option value="' + esc(row.id) + '">' + esc(row.filename) + '</option>').join('');
     $('image').value = entry.image?.id || ''; imageIntent = undefined; file = undefined; fileURL = ''; upload = undefined; retryBody = undefined; $('image-upload').value = '';
+    baseline = edits();
     const uncertain = pendingSaves.get(saveKey(capture.customerId, entry.id));
     if (uncertain) { retryBody = uncertain.payload; upload = uncertain.upload; for (const name of ['sku', 'product', 'dose']) $(name).value = retryBody.changes[name]; $('hold').checked = retryBody.changes.hold; $('reload').hidden = false; }
     showImage(); renderIssues(); renderList(); update();
@@ -129,7 +146,7 @@ export function createCatalogCorrectionUI({ document, request, language, context
   }
   function discardUpload() { const previous = upload; upload = undefined; if (previous) void cleanupUpload(previous); }
   async function select(id) {
-    if (!current() || busy) return;
+    if (!current() || editingLocked()) return;
     const version = ++epoch; controller?.abort(); controller = new AbortController(); busy = true; message('catalogReading'); update();
     discardUpload();
     try { const value = await call(endpoint(id)); if (version !== epoch || !current()) return; fill(value); backup = undefined; $('unsaved').hidden = true; $('reload').hidden = !retryBody; message(retryBody ? 'catalogUncertain' : 'catalogReview'); }
@@ -138,17 +155,52 @@ export function createCatalogCorrectionUI({ document, request, language, context
   }
   function close() {
     if (!opened) return;
-    discardUpload(); opened = false; ++epoch; controller?.abort(); busy = false; entry = undefined; capture = undefined; entries = []; images = []; file = undefined; fileURL = ''; retryBody = undefined; backup = undefined;
+    discardUpload(); opened = false; ++epoch; controller?.abort(); busy = false; entry = undefined; capture = undefined; entries = []; images = []; file = undefined; fileURL = ''; retryBody = undefined; backup = undefined; baseline = undefined; pendingBrand = undefined; failedBrand = undefined; switching = false;
     $('form').reset?.(); $('form').hidden = true; $('choose').hidden = false; $('record-list').innerHTML = ''; $('issues').innerHTML = ''; $('raw-sku').textContent = ''; $('raw-product').textContent = ''; $('raw-dose').textContent = ''; $('image-preview').removeAttribute?.('src'); $('image-preview').hidden = true; $('image-upload').value = ''; $('unsaved-values').textContent = ''; $('dialog').setAttribute?.('aria-busy', 'false');
+    $('brand-confirm').hidden = true; $('brand-status').textContent = ''; $('brand-retry').hidden = true;
     if ($('dialog').open) $('dialog').close();
     const target = trigger?.isConnected !== false && !trigger?.hidden ? trigger : document.getElementById('catalog-manage'); target?.focus();
   }
   async function open(id, from) {
     const now = context(); if (!now?.customerId || !now.token || busy) return;
-    if (opened) close(); capture = { customerId: now.customerId, customerName: now.customerName || now.customerId, token: now.token }; entries = now.entries || []; revision = now.catalogRevision; opened = true; trigger = from || document.activeElement; $('search').value = ''; $('filter').value = 'blocked'; $('language').value = language.locale; page = 0; feedback = { key: 'catalogChooseEntry' }; renderMessage(); renderList(); $('dialog').showModal(); $('search').focus();
+    if (opened) close(); capture = { customerId: now.customerId, customerName: now.customerName || now.customerId, token: now.token }; entries = now.entries || []; revision = now.catalogRevision; opened = true; trigger = from || document.activeElement; $('search').value = ''; $('filter').value = 'blocked'; $('language').value = language.locale; page = 0; feedback = { key: 'catalogChooseEntry' }; renderMessage(); update(); $('dialog').showModal(); $('search').focus();
     void drainCleanup(); if (id) await select(id);
   }
   function edits() { return { values: Object.fromEntries(['sku', 'product', 'dose'].map(name => [name, $(name).value])), hold: $('hold').checked, image: imageIntent, imageId: $('image').value, file, fileURL }; }
+  function dirty() {
+    if (!entry || !baseline) return false;
+    const value = edits();
+    return Boolean(backup || file || imageIntent !== undefined || value.hold !== baseline.hold || value.imageId !== baseline.imageId || ['sku', 'product', 'dose'].some(name => value.values[name] !== baseline.values[name]));
+  }
+  function clearEntry() {
+    discardUpload(); entry = undefined; images = []; baseline = undefined; backup = undefined; retryBody = undefined; imageIntent = undefined; file = undefined; fileURL = '';
+    $('form').reset?.(); $('form').hidden = true; $('choose').hidden = false; $('hold').checked = false;
+    for (const name of ['sku', 'product', 'dose']) { $(name).value = ''; $('raw-' + name).textContent = ''; }
+    for (const id of ['source-line', 'entry-state', 'unsaved-values']) $(id).textContent = '';
+    $('issues').innerHTML = ''; $('related').innerHTML = ''; $('related').hidden = true; $('unsaved').hidden = true; $('reload').hidden = true;
+    $('image').innerHTML = '<option value="">' + esc(t('catalogNoImage')) + '</option>'; $('image').value = ''; $('image-upload').value = ''; showImage();
+  }
+  async function loadBrand(id) {
+    if (!current() || switchLocked() || !onBrandChanged || !allowedBrand(id)) return;
+    const version = ++epoch; controller?.abort(); controller = new AbortController(); pendingBrand = undefined; failedBrand = undefined; switching = true; busy = true; update();
+    try {
+      const value = await call('/admin/api/catalog?customerId=' + encodeURIComponent(id));
+      if (version !== epoch || !current()) return;
+      if (!allowedBrand(id) || value.customer?.id !== id || !Array.isArray(value.entries) || !Array.isArray(value.products)) throw new Error('');
+      clearEntry(); capture = { ...capture, customerId: id, customerName: value.customer.name || allowedBrand(id).name || id }; entries = value.entries; revision = value.catalogRevision;
+      $('search').value = ''; $('filter').value = 'blocked'; page = 0;
+      // Capture is changed before the synchronous main-context commit: its refresh must see the new brand.
+      onBrandChanged(value); message('catalogChooseEntry'); $('search').focus();
+    } catch (_reason) { if (version === epoch && current()) { failedBrand = id; $('brand-status').textContent = t('catalogBrandFailed'); $('brand-status').focus(); } }
+    finally { if (version === epoch) { busy = false; switching = false; update(); } }
+  }
+  async function switchBrand(id) {
+    $('brand').value = capture?.customerId || '';
+    if (!current() || switchLocked() || pendingBrand || id === capture.customerId || !allowedBrand(id) || !onBrandChanged) return;
+    if (dirty()) { pendingBrand = id; update(); $('brand-keep').focus(); return; }
+    await loadBrand(id);
+  }
+  function keepBrand() { pendingBrand = undefined; update(); $('brand').focus(); }
   async function uploadImage(version) {
     if (!upload || upload.file !== file || upload.revision !== revision || upload.disposed) {
       discardUpload(); if (!await drainCleanup()) throw new Error('Clean up the previous image upload before starting another.');
@@ -176,7 +228,7 @@ export function createCatalogCorrectionUI({ document, request, language, context
     return { jobId: state.jobId, fileId: state.fileId };
   }
   async function save(event) {
-    event?.preventDefault(); if (!current() || busy || !entry) return;
+    event?.preventDefault(); if (!current() || editingLocked() || !entry) return;
     const version = ++epoch; controller = new AbortController(); busy = true; message('catalogSaving'); update();
     let payload, patchStarted = false, saveUpload, previousUncertain = Boolean(retryBody), receiptKey = saveKey(capture.customerId, entry.id);
     try {
@@ -200,7 +252,7 @@ export function createCatalogCorrectionUI({ document, request, language, context
     } finally { if (version === epoch) { busy = false; update(); } }
   }
   async function reload() {
-    if (!current() || busy || !entry) return;
+    if (!current() || editingLocked() || !entry) return;
     backup = edits(); const id = entry.id, version = ++epoch; controller = new AbortController(); busy = true; update();
     try {
       const value = await call(endpoint(id)); if (version !== epoch || !current()) return; discardUpload(); fill(value); $('reload').hidden = !retryBody; $('unsaved').hidden = false; $('unsaved-values').textContent = JSON.stringify({ ...backup.values, hold: backup.hold, image: backup.file?.name || backup.imageId || t('catalogNoImage') }, null, 2); message(retryBody ? 'catalogUncertain' : 'catalogLatestRead');
@@ -208,23 +260,30 @@ export function createCatalogCorrectionUI({ document, request, language, context
     finally { if (version === epoch) { busy = false; update(); } }
   }
   async function chooseFile() {
-    const chosen = $('image-upload').files?.[0]; if (!chosen || busy || retryBody) return;
+    const chosen = $('image-upload').files?.[0]; if (!chosen || editingLocked() || retryBody) return;
     if (chosen.size < 1 || chosen.size > 8 * 1024 * 1024 || !/\.(png|jpe?g|webp)$/i.test(chosen.name)) { message('catalogImageInvalid'); return; }
-    const version = epoch; discardUpload(); file = chosen; retryBody = undefined;
-    try { const url = await readFile(chosen); if (version === epoch && current() && chosen === file) { fileURL = url; showImage(); update(); } }
-    catch (reason) { if (version === epoch && current()) error(reason); }
+    const owner = capture, ownerEntry = entry;
+    // A failed brand read advances the request epoch but retains this exact editor and File.
+    const ownsPreview = () => current() && capture === owner && entry === ownerEntry && chosen === file;
+    discardUpload(); file = chosen; fileURL = ''; retryBody = undefined; showImage(); update();
+    try { const url = await readFile(chosen); if (ownsPreview()) { fileURL = url; showImage(); update(); } }
+    catch (reason) { if (ownsPreview()) error(reason); }
   }
   function listClick(event) { const target = event.target.closest?.('[data-entry-id]'); if (target) select(target.dataset.entryId); }
   $('record-list').addEventListener('click', listClick); $('related').addEventListener('click', listClick);
   $('search').addEventListener('input', () => { page = 0; renderList(); }); $('filter').addEventListener('change', () => { page = 0; renderList(); });
   $('prev').addEventListener('click', () => { page = Math.max(0, page - 1); renderList(); }); $('next').addEventListener('click', () => { page++; renderList(); });
-  $('close').addEventListener('click', close); $('dialog').addEventListener('cancel', event => { event.preventDefault(); close(); }); $('dialog').addEventListener('close', close);
+  $('close').addEventListener('click', close); $('dialog').addEventListener('cancel', event => { event.preventDefault(); if (pendingBrand) keepBrand(); else close(); }); $('dialog').addEventListener('close', close);
   $('language').addEventListener('change', event => language.setLocale(event.target.value));
+  $('brand').addEventListener('change', event => switchBrand(event.target.value));
+  $('brand-keep').addEventListener('click', keepBrand);
+  $('brand-discard').addEventListener('click', () => { const id = pendingBrand; pendingBrand = undefined; return loadBrand(id); });
+  $('brand-retry').addEventListener('click', () => switchBrand(failedBrand));
   $('cleanup').addEventListener('click', async () => { const complete = await drainCleanup(); if (opened) message(complete ? 'catalogCleanupComplete' : 'catalogCleanupPending'); });
   $('form').addEventListener('submit', save); $('reload').addEventListener('click', reload); $('image-upload').addEventListener('change', chooseFile);
-  $('image').addEventListener('change', () => { if (busy || retryBody) return; discardUpload(); file = undefined; fileURL = ''; $('image-upload').value = ''; imageIntent = $('image').value ? { assetId: $('image').value } : null; showImage(); update(); });
-  $('clear-upload').addEventListener('click', () => { if (busy || retryBody) return; discardUpload(); file = undefined; fileURL = ''; $('image-upload').value = ''; showImage(); update(); });
-  $('remove-image').addEventListener('click', () => { if (busy || retryBody) return; discardUpload(); file = undefined; fileURL = ''; $('image-upload').value = ''; $('image').value = ''; imageIntent = null; showImage(); update(); });
-  $('restore-edits').addEventListener('click', () => { if (!backup || busy || retryBody) return; for (const name of ['sku', 'product', 'dose']) $(name).value = backup.values[name]; $('hold').checked = backup.hold; $('image').value = backup.imageId; imageIntent = backup.image; file = backup.file; fileURL = backup.fileURL; showImage(); $('unsaved').hidden = true; update(); message('catalogReview'); });
-  return { open, close, select, save, reload, chooseFile, cleanup: drainCleanup, refresh() { if (opened && !current()) close(); }, applyLanguage() { if (!opened) return; $('language').value = language.locale; if (entry) $('source-line').textContent = t('catalogSourceLine', entry.source); const emptyImage = $('image').options?.[0]; if (emptyImage) emptyImage.textContent = t('catalogNoImage'); renderMessage(); renderList(); renderIssues(); if (!file) showImage(); }, owns: control => control.id?.startsWith('catalog-') };
+  $('image').addEventListener('change', () => { if (editingLocked() || retryBody) return; discardUpload(); file = undefined; fileURL = ''; $('image-upload').value = ''; imageIntent = $('image').value ? { assetId: $('image').value } : null; showImage(); update(); });
+  $('clear-upload').addEventListener('click', () => { if (editingLocked() || retryBody) return; discardUpload(); file = undefined; fileURL = ''; $('image-upload').value = ''; showImage(); update(); });
+  $('remove-image').addEventListener('click', () => { if (editingLocked() || retryBody) return; discardUpload(); file = undefined; fileURL = ''; $('image-upload').value = ''; $('image').value = ''; imageIntent = null; showImage(); update(); });
+  $('restore-edits').addEventListener('click', () => { if (!backup || editingLocked() || retryBody) return; for (const name of ['sku', 'product', 'dose']) $(name).value = backup.values[name]; $('hold').checked = backup.hold; $('image').value = backup.imageId; imageIntent = backup.image; file = backup.file; fileURL = backup.fileURL; showImage(); $('unsaved').hidden = true; update(); message('catalogReview'); });
+  return { open, close, select, save, reload, chooseFile, switchBrand, cleanup: drainCleanup, refresh() { if (opened && !current()) close(); else if (opened) renderSwitch(); }, applyLanguage() { if (!opened) return; $('language').value = language.locale; if (entry) $('source-line').textContent = t('catalogSourceLine', entry.source); const emptyImage = $('image').options?.[0]; if (emptyImage) emptyImage.textContent = t('catalogNoImage'); renderMessage(); renderSwitch(); renderList(); renderIssues(); if (!file) showImage(); }, owns: control => control.id?.startsWith('catalog-') };
 }

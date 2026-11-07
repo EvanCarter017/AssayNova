@@ -26,7 +26,7 @@ function applyLanguage(){
   document.querySelector('.brand span').textContent=t('admin');
   $('admin-language').value=language.locale;
   renderSelectionLanguage();renderResultLanguage();reportLibrary?.applyLanguage();renderStatus();
-  if(session&&currentCustomerId){const value=$('product').value,state=catalogPickerState(session.products,session.entries,$('search').value,value);renderProductOptions({...state,chosen:state.ready.some(product=>product.id===value)?value:''});}
+  if(session&&currentCustomerId){const value=$('product').value,state=catalogPickerState(session.products,session.entries,$('search').value,value);renderProductOptions({...state,chosen:state.ready.some(product=>product.id===value)?value:'',requireChoice:!selected});}
   importer?.applyLanguage();correction?.applyLanguage();renderCatalogAction();
 }
 function updateControls(){
@@ -49,8 +49,8 @@ function filter(preferredId){
   $('count').textContent=`(${products.length}/${session.products.length})`;
   selectProduct();status(!products.length?state.blocked.length?'catalogOnlyBlocked':'noMatches':chosen?'selectedReady':'chooseBelow');
 }
-function renderProductOptions({ready,blocked,chosen}){
-  $('product').innerHTML=(ready.length>1&&!chosen?'<option value="" disabled selected data-i18n="chooseMatching">'+escape(t('chooseMatching'))+'</option>':'')+ready.map(product=>`<option value="${escape(product.id)}">${escape(product.sku?product.sku+' · '+product.name:product.name)}</option>`).join('')+blocked.map(entry=>'<option disabled class="is-blocked" value="blocked-'+escape(entry.id)+'">'+escape(t('catalogMissingOption')+' · '+(entry.values?.sku||entry.raw?.sku||'')+' · '+(entry.values?.product||entry.raw?.product||''))+'</option>').join('');
+function renderProductOptions({ready,blocked,chosen,requireChoice=false}){
+  $('product').innerHTML=((ready.length>1||requireChoice&&ready.length)&&!chosen?'<option value="" disabled selected data-i18n="chooseMatching">'+escape(t('chooseMatching'))+'</option>':'')+ready.map(product=>`<option value="${escape(product.id)}">${escape(product.sku?product.sku+' · '+product.name:product.name)}</option>`).join('')+blocked.map(entry=>'<option disabled class="is-blocked" value="blocked-'+escape(entry.id)+'">'+escape(t('catalogMissingOption')+' · '+(entry.values?.sku||entry.raw?.sku||'')+' · '+(entry.values?.product||entry.raw?.product||''))+'</option>').join('');
   $('product').value=chosen;
 }
 function renderCatalogAction(){
@@ -108,7 +108,10 @@ $('customer').addEventListener('change',()=>loadCustomer($('customer').value));
 $('reload-products').addEventListener('click',()=>loadCustomer(currentCustomerId,true));
 $('admin-language').addEventListener('change',event=>language.setLocale(event.target.value));
 importer=createImportUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&session?{customerId:currentCustomerId,token:session.token}:null,setPending:value=>{importing=value;updateControls();},onConfirmed:value=>{session.customers=value.customers;acceptCatalog(value);currentCustomerId=value.customer.id;renderCustomers();$('search').value='';$('product').value='';filter();}});
-correction=createCatalogCorrectionUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&!importing&&session?{customerId:currentCustomerId,customerName:session.customers.find(customer=>customer.id===currentCustomerId)?.name||currentCustomerId,token:session.token,entries:session.entries||[],catalogRevision:session.catalogRevision}:null,onSaved:value=>{const previous=selected?.id;acceptCatalog(value);if(value.customers)session.customers=value.customers;renderCustomers();filter(previous);}});
+correction=createCatalogCorrectionUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&!importing&&session?{customerId:currentCustomerId,customerName:session.customers.find(customer=>customer.id===currentCustomerId)?.name||currentCustomerId,token:session.token,customers:session.customers,entries:session.entries||[],catalogRevision:session.catalogRevision}:null,onSaved:value=>{const previous=selected?.id;acceptCatalog(value);if(value.customers)session.customers=value.customers;renderCustomers();filter(previous);},onBrandChanged:value=>{
+  ++catalogEpoch;currentCustomerId=value.customer.id;acceptCatalog(value);session.customers=session.customers.map(row=>row.id===currentCustomerId?value.customer:row);renderCustomers();
+  const state=catalogPickerState(session.products,session.entries,'');selected=undefined;$('search').value='';renderProductOptions({...state,chosen:'',requireChoice:true});$('count').textContent=`(${state.ready.length}/${session.products.length})`;renderSelectionLanguage();updateControls();status(state.ready.length?'chooseBelow':state.blocked.length?'catalogOnlyBlocked':'noMatches');
+}});
 reportLibrary=createReportRemovalUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&!importing&&session?{token:session.token}:null,setPending:value=>{busy=value;updateControls();},onPreview:showSavedReport,onChanged:value=>{if(result?.report.lookupCode===value.lookupCode)showSavedReport(value,value.state);},onUncertain:clearUncertainReport});
 $('catalog-manage').addEventListener('click',event=>correction.open(undefined,event.currentTarget));
 language.subscribe(applyLanguage);applyLanguage();updateControls();

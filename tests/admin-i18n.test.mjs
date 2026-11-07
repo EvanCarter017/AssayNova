@@ -174,6 +174,36 @@ test('actual operator routes brand corrections through the modal and refreshes r
   app.context.ui.language.setLocale('zh-CN');assert.equal(app.node('product').value,'ready');assert.match(app.node('catalog-dialog-title').textContent,/处理异常 · Brand B/);assert.match(app.node('catalog-record-list').innerHTML,/没有待处理异常/);
 });
 
+test('actual modal brand switch commits one isolated catalog and clears a shared product ID until the operator chooses again', async () => {
+  const customers = [{ id: 'brand-a', name: 'Brand A' }, { id: 'brand-b', name: 'Brand B & Labs' }], calls = [], revisionA = 'a'.repeat(32), revisionB = 'b'.repeat(32);
+  const productA = { ...catalogDTO({ id: 'shared', name: 'Adamax 10mg', ...parseProduct('Adamax 10mg') }), sku: 'ADA10', status: 'ready' }, productB = { ...productA, name: 'Brand B Adamax 10mg' };
+  const entryA = { id: '1'.repeat(20), source: { sheet: 'A', row: 2 }, raw: { sku: 'SAME10', product: 'A missing', dose: '10mg' }, values: { sku: 'SAME10', product: 'A missing', dose: '10mg' }, status: 'blocked', hold: false, issues: [{ code: 'MISSING_IMAGE' }] }, entryB = { ...entryA, id: '2'.repeat(20), source: { sheet: 'B', row: 9 }, values: { ...entryA.values, product: 'B missing' } };
+  const ok = value => ({ status: 200, ok: true, json: async () => value }); let failBrand = true;
+  const app = await boot(operatorJS, operatorHTML, { fetch: async (url, options) => {
+    calls.push([url, options]);
+    if (url.endsWith('/session')) return ok({ customers, defaultCustomerId: 'brand-a', products: [productA], entries: [entryA], catalogRevision: revisionA, token: 'synthetic', publicOrigin: 'http://customer.invalid' });
+    if (url.endsWith('/history')) return ok([]); if (url === '/admin/api/imports') return ok({ imports: [] });
+    if (url === '/admin/api/catalog?customerId=brand-b') return failBrand ? { status: 503, ok: false, json: async () => ({ error: 'Catalog unavailable.' }) } : ok({ customer: customers[1], products: [productB], entries: [entryB], catalogRevision: revisionB });
+    if (url.endsWith('/entries/' + entryA.id)) return ok({ entry: entryA, catalogRevision: revisionA, images: [{ id: '3'.repeat(32), filename: 'SAME10.png', url: '/admin/catalog-assets/brand-a/a' }] });
+    if (url.endsWith('/entries/' + entryB.id)) return ok({ entry: entryB, catalogRevision: revisionB, images: [{ id: '4'.repeat(32), filename: 'SAME10.png', url: '/admin/catalog-assets/brand-b/b' }] });
+    return { status: 400, ok: false, json: async () => ({ error: 'Use a valid ISO date.' }) };
+  }, extra: 'globalThis.ui={language,correction,selectProduct,selected:()=>selected,current:()=>currentCustomerId,session:()=>session};' });
+  app.node('product').value = 'shared'; app.context.ui.selectProduct(); app.node('search').value = 'ADA';
+  await app.context.ui.correction.open(entryA.id);
+  assert.equal(app.node('catalog-brand').options.length, 2); assert.equal(app.node('catalog-brand').value, 'brand-a');
+  await app.context.ui.correction.switchBrand('brand-b');
+  assert.equal(app.context.ui.current(), 'brand-a'); assert.equal(app.context.ui.selected().id, 'shared'); assert.equal(app.node('customer').value, 'brand-a'); assert.equal(app.node('product').value, 'shared'); assert.equal(app.node('search').value, 'ADA'); assert.equal(app.node('catalog-form').hidden, false);
+  failBrand = false; await app.node('catalog-brand-retry').events.get('click')();
+  assert.equal(app.node('catalog-dialog').open, true); assert.equal(app.context.ui.current(), 'brand-b'); assert.equal(app.node('customer').value, 'brand-b'); assert.equal(app.node('catalog-brand').value, 'brand-b'); assert.equal(app.node('search').value, ''); assert.equal(app.node('product').value, ''); assert.equal(app.context.ui.selected(), undefined); assert.equal(app.context.ui.session().catalogRevision, revisionB);
+  assert.equal(app.node('product').options.find(option => option.value === '').disabled, true); assert.match(app.node('product').innerHTML, /Brand B Adamax/); assert.doesNotMatch(app.node('catalog-record-list').innerHTML, /A missing/); assert.match(app.node('catalog-record-list').innerHTML, /B missing/); assert.equal(app.node('catalog-manage').textContent, 'Resolve issues (1)');
+  app.context.ui.language.setLocale('zh-CN'); assert.equal(app.node('product').value, ''); assert.equal(app.context.ui.selected(), undefined); assert.equal(app.node('catalog-brand').value, 'brand-b'); assert.equal(app.node('catalog-dialog').open, true);
+  await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } }); assert.equal(calls.some(([url]) => url.endsWith('/generate')), false);
+  await app.context.ui.correction.select(entryB.id); assert.match(app.node('catalog-image').innerHTML, /44444444444444444444444444444444/); assert.doesNotMatch(app.node('catalog-image').innerHTML, /33333333333333333333333333333333/); assert.equal(app.node('catalog-source-line').textContent, 'B · 第 9 行');
+  app.context.ui.correction.close(); app.node('product').value = 'shared'; app.context.ui.selectProduct(); await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } });
+  const generation = JSON.parse(calls.find(([url]) => url.endsWith('/generate'))[1].body); assert.equal(generation.customerId, 'brand-b'); assert.equal(generation.productId, 'shared'); assert.equal(generation.catalogRevision, revisionB);
+  const brandReads = calls.filter(([url]) => url === '/admin/api/catalog?customerId=brand-b'); assert.equal(brandReads.length, 2); assert.ok(brandReads.every(([, options]) => options.headers['X-Studio-Token'] === 'synthetic'));
+});
+
 test('actual empty-customer boot enables a localized first import without bogus catalog requests and preserves report history', async () => {
   const calls = [], profile = { id: 'first', name: 'VialCove' }, product = catalogDTO({ id: 'adamax', name: 'Adamax 10mg', ...parseProduct('Adamax 10mg') }); let fileNumber = 0;
   const ok = value => ({ status: 200, ok: true, json: async () => value });
