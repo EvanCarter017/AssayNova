@@ -1,3 +1,5 @@
+import { createAccountRequest } from '../dist/account-requests.js';
+import { draftRecord } from './support/customer-account-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cp, mkdir, stat } from 'node:fs/promises';
@@ -14,7 +16,7 @@ const project = fileURLToPath(new URL('../', import.meta.url));
 async function freePort() { const listener = net.createServer(); listener.listen(0, '127.0.0.1'); await once(listener, 'listening'); const port = listener.address().port; await new Promise(resolve => listener.close(resolve)); return port; }
 async function fixtureSource() {
   const root = path.join(fixtureBase, randomUUID()); await mkdir(root, { recursive: true });
-  for (const file of ['server.mjs', 'report-pdf.mjs', 'package.json', 'accounts', 'dist/data.js', 'dist/routes.js', 'dist/index.html', 'dist/submission.js', 'conference/reader.mjs', 'conference/admin-proxy.mjs', 'conference/import-limits.mjs']) {
+  for (const file of ['server.mjs', 'report-pdf.mjs', 'package.json', 'accounts', 'dist/data.js', 'dist/routes.js', 'dist/index.html', 'dist/submission.js', 'dist/account-requests.js', 'dist/contact.js', 'dist/support.js', 'conference/reader.mjs', 'conference/admin-proxy.mjs', 'conference/import-limits.mjs']) {
     const destination = path.join(root, file); await mkdir(path.dirname(destination), { recursive: true }); await cp(path.join(project, file), destination, { recursive: true });
   }
   return root;
@@ -63,3 +65,23 @@ test('actual LAN server derives a separate account proxy and never opens an acco
 });
 
 function raw(base, route, headers) { const url = new URL(base); return new Promise((resolve, reject) => { const request = http.request({ hostname: url.hostname, port: url.port, path: route, headers }, response => { response.resume(); response.once('end', () => resolve({ status: response.statusCode, headers: response.headers })); }); request.once('error', reject); request.end(); }); }
+
+test('real account API owns all three submitted kinds and preserves kind, reference, date and revision on edits', async t => {
+ const fixture=await accountFixture();t.after(()=>fixture.close());const a=browser(fixture.base),b=browser(fixture.base);await a.signup('requests099-a@example.invalid');await b.signup('requests099-b@example.invalid');
+ const details={testing:(({name,email,company,notes,reportRecipient,samples})=>({name,email,company,notes,reportRecipient,samples}))(draftRecord()),contact:{name:'Synthetic person',email:'fixture@example.invalid',topic:'testing',message:'Synthetic enquiry'},'report-recovery':{email:'fixture@example.invalid',reference:'Synthetic project',notes:'Synthetic recovery context'}};
+ for(const[kind,value]of Object.entries(details)){
+  const record=createAccountRequest(kind,value,{id:'AN-REQ-'+kind.toUpperCase(),createdAt:'2026-11-07T00:00:00.000Z'}),key='request099-'+kind+'-unique-key';
+  const created=await a.call('/requests','POST',{record,idempotencyKey:key});assert.equal(created.status,201);const doc=created.data.request;assert.equal(doc.record.status,'Submitted');
+  const replay=await a.call('/requests','POST',{record,idempotencyKey:key});assert.equal(replay.status,200);assert.equal(replay.data.request.id,doc.id);assert.equal(replay.data.request.revision,1);
+  assert.equal((await a.call('/requests/'+doc.id)).data.request.record.kind,kind);assert.equal((await b.call('/requests/'+doc.id)).status,404);assert.equal((await b.call('/requests/'+doc.id,'PUT',{record,expectedRevision:1})).status,404);assert.equal((await b.call('/requests/'+doc.id,'DELETE',{expectedRevision:1})).status,404);
+  for(const invalid of [{...record,id:'AN-REQ-CHANGED'},{...record,createdAt:'2026-11-06T00:00:00.000Z'},createAccountRequest(kind==='contact'?'report-recovery':'contact',kind==='contact'?details['report-recovery']:details.contact,record)])assert.equal((await a.call('/requests/'+doc.id,'PUT',{record:invalid,expectedRevision:1})).status,400);
+  const edited=createAccountRequest(kind,{...value,[kind==='contact'?'message':'notes']:'Edited synthetic context'},record);
+  assert.equal((await a.call('/requests/'+doc.id,'PUT',{record:edited,expectedRevision:2})).status,409);
+  const updated=await a.call('/requests/'+doc.id,'PUT',{record:edited,expectedRevision:1});assert.equal(updated.status,200);assert.equal(updated.data.request.revision,2);assert.deepEqual(updated.data.request.record,edited);
+  assert.equal((await a.call('/requests/'+doc.id,'DELETE',{expectedRevision:2})).status,200);
+ }
+ assert.equal((await a.call('/requests')).data.requests.length,0);assert.equal((await b.call('/requests')).data.requests.length,0);
+ const good=createAccountRequest('contact',details.contact,{id:'AN-REQ-INVALID',createdAt:'2026-11-07T00:00:00.000Z'});
+ for(const record of [{...good,version:0},{...good,kind:'unknown'},{...good,details:{...good.details,token:'forbidden'}}])assert.equal((await a.call('/requests','POST',{record,idempotencyKey:'request099-invalid-key'})).status,400);
+ assert.equal((await a.call('/requests')).data.requests.length,0);
+});

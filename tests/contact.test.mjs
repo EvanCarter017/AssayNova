@@ -2,64 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
-import { CONTACT_DRAFT_KEY, CONTACT_TOPICS, normalizeContact, validateContact, parseContactDraft, formatContactMessage, createContactForm } from '../dist/contact.js';
-
-const valid = { name: 'QA Person', email: 'qa@example.invalid', topic: 'website', message: 'A synthetic website question.' };
-const serialized = value => JSON.stringify({ version: 1, ...value });
-function fixture({ seed = [], flags = {}, clipboard, bind = true } = {}) {
-  const data = new Map(seed), calls = [], copied = [], events = new Map(), nodes = new Map();
-  let focused = '', selected = 0;
-  const node = id => {
-    const value = { id, value: '', textContent: '', hidden: false, disabled: true, dataset: {}, attributes: new Map(),
-      setAttribute(name, text) { this.attributes.set(name, String(text)); },
-      removeAttribute(name) { this.attributes.delete(name); },
-      getAttribute(name) { return this.attributes.get(name) ?? null; },
-      focus() { focused = id; }, select() { selected++; },
-      closest(selector) { return selector === '[data-contact-action]' && this.dataset.contactAction ? this : null; }
-    };
-    Object.defineProperty(value, 'innerHTML', { set() { throw new Error('User HTML must never be inserted'); } });
-    nodes.set('#' + id, value); return value;
-  };
-  for (const key of ['name', 'email', 'topic', 'message']) { node('contact-' + key); node('contact-error-' + key); }
-  for (const id of ['contact-error', 'contact-status', 'contact-copy-value', 'contact-copy-fallback']) node(id);
-  nodes.get('#contact-copy-fallback').hidden = true;
-  const buttons = ['save', 'copy', 'restore', 'clear', 'select'].map(action => {
-    const button = node('button-' + action);
-    if (action !== 'save') button.dataset.contactAction = action;
-    return button;
-  });
-  const form = { isConnected: true, viewHidden: false, ownerDocument: { hidden: false },
-    querySelector: selector => nodes.get(selector) || null,
-    querySelectorAll: selector => selector === 'button' ? buttons : [],
-    contains: element => buttons.includes(element),
-    closest(selector) { return selector === '[hidden]' && this.viewHidden ? {} : null; },
-    addEventListener(type, callback) { if (!events.has(type)) events.set(type, []); events.get(type).push(callback); }
-  };
-  const storage = {
-    getItem(key) { calls.push(['get', key]); if (flags.read === 'throw') throw new Error('Synthetic blocked read'); return data.get(key) ?? null; },
-    setItem(key, value) { calls.push(['set', key, value]); if (flags.write === 'throw') throw new Error('Synthetic blocked write'); if (flags.write !== 'silent') data.set(key, value); },
-    removeItem(key) { calls.push(['remove', key]); if (flags.remove === 'throw') throw new Error('Synthetic blocked removal'); if (flags.remove !== 'silent') data.delete(key); }
-  };
-  const clip = clipboard || { writeText(value) { copied.push(value); return Promise.resolve(); } };
-  const emit = (type, target) => {
-    const event = { target, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
-    const pending = Promise.all((events.get(type) || []).map(callback => callback(event)));
-    return { event, pending };
-  };
-  const api = {
-    form, nodes, buttons, events, data, calls, copied, flags, storage, clip,
-    bind: options => createContactForm(form, options || { storage, clipboard: clip }),
-    fill(value = valid) { for (const [key, text] of Object.entries(value)) nodes.get('#contact-' + key).value = text; },
-    values: () => Object.fromEntries(['name', 'email', 'topic', 'message'].map(key => [key, nodes.get('#contact-' + key).value])),
-    input(key, text) { nodes.get('#contact-' + key).value = text; return emit('input', nodes.get('#contact-' + key)); },
-    save() { return emit('submit', form); },
-    action(action) { return emit('click', buttons.find(button => button.dataset.contactAction === action)).pending; },
-    focused: () => focused, selected: () => selected,
-    status: () => nodes.get('#contact-status').textContent,
-    error: () => nodes.get('#contact-error').textContent
-  };
-  if (bind) api.controller = api.bind();
-  return api;
+import { CONTACT_DRAFT_KEY, CONTACT_TOPICS, normalizeContact, validateContact, parseContactDraft, formatContactMessage } from '../dist/contact.js';
+import { createContactForm } from '../dist/contact-form.js';
+const valid={name:'QA Person',email:'qa@example.invalid',topic:'website',message:'A synthetic website question.'};
+const serialized=value=>JSON.stringify({version:1,...value});
+const user={id:'user-a',name:'Synthetic user',email:'qa@example.invalid'};
+const tick=()=>new Promise(resolve=>setImmediate(resolve));
+const documentFor=(record,revision=1)=>({id:'doc-a',revision,record,createdAt:record.createdAt,updatedAt:record.createdAt});
+function fixture({kind='contact',save=async record=>documentFor(record),enabled=true,signedIn=true}={}) {
+  const prefix=kind==='contact'?'contact':'support', keys=kind==='contact'?['name','email','topic','message']:['email','reference','notes'];
+  const events=new Map(), nodes=new Map();let serial=0;
+  const node=id=>{const n={id,value:'',textContent:'',hidden:false,disabled:false,attributes:new Map(),dataset:{},setAttribute(k,v){this.attributes.set(k,String(v));},removeAttribute(k){this.attributes.delete(k);},getAttribute(k){return this.attributes.get(k)||null;},focus(){},closest(selector){return selector==='[data-inquiry-action]'&&this.dataset.inquiryAction?this:null;}};nodes.set('#'+id,n);return n;};
+  for(const key of keys){node(prefix+'-'+key);node(prefix+'-error-'+key);}for(const id of ['error','status'])node(prefix+'-'+id);
+  const panel=node('fields');nodes.set('[data-inquiry-fields]',panel);
+  const gate=node('gate'),submit=node('submit'),view=node('view'),signIn=node('sign-in'),fresh=node('new');view.dataset.inquiryAction='view';signIn.dataset.inquiryAction='sign-in';fresh.dataset.inquiryAction='new';
+  for(const [selector,n] of [['[data-inquiry-gate]',gate],['[type="submit"]',submit],['[data-inquiry-action="view"]',view],['[data-inquiry-action="sign-in"]',signIn]])nodes.set(selector,n);
+  const form={isConnected:true,hidden:false,setAttribute(){},closest(){return this.hidden?{}:null;},querySelector:selector=>nodes.get(selector)||null,addEventListener(type,callback){events.set(type,[...events.get(type)||[],callback]);},removeEventListener(type,callback){events.set(type,(events.get(type)||[]).filter(fn=>fn!==callback));}};
+  const config={client:{snapshot:()=>({loaded:true,user:signedIn?user:null}),saveRequest:save},accountEnabled:enabled,kind,makeId:()=> 'synthetic-id-'+(++serial),now:()=> '2026-11-07T00:00:00.000Z'};
+  const controller=createContactForm(form,config);controller.setAccountSession(signedIn?user:null);controller.activate();
+  const emit=async(type,target)=>Promise.all((events.get(type)||[]).map(fn=>fn({target,preventDefault(){}})));
+  return {form,controller,config,events,nodes,panel,gate,submit,view,fill(value=kind==='contact'?valid:{email:'qa@example.invalid',reference:'Synthetic project',notes:'Synthetic context'}){for(const[key,text]of Object.entries(value))nodes.get('#'+prefix+'-'+key).value=text;},input(key,value){const field=nodes.get('#'+prefix+'-'+key);field.value=value;return emit('input',field);},send:()=>emit('submit',form),action:action=>emit('click',action==='new'?fresh:action==='view'?view:signIn),status:()=>nodes.get('#'+prefix+'-status').textContent,error:()=>nodes.get('#'+prefix+'-error').textContent,values:()=>Object.fromEntries(keys.map(key=>[key,nodes.get('#'+prefix+'-'+key).value]))};
 }
 
 test('contact validation normalizes known fields and rejects raw types, blanks, topic choices and overlong values', () => {
@@ -92,114 +54,51 @@ test('module import has no DOM/storage/network I/O and static markup cannot subm
   const html = await readFile(new URL('../dist/index.html', import.meta.url), 'utf8');
   const form = html.match(/<form id="contact-form"[\s\S]*?<\/form>/)[0];
   for (const control of form.match(/<(?:input|select|textarea)\b[^>]*>/g)) assert.ok(!/\bname\s*=/.test(control), control);
-  for (const button of form.match(/<button\b[^>]*>/g)) assert.match(button, /\bdisabled(?:\s|>)/);
+  assert.match(form.match(/<button[^>]*type="submit"[^>]*>/)[0], /\bdisabled(?:\s|>)/);
   assert.ok(!/onsubmit\s*=/.test(form));
-  assert.equal((html.match(/src="\/contact-form\.js"/g) || []).length, 1);
+  assert.equal((html.match(/src="\/contact-form\.js"/g) || []).length, 0);
 });
 
-test('binding is idempotent, enables controls only after complete handlers and cancels native submission', async () => {
-  const f = fixture();
-  assert.equal(f.bind(), f.controller);
-  assert.ok(f.buttons.every(button => !button.disabled));
-  assert.ok([...f.events.values()].every(list => list.length === 1));
-  assert.deepEqual(f.calls, []);
-  f.input('name', 'QA'); assert.deepEqual(f.calls, []);
-  const attempt = f.save(); await attempt.pending;
-  assert.equal(attempt.event.defaultPrevented, true);
-  assert.equal(f.focused(), 'contact-email');
-  assert.equal(f.nodes.get('#contact-email').getAttribute('aria-invalid'), 'true');
-  f.input('email', valid.email);
-  assert.equal(f.nodes.get('#contact-email').getAttribute('aria-invalid'), null);
-  const broken = fixture({ bind: false }); broken.nodes.delete('#contact-error');
-  assert.throws(() => broken.bind(), TypeError);
-  assert.ok(broken.buttons.every(button => button.disabled));
+
+test('one shared controller binds once and both inquiry kinds submit durable account requests without touching legacy storage',async()=>{
+ const original=Object.getOwnPropertyDescriptor(globalThis,'localStorage');let storageCalls=0;Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){storageCalls++;throw Error('No legacy storage access');}});
+ try{for(const kind of ['contact','report-recovery']){const calls=[];const h=fixture({kind,save:async(record,options)=>{calls.push({record,options});return documentFor(record);}});h.fill();assert.equal(createContactForm(h.form,h.config),h.controller);for(const list of h.events.values())assert.equal(list.length,1);await h.send();assert.equal(calls.length,1);assert.equal(calls[0].record.version,3);assert.equal(calls[0].record.kind,kind);assert.equal(calls[0].options.ownerId,user.id);assert.match(h.status(),/^Request submitted/);assert.equal(h.view.hidden,false);assert.equal(storageCalls,0);}}
+ finally{if(original)Object.defineProperty(globalThis,'localStorage',original);else delete globalThis.localStorage;}
 });
 
-test('Save writes only the versioned contact key with exact read-back and retains user inputs', () => {
-  const f = fixture({ seed: [['unrelated', 'keep']] }); f.fill({ ...valid, name: ' QA Person ' });
-  f.save();
-  assert.deepEqual(JSON.parse(f.data.get(CONTACT_DRAFT_KEY)), { version: 1, ...valid });
-  assert.deepEqual(f.calls.map(call => call.slice(0, 2)), [['set', CONTACT_DRAFT_KEY], ['get', CONTACT_DRAFT_KEY]]);
-  assert.equal(f.data.get('unrelated'), 'keep'); assert.match(f.status(), /saved on this device/);
-  assert.equal(f.values().name, ' QA Person ');
-  f.input('message', 'Edited'); assert.equal(f.status(), ''); assert.equal(f.calls.length, 2);
+test('contact and recovery gate guest and unavailable capability without losing validation bounds',async()=>{
+ for(const kind of ['contact','report-recovery'])for(const options of [{signedIn:false},{enabled:false}]){let calls=0;const h=fixture({kind,...options,save:async()=>{calls++;}});h.fill();await h.send();assert.equal(calls,0);assert.equal(h.submit.disabled,true);assert.match(h.gate.textContent,options.enabled===false?/unavailable/:/Sign in/);}
+ const h=fixture();h.fill({...valid,message:'x'.repeat(4001)});await h.send();assert.equal(h.status(),'');assert.match(h.nodes.get('#contact-error-message').textContent,/4000/);
 });
 
-test('throwing, silently refused and unreadable Save operations cannot claim persistence or erase input', () => {
-  for (const flags of [{ write: 'throw' }, { write: 'silent' }, { read: 'throw' }]) {
-    const f = fixture({ flags }); f.fill(); f.save();
-    assert.deepEqual(f.values(), valid); assert.equal(f.status(), ''); assert.match(f.error(), /could not be saved/);
-  }
+test('both inquiry flows block double clicks, replay lost acknowledgement and update latest edits with one identity',async()=>{
+ for(const kind of ['contact','report-recovery']){const calls=[];let remote;const h=fixture({kind,save:async(record,options)=>{calls.push({record:structuredClone(record),options});if(!remote){remote=documentFor(record);throw Object.assign(Error('lost ack'),{code:'network'});}if(!options.id)return remote;remote=documentFor(record,2);return remote;}});h.fill();await h.send();assert.equal(h.status(),'');await h.input(kind==='contact'?'message':'notes','Latest edited context');await h.send();assert.equal(calls.length,3);assert.deepEqual(calls[0].record,calls[1].record);assert.equal(calls[0].options.idempotencyKey,calls[1].options.idempotencyKey);assert.equal(calls[2].options.expectedRevision,1);assert.equal(remote.record.details[kind==='contact'?'message':'notes'],'Latest edited context');assert.match(h.status(),/Request submitted/);}
+ let resolve,calls=0;const h=fixture({save:record=>{calls++;return new Promise(r=>resolve=()=>r(documentFor(record)));}});h.fill();const pending=h.send();await h.send();assert.equal(calls,1);resolve();await pending;
 });
 
-test('actual bootstrap defers a throwing localStorage accessor until the explicit action', async () => {
-  const f = fixture({ bind: false }); f.fill(); let accesses = 0;
-  const window = {}; Object.defineProperty(window, 'localStorage', { get() { accesses++; throw new Error('Synthetic SecurityError'); } });
-  const source = await readFile(new URL('../dist/contact-form.js', import.meta.url), 'utf8');
-  runInNewContext(source.replace(/^import[^\n]+\n/, ''), { createContactForm, document: { querySelector: () => f.form }, window, navigator: {} });
-  assert.equal(accesses, 0); assert.ok(f.buttons.every(button => !button.disabled));
-  f.save(); assert.equal(accesses, 1); assert.match(f.error(), /could not be saved/); assert.deepEqual(f.values(), valid);
+test('late inquiry acknowledgements are ignored after suspend, close, logout and owner replacement; profile never overwrites edits',async()=>{
+ for(const action of ['suspend','destroy','logout','other']){let resolve;const h=fixture({save:record=>new Promise(r=>resolve=()=>r(documentFor(record)))});h.fill();const pending=h.send();if(action==='suspend'||action==='destroy')h.controller[action]();else h.controller.setAccountSession(action==='logout'?null:{...user,id:'user-b'},action==='logout'?'logout':'login');resolve();await pending;assert.equal(h.status(),'');assert.equal(h.view.hidden,true);if(action==='logout'||action==='other')assert.equal(h.values().message,'');}
+ const h=fixture();await h.input('name','User edited');h.controller.setAccountSession({...user,name:'Updated profile'},'profile');assert.equal(h.values().name,'User edited');
 });
 
-test('Restore is explicit, handles valid hostile strings as values, and preserves current fields on absent/corrupt/blocked reads', async () => {
-  const hostile = { ...valid, name: '<img src=x onerror=alert(1)>', message: '<script>not HTML</script>\nFull text' };
-  const f = fixture({ seed: [[CONTACT_DRAFT_KEY, serialized(hostile)]] }); f.fill();
-  assert.deepEqual(f.calls, []); await f.action('restore');
-  assert.deepEqual(f.values(), hostile); assert.match(f.status(), /restored/);
-  assert.deepEqual(f.calls, [['get', CONTACT_DRAFT_KEY]]);
-  for (const config of [{}, { seed: [[CONTACT_DRAFT_KEY, '{bad']] }, { flags: { read: 'throw' } }]) {
-    const sample = fixture(config); sample.fill(); await sample.action('restore');
-    assert.deepEqual(sample.values(), valid);
-    assert.ok(sample.status().includes('No saved') || sample.error().includes('could not'));
-  }
+test('invalid inquiry acknowledgement cannot claim success and raw HTML remains field text',async()=>{
+ const h=fixture({save:async record=>documentFor({...record,id:'AN-REQ-ALTERED'})});h.fill({...valid,message:'<img onerror=alert(1)>'});await h.send();assert.equal(h.status(),'');assert.match(h.error(),/could not confirm/);assert.equal(h.values().message,'<img onerror=alert(1)>');
 });
 
-test('Clear removes and verifies only the contact key while preserving visible fields and other necessary drafts', async () => {
-  const f = fixture({ seed: [[CONTACT_DRAFT_KEY, serialized(valid)], ['assaynova.prototype.requests.v1', 'request'], ['assaynova.support.recovery.v1', 'recovery']] }); f.fill(); await f.action('clear');
-  assert.deepEqual(f.calls, [['remove', CONTACT_DRAFT_KEY], ['get', CONTACT_DRAFT_KEY]]);
-  assert.deepEqual(f.values(), valid); assert.equal(f.data.size, 2); assert.match(f.status(), /cleared.*still here/);
-  for (const flags of [{ remove: 'throw' }, { remove: 'silent' }, { read: 'throw' }]) {
-    const sample = fixture({ seed: [[CONTACT_DRAFT_KEY, serialized(valid)]], flags }); sample.fill(); await sample.action('clear');
-    assert.deepEqual(sample.values(), valid); assert.equal(sample.status(), ''); assert.match(sample.error(), /could not be cleared/);
-  }
+test('inquiry session refresh gates private fields until the current owner is confirmed',()=>{
+ const h=fixture();h.fill();h.controller.activate({checking:true});assert.equal(h.submit.disabled,true);assert.match(h.gate.textContent,/Checking your account/);h.controller.setAccountSession({...user,id:'user-b',email:'b@example.invalid'});assert.equal(h.values().message,'');assert.equal(h.values().email,'b@example.invalid');assert.equal(h.submit.disabled,false);
 });
 
-test('Copy uses complete current text without storage and denial/unavailability exposes selectable full plaintext', async () => {
-  const f = fixture(); f.fill({ ...valid, message: 'Current unsaved text' }); await f.action('copy');
-  assert.equal(f.copied[0], formatContactMessage(f.values())); assert.deepEqual(f.calls, []); assert.match(f.status(), /Message copied.*No message/);
-  for (const clipboard of [{ writeText: () => Promise.reject(new Error('Denied')) }, {}]) {
-    const sample = fixture({ clipboard }); sample.fill(); await sample.action('copy');
-    assert.equal(sample.nodes.get('#contact-copy-fallback').hidden, false);
-    assert.equal(sample.nodes.get('#contact-copy-value').value, formatContactMessage(valid));
-    assert.equal(sample.status(), ''); assert.deepEqual(sample.calls, []);
-    await sample.action('select'); assert.equal(sample.focused(), 'contact-copy-value'); assert.equal(sample.selected(), 2);
-    sample.input('message', 'Changed'); assert.equal(sample.nodes.get('#contact-copy-fallback').hidden, true); assert.equal(sample.nodes.get('#contact-copy-value').value, '');
-  }
-});
-
-test('late copy results are invalidated by inputs, Save, Restore, Clear and newer copy attempts', async () => {
-  for (const operation of ['input', 'save', 'restore', 'clear', 'copy']) {
-    let resolve, reject; const pending = new Promise((a, b) => { resolve = a; reject = b; }); let attempts = 0;
-    const f = fixture({ seed: [[CONTACT_DRAFT_KEY, serialized(valid)]], clipboard: { writeText() { return attempts++ ? Promise.resolve() : pending; } } }); f.fill();
-    const old = f.action('copy');
-    if (operation === 'input') { f.input('message', 'Changed'); f.input('message', valid.message); }
-    else if (operation === 'save') f.save();
-    else await f.action(operation);
-    const feedback = f.status();
-    reject(new Error('Late denial')); await old;
-    assert.equal(f.status(), feedback, operation); assert.equal(f.nodes.get('#contact-copy-fallback').hidden, true, operation);
-    assert.equal(typeof resolve, 'function');
-  }
-});
-
-test('copy completion cannot mutate a hidden/detached page or programmatically changed snapshot', async () => {
-  for (const state of ['viewHidden', 'documentHidden', 'detached', 'snapshot']) {
-    let resolve; const pending = new Promise(done => { resolve = done; });
-    const f = fixture({ clipboard: { writeText: () => pending } }); f.fill(); const old = f.action('copy');
-    if (state === 'viewHidden') f.form.viewHidden = true;
-    if (state === 'documentHidden') f.form.ownerDocument.hidden = true;
-    if (state === 'detached') f.form.isConnected = false;
-    if (state === 'snapshot') f.nodes.get('#contact-message').value = 'Changed without an input event';
-    resolve(); await old; assert.equal(f.status(), ''); assert.equal(f.nodes.get('#contact-copy-fallback').hidden, true);
-  }
+test('bound Contact and Recovery fields stay hidden on expiry while same-owner retry preserves its exact intent',async()=>{
+ for(const kind of ['contact','report-recovery']){
+  const writes=[];let remote;
+  const h=fixture({kind,save:async(record,options)=>{writes.push({record:structuredClone(record),key:options.idempotencyKey});if(!remote){remote=documentFor(record);throw Object.assign(Error('Synthetic lost acknowledgement'),{code:'network'});}return remote;}});
+  h.fill();const before=h.values();await h.send();assert.equal(writes.length,1);
+  h.controller.setAccountSession(null,'expired');assert.equal(h.panel.hidden,true);assert.equal(h.submit.disabled,true);assert.deepEqual(h.values(),before);for(const key of Object.keys(before))assert.equal(h.nodes.get('#'+(kind==='contact'?'contact':'support')+'-'+key).disabled,true);
+  assert.equal(h.nodes.get('[data-inquiry-action="sign-in"]').hidden,false);
+  h.controller.setAccountSession(user,'login');assert.equal(h.panel.hidden,false);assert.equal(h.submit.disabled,false);assert.deepEqual(h.values(),before);await h.send();assert.equal(writes.length,2);assert.deepEqual(writes[0],writes[1]);assert.match(h.status(),/Request submitted/);
+  h.controller.setAccountSession({...user,id:'user-b',email:'b@example.invalid'},'login');assert.equal(h.panel.hidden,false);assert.equal(h.values()[kind==='contact'?'message':'notes'],'');assert.equal(h.values().email,'b@example.invalid');
+  h.fill();h.controller.setAccountSession(null,'logout');assert.equal(h.panel.hidden,false);assert.ok(Object.values(h.values()).every(value=>value===''));assert.equal(h.status(),'');
+ }
+ const guest=fixture({signedIn:false});assert.equal(guest.panel.hidden,false);guest.fill();assert.equal(guest.values().message,valid.message);assert.equal(guest.nodes.get('#contact-message').disabled,false);
 });

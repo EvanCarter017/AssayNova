@@ -27,3 +27,7 @@ test('page markup has unique IDs and one static heading/view per declared page',
     assert.match(html, new RegExp(`<h1[^>]*id="${route.heading}"[^>]*tabindex="-1"`));
   }
 });
+
+test('active markup has account submissions and no device draft actions or standalone contact bootstrap',async()=>{
+ const html=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');assert.doesNotMatch(html,/Save draft|Device drafts|Restore saved|Clear saved|This device|src="\/contact-form\.js"/);assert.match(html,/Submit message/);assert.match(html,/My requests/);const app=await readFile(new URL('../dist/app.js',import.meta.url),'utf8');assert.doesNotMatch(app,/localStorage|readRequests|copyDeviceRequest/);assert.equal((app.match(/createCustomerAccountClient\(\)/g)||[]).length,1);
+});

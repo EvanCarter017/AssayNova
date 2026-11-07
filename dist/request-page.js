@@ -1,12 +1,13 @@
 import { SERVICE_NAMES } from './data.js';
-import { REQUEST_DRAFT_KEY, SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES, newSample, newSubmission, duplicateSubmissionSample, validateSubmissionState, submissionTotals, effectiveReportRecipient, createRequestRecord, parseRequestRecord, requestStateFromRecord, decodeRequestList, prepareRequestSave, legacyRequestState } from './submission.js';
-import { accountDraft, AccountError, accountErrorMessage } from './customer-account.js';
+import { SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES, newSample, newSubmission, duplicateSubmissionSample, validateSubmissionState, submissionTotals, effectiveReportRecipient } from './submission.js';
+import { parseAccountRequest, requestDetails, requestKind } from './account-requests.js';
+import { createSubmissionIntent, AccountError, accountErrorMessage } from './customer-account.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 const optionList = (choices, value) => Object.entries(choices).map(([key, label]) => `<option value="${key}"${key === value ? ' selected' : ''}>${escape(label)}</option>`).join('');
 const titles = ['Testing & samples', 'Contact & report', 'Review your request'];
 
-export function createRequestPage(root, { storage = { getItem: key => globalThis.localStorage.getItem(key), setItem: (key, value) => globalThis.localStorage.setItem(key, value) }, makeId = () => crypto.randomUUID(), now = () => new Date().toISOString(), objectURLs = URL, openSavedDrafts = () => {}, onSaved = () => {}, accountEnabled = false, saveAccountDraft, onSignIn = () => {} } = {}) {
+export function createRequestPage(root, { makeId = () => crypto.randomUUID(), now = () => new Date().toISOString(), objectURLs = URL, openMyRequests = () => {}, onSaved = () => {}, accountEnabled = false, saveAccountRequest, onSignIn = () => {} } = {}) {
   const nextSampleId = () => 's-' + makeId().slice(0, 60);
   let state = newSubmission(nextSampleId());
   let step = 1;
@@ -19,8 +20,9 @@ export function createRequestPage(root, { storage = { getItem: key => globalThis
   let saveError = '';
   let destroyed = false;
   let active = false;
-  let accountUser = null, destination = 'device', destinationChosen = false, ownerBound = null;
-  let remote = null, pendingCreate = null, importKey = null, saving = false, saveRevision = 0, saveController = null;
+  let accountUser = null, accountLoaded = !accountEnabled, ownerBound = null;
+  let editing = false, saving = false, saveRevision = 0, saveController = null;
+  const intent = createSubmissionIntent({ save: (record, options) => saveAccountRequest(record, options), makeId, now });
   const previews = new Map();
   const fileErrors = new Map();
   const fieldId = key => 'rq-' + key.replaceAll(':', '-');
@@ -60,7 +62,7 @@ export function createRequestPage(root, { storage = { getItem: key => globalThis
   function imageMarkup(sample, index) {
     const key = name => `sample:${sample.id}:${name}`;
     const preview = previews.get(sample.id);
-    return `<fieldset class="rq-photo"><legend data-request-private>Sample ${index + 1} · ${escape(sample.name || 'Unnamed sample')}</legend><div class="rq-fields">${input(key('image'), 'Product image on the COA', { required: true, choices: IMAGE_CHOICES })}${sample.image === 'include' ? input(key('imageStyle'), 'Image style', { required: true, choices: IMAGE_STYLES }) : ''}</div>${sample.image === 'include' ? `<div class="rq-field rq-file"><label for="rq-file-${sample.id}">Reference image <span>Optional</span></label><input type="file" id="rq-file-${sample.id}" data-rq-file="${sample.id}"${fileErrors.has(sample.id) ? ' aria-invalid="true"' : ''} accept="image/jpeg,image/png,image/webp" aria-describedby="rq-file-${sample.id}-help rq-file-${sample.id}-error"><p class="rq-helper" id="rq-file-${sample.id}-help">Local preview only. Image files are not retained with saved drafts. JPEG, PNG or WebP, up to 5 MiB.${identity && !preview ? ' Reselect an optional reference image if needed.' : ''}</p><p class="rq-field-error" id="rq-file-${sample.id}-error">${escape(fileErrors.get(sample.id) || '')}</p></div>${preview ? `<div class="rq-preview" data-request-private><img src="${escape(preview.url)}" alt="Local reference image preview"><button type="button" data-rq-action="remove-image" data-rq-id="${sample.id}">Remove reference image</button></div>` : ''}` : ''}</fieldset>`;
+    return `<fieldset class="rq-photo"><legend data-request-private>Sample ${index + 1} · ${escape(sample.name || 'Unnamed sample')}</legend><div class="rq-fields">${input(key('image'), 'Product image on the COA', { required: true, choices: IMAGE_CHOICES })}${sample.image === 'include' ? input(key('imageStyle'), 'Image style', { required: true, choices: IMAGE_STYLES }) : ''}</div>${sample.image === 'include' ? `<div class="rq-field rq-file"><label for="rq-file-${sample.id}">Reference image <span>Optional</span></label><input type="file" id="rq-file-${sample.id}" data-rq-file="${sample.id}"${fileErrors.has(sample.id) ? ' aria-invalid="true"' : ''} accept="image/jpeg,image/png,image/webp" aria-describedby="rq-file-${sample.id}-help rq-file-${sample.id}-error"><p class="rq-helper" id="rq-file-${sample.id}-help">Local preview only. Image files are previewed only and are not submitted. JPEG, PNG or WebP, up to 5 MiB.${identity && !preview ? ' Reselect an optional reference image if needed.' : ''}</p><p class="rq-field-error" id="rq-file-${sample.id}-error">${escape(fileErrors.get(sample.id) || '')}</p></div>${preview ? `<div class="rq-preview" data-request-private><img src="${escape(preview.url)}" alt="Local reference image preview"><button type="button" data-rq-action="remove-image" data-rq-id="${sample.id}">Remove reference image</button></div>` : ''}` : ''}</fieldset>`;
   }
 
   function contactMarkup() {
@@ -77,13 +79,12 @@ export function createRequestPage(root, { storage = { getItem: key => globalThis
   }
 
   function updateSummary() { const container = find('rq-summary-content'); if (container) container.innerHTML = summaryMarkup(); }
-  function destinationMarkup() {
-    const selector = accountEnabled ? `<div class="rq-field rq-destination"><label for="rq-save-destination">Save this draft to</label><select id="rq-save-destination" data-rq-destination${saving ? ' disabled' : ''}><option value="account"${destination === 'account' ? ' selected' : ''}>Account</option><option value="device"${destination === 'device' ? ' selected' : ''}>This device</option></select>${!accountUser ? '<button class="text-button" type="button" data-rq-action="sign-in">Sign in to save to your account</button>' : ''}</div>` : '';
-    return selector + `<div class="rq-local-notice"><p><strong>Request draft</strong><span>${destination === 'account' ? 'Your account' : 'On this device'}</span></p><p>${destination === 'account' ? 'Your explicit Save stores a private account draft. It does not submit a request to the laboratory or send email.' : 'Saving does not send your request or email. Saved drafts stay on this device until you clear this site’s browser data.'} Image files are not retained.</p></div>`;
-  }
   function render(focusHeading = false) {
     if (destroyed || !active) return;
-    root.innerHTML = `<nav class="rq-progress" aria-label="Request progress"><ol>${titles.map((title, index) => `<li><button type="button" data-rq-step="${index + 1}"${step === index + 1 ? ' aria-current="step"' : ''}${index + 1 > step && (Object.keys(validateSubmissionState(state, 1)).length || index === 2 && Object.keys(validateSubmissionState(state, 2)).length) ? ' disabled' : ''}><span>${index + 1}</span>${title}</button></li>`).join('')}</ol></nav><div class="rq-layout"><div class="rq-main"><p id="rq-notice" class="rq-notice" role="status">${escape(notice)}</p>${notice ? '<button class="rq-fresh" type="button" data-rq-action="fresh">Start a new request</button>' : ''}<form id="request-step-form" aria-busy="${saving}" novalidate><fieldset class="rq-save-lock"${saving ? ' disabled' : ''}><div class="rq-step-heading"><p>STEP ${step} OF 3</p><h2 id="request-step-heading" tabindex="-1">${titles[step - 1]}</h2></div><p class="rq-error-summary" id="rq-errors" role="alert" tabindex="-1">${escape(saveError || (Object.keys(errors).length ? 'Check the highlighted details before continuing.' : ''))}</p>${step === 1 ? samplesMarkup() : step === 2 ? contactMarkup() : reviewMarkup()}${step === 3 ? destinationMarkup() : ''}<div class="rq-step-actions">${step > 1 ? '<button class="button button-outline" type="button" data-rq-action="back">Back</button>' : '<a class="rq-back-link" href="/testing-methods">Back to Our Testing</a>'}<button class="button button-teal" type="submit">${saving ? 'Saving…' : step === 3 ? (destination === 'account' ? 'Save to account' : 'Save request') : 'Continue'} <span aria-hidden="true">→</span></button></div></fieldset></form>${saved ? `<section class="rq-saved" aria-labelledby="rq-saved-title"><p class="rq-saved-state">Draft · Not sent</p><h3 id="rq-saved-title" tabindex="-1">${destination === 'account' ? 'Saved to your account.' : 'Saved on this device.'}</h3><p class="rq-saved-reference" data-request-private>${escape(identity.id)}</p><p>No email is sent when a draft is saved.</p><div><button type="button" class="button button-outline" data-rq-action="saved">${destination === 'account' ? 'My account' : 'Saved drafts'}</button><button type="button" class="text-button" data-rq-action="fresh">Start a new request</button></div></section>` : ''}</div><aside class="rq-summary" aria-labelledby="rq-summary-title"><h2 id="rq-summary-title">Your request</h2><div id="rq-summary-content">${summaryMarkup()}</div></aside></div>`;
+    if (!accountEnabled || !accountLoaded || !accountUser) {
+      root.innerHTML = '<div class="ac-card"><h2>' + (!accountEnabled ? 'Submissions are unavailable in this view.' : !accountLoaded ? 'Checking your account…' : 'Sign in to submit a request.') + '</h2><p>' + (!accountEnabled ? 'Public testing information and COA lookup remain available.' : !accountLoaded ? 'Please wait while we confirm your session.' : 'Your unfinished details stay in this view while you sign in.') + '</p>' + (accountEnabled && accountLoaded ? '<button class="button button-teal" type="button" data-rq-action="sign-in">Sign in or create an account</button>' : '') + '</div>'; return;
+    }
+    root.innerHTML = `<nav class="rq-progress" aria-label="Request progress"><ol>${titles.map((title, index) => `<li><button type="button" data-rq-step="${index + 1}"${step === index + 1 ? ' aria-current="step"' : ''}${index + 1 > step && (Object.keys(validateSubmissionState(state, 1)).length || index === 2 && Object.keys(validateSubmissionState(state, 2)).length) ? ' disabled' : ''}><span>${index + 1}</span>${title}</button></li>`).join('')}</ol></nav><div class="rq-layout"><div class="rq-main"><p id="rq-notice" class="rq-notice" role="status">${escape(notice)}</p>${notice ? '<button class="rq-fresh" type="button" data-rq-action="fresh">Start a new request</button>' : ''}<form id="request-step-form" data-request-private aria-busy="${saving}" novalidate><fieldset class="rq-save-lock"${saving ? ' disabled' : ''}><div class="rq-step-heading"><p>STEP ${step} OF 3</p><h2 id="request-step-heading" tabindex="-1">${titles[step - 1]}</h2></div><p class="rq-error-summary" id="rq-errors" role="alert" tabindex="-1">${escape(saveError || (Object.keys(errors).length ? 'Check the highlighted details before continuing.' : ''))}</p>${step === 1 ? samplesMarkup() : step === 2 ? contactMarkup() : reviewMarkup()}${step === 3 ? '<p class="rq-local-notice">Review your details, then submit to My requests. Image files are previewed only.</p>' : ''}<div class="rq-step-actions">${step > 1 ? '<button class="button button-outline" type="button" data-rq-action="back">Back</button>' : '<a class="rq-back-link" href="/testing-methods">Back to Our Testing</a>'}<button class="button button-teal" type="submit">${saving ? 'Submitting…' : step === 3 ? (editing ? 'Update request' : 'Submit request') : 'Continue'} <span aria-hidden="true">→</span></button></div></fieldset></form>${saved ? `<section class="rq-saved" aria-labelledby="rq-saved-title"><p class="rq-saved-state">Submitted</p><h3 id="rq-saved-title" tabindex="-1">Request submitted.</h3><p class="rq-saved-reference" data-request-private>${escape(identity.id)}</p><p>View or edit this request in My requests.</p><div><button type="button" class="button button-outline" data-rq-action="saved">My requests</button><button type="button" class="text-button" data-rq-action="fresh">Start a new request</button></div></section>` : ''}</div><aside class="rq-summary" aria-labelledby="rq-summary-title"><h2 id="rq-summary-title">Your request</h2><div id="rq-summary-content">${summaryMarkup()}</div></aside></div>`;
     for (const field of root.querySelectorAll('[data-rq-field]')) field.value = getValue(field.dataset.rqField) ?? '';
     if (focusHeading) focus('request-step-heading');
   }
@@ -106,65 +107,27 @@ export function createRequestPage(root, { storage = { getItem: key => globalThis
   }
 
   function fresh(service) {
-    saveRevision++; saveController?.abort(); saving = false; remote = null; pendingCreate = null; importKey = null; destinationChosen = false; destination = accountUser ? 'account' : 'device'; ownerBound = accountUser?.id || null;
+    saveRevision++; saveController?.abort(); saving = false; intent.reset(); editing = false; ownerBound = accountUser?.id || null;
     revokeAll(); state = newSubmission(nextSampleId(), service); step = 1; pristine = true; identity = null; saved = false; errors = {}; saveError = ''; notice = ''; pendingPreset = undefined; render(true);
   }
 
   function save() {
-    if (saving) return;
-    if (!validate(0)) return;
-    if (destination === 'account') { void saveToAccount(); return; }
-    try {
-      const raw = storage.getItem(REQUEST_DRAFT_KEY);
-      const existing = decodeRequestList(raw);
-      if (!existing) throw new Error('Stored drafts cannot be read');
-      let nextIdentity = identity;
-      if (!nextIdentity) {
-        let id;
-        for (let attempt = 0; attempt < 8; attempt++) { id = 'AN-REQ-' + makeId().toUpperCase().slice(0, 64); if (!existing.some(item => item?.id === id)) break; id = null; }
-        if (!id) throw new Error('A unique local reference could not be created');
-        nextIdentity = { id, createdAt: now() };
-      }
-      const record = createRequestRecord(state, nextIdentity);
-      const serialized = prepareRequestSave(raw, record);
-      storage.setItem(REQUEST_DRAFT_KEY, serialized);
-      if (storage.getItem(REQUEST_DRAFT_KEY) !== serialized) throw new Error('Draft was not persisted');
-      identity = nextIdentity; saved = true; pristine = false; saveError = ''; errors = {}; onSaved(record); render(); focus('rq-saved-title');
-    } catch { saved = false; saveError = 'We could not save this draft on your device. Your details are still here. Nothing has been sent.'; render(); focus('rq-errors'); }
+    if (saving || !validate(0)) return;
+    void submitToAccount();
   }
 
-  async function saveToAccount() {
-    if (!accountUser || typeof saveAccountDraft !== 'function') { saveError = 'Sign in before saving to your account. Your details are still here.'; render(); focus('rq-errors'); return; }
+  async function submitToAccount() {
+    if (!accountEnabled || !accountLoaded || !accountUser || typeof saveAccountRequest !== 'function') { saveError = 'Sign in before submitting your request.'; render(); return; }
     const owner = accountUser.id;
     if (ownerBound && ownerBound !== owner) { saveError = accountErrorMessage(new AccountError('owner_changed')); render(); return; }
     ownerBound = owner;
-    // Allocate the reference, timestamp, key AND payload together before POST.
-    // An unconfirmed attempt is replayed byte-for-byte before any latest edit PUT.
+    const ticket = ++saveRevision, controller = new AbortController(); saveController = controller; saving = true; saveError = ''; render();
+    const current = () => !destroyed && active && ticket === saveRevision && accountUser?.id === owner && ownerBound === owner && !controller.signal.aborted;
     try {
-      if (!identity) identity = { id: 'AN-REQ-' + makeId().toUpperCase().slice(0, 64), createdAt: now() };
-      if (!remote && !pendingCreate) pendingCreate = { ownerId: owner, record: createRequestRecord(state, identity), key: importKey || 'draft-' + makeId() };
-    } catch { saveError = 'We could not prepare this draft. Your details are still here.'; render(); focus('rq-errors'); return; }
-    const ticket = ++saveRevision;
-    const controller = new AbortController(); saveController = controller; saving = true; saveError = ''; render();
-    const current = () => !destroyed && ticket === saveRevision && accountUser?.id === owner && ownerBound === owner && !controller.signal.aborted;
-    try {
-      if (!remote) {
-        const attempt = pendingCreate;
-        if (attempt.ownerId !== owner) throw new AccountError('owner_changed');
-        const ack = accountDraft(await saveAccountDraft(attempt.record, { ownerId: owner, idempotencyKey: attempt.key, signal: controller.signal }));
-        if (!current()) return;
-        if (JSON.stringify(ack.record) !== JSON.stringify(attempt.record)) throw new AccountError('invalid_response');
-        remote = { id: ack.id, revision: ack.revision, ownerId: owner, record: ack.record }; pendingCreate = null;
-      }
-      const latest = createRequestRecord(state, identity);
-      if (JSON.stringify(latest) !== JSON.stringify(remote.record)) {
-        const ack = accountDraft(await saveAccountDraft(latest, { id: remote.id, expectedRevision: remote.revision, ownerId: owner, signal: controller.signal }));
-        if (!current()) return;
-        if (ack.id !== remote.id || JSON.stringify(ack.record) !== JSON.stringify(latest)) throw new AccountError('invalid_response');
-        remote = { id: ack.id, revision: ack.revision, ownerId: owner, record: ack.record };
-      }
+      const document = await intent.submit('testing', state, owner, { signal: controller.signal, current });
       if (!current()) return;
-      saved = true; pristine = false; errors = {}; saveError = ''; onSaved(remote.record, { destination: 'account', id: remote.id, revision: remote.revision });
+      identity = { id: document.record.id, createdAt: document.record.createdAt }; editing = true;
+      saved = true; pristine = false; errors = {}; saveError = ''; onSaved(document.record, { id: document.id, revision: document.revision });
     } catch (error) { if (current()) { saved = false; saveError = accountErrorMessage(error); } }
     finally { if (ticket === saveRevision) { saving = false; saveController = null; render(); focus(saved ? 'rq-saved-title' : 'rq-errors'); } }
   }
@@ -179,11 +142,6 @@ export function createRequestPage(root, { storage = { getItem: key => globalThis
   function onField(event) {
     const field = event.target;
     if (saving) return;
-    if (field.hasAttribute('data-rq-destination')) {
-      if (!['device', 'account'].includes(field.value) || !accountEnabled) return;
-      destination = field.value; destinationChosen = true; if (destination === 'account' && !ownerBound) ownerBound = accountUser?.id || null;
-      changed(); render(); focus('rq-save-destination'); return;
-    }
     if (field.dataset.rqFile) {
       if (event.type !== 'change') return;
       const id = field.dataset.rqFile;
@@ -216,7 +174,7 @@ export function createRequestPage(root, { storage = { getItem: key => globalThis
     const id = button.dataset.rqId;
     if (action === 'back') { step = Math.max(1, step - 1); errors = {}; saveError = ''; render(true); return; }
     if (action === 'fresh') { fresh(pendingPreset); return; }
-    if (action === 'saved') { openSavedDrafts(destination); return; }
+    if (action === 'saved') { openMyRequests(); return; }
     if (action === 'remove-image') { revoke(id); changed(); render(); focus('rq-file-' + id); return; }
     if (action === 'add' && state.samples.length < 10) { state.samples.push(newSample(nextSampleId())); changed(); errors = {}; render(); focus('rq-heading-' + state.samples.at(-1).id); }
     if (action === 'duplicate' && state.samples.length < 10) { const newId = nextSampleId(); state = duplicateSubmissionSample(state, id, newId); changed(); errors = {}; render(); focus('rq-heading-' + newId); }
@@ -238,17 +196,27 @@ export function createRequestPage(root, { storage = { getItem: key => globalThis
       }
       render();
     },
-    resume(record, metadata = {}) { const parsed = parseRequestRecord(record); if (!parsed) return false; if (metadata.ownerId && metadata.ownerId !== accountUser?.id) return false; active = true; saveRevision++; saveController?.abort(); saving = false; revokeAll(); state = requestStateFromRecord(parsed); identity = { id: parsed.id, createdAt: parsed.createdAt }; remote = metadata.id ? { id: metadata.id, revision: metadata.revision, ownerId: metadata.ownerId, record: parsed } : null; pendingCreate = null; importKey = metadata.idempotencyKey || null; destination = metadata.destination === 'account' && accountEnabled ? 'account' : 'device'; destinationChosen = true; ownerBound = destination === 'account' ? metadata.ownerId || accountUser?.id || null : null; step = 1; pristine = false; saved = false; errors = {}; saveError = ''; notice = 'Saved draft opened for editing. Reselect any optional reference images; image files are not saved.'; render(); return true; },
-    openLegacy(record, metadata = {}) { const converted = legacyRequestState(record, nextSampleId()); if (!converted) return false; active = true; fresh(); state = converted; pristine = false; destination = metadata.destination === 'account' && accountEnabled ? 'account' : 'device'; destinationChosen = true; ownerBound = destination === 'account' ? accountUser?.id || null : null; notice = 'Older draft opened as a new request. Its original on-device copy is unchanged. Review the details and explicitly Save.'; render(); return true; },
+    resume(record, metadata = {}) {
+      const parsed = parseAccountRequest(record);
+      if (!parsed || requestKind(parsed) !== 'testing' || !metadata.id || !metadata.ownerId || metadata.ownerId !== accountUser?.id) return false;
+      active = true; saveRevision++; saveController?.abort(); saving = false; revokeAll();
+      state = requestDetails(parsed); identity = { id: parsed.id, createdAt: parsed.createdAt };
+      intent.resume({ id: metadata.id, revision: metadata.revision, record: parsed, createdAt: metadata.createdAt || parsed.createdAt, updatedAt: metadata.updatedAt || parsed.createdAt }, metadata.ownerId);
+      ownerBound = metadata.ownerId; editing = true; step = 1; pristine = false; saved = false; errors = {}; saveError = '';
+      notice = parsed.version === 2 ? 'Saved request opened. Review all details and explicitly submit it.' : 'Request opened for editing. Review and update your request.';
+      render(); return true;
+    },
+    checkAccountSession() { if (accountEnabled) { accountLoaded = false; render(); } },
     setAccountSession(user, reason = 'session') {
-      const next = user?.id || null;
-      if (ownerBound && next !== ownerBound && (next || reason === 'logout')) { accountUser = user; fresh(); notice = 'The account changed. Open an account draft again from My account.'; render(); return; }
-      if (ownerBound && !next) { saveRevision++; saveController?.abort(); saving = false; saved = false; notice = 'Sign in again to retry your account save. Your unsaved details are kept here.'; }
+      const next = user?.id || null; accountLoaded = true;
+      if ((ownerBound && next && next !== ownerBound) || reason === 'logout') { accountUser = user; fresh(); notice = 'The account changed. Open your request again from My requests.'; render(); return; }
+      if (ownerBound && !next) { intent.cancel(); saveRevision++; saveController?.abort(); saving = false; saved = false; }
       accountUser = user;
-      if (next && !identity && !destinationChosen) { destination = 'account'; ownerBound = next; }
+      if (next && !ownerBound) ownerBound = next;
+      if (user && pristine) { for (const key of ['name', 'email', 'company']) if (!state[key]) state[key] = user[key] || ''; }
       render();
     },
-    suspend() { active = false; saveRevision++; saveController?.abort(); saveController = null; saving = false; revokeAll(); root.innerHTML = ''; },
+    suspend() { active = false; intent.cancel(); saveRevision++; saveController?.abort(); saveController = null; saving = false; revokeAll(); root.innerHTML = ''; },
     destroy() { saveRevision++; saveController?.abort(); revokeAll(); destroyed = true; root.removeEventListener('submit', onSubmit); root.removeEventListener('input', onField); root.removeEventListener('change', onField); root.removeEventListener('click', onClick); }
   });
 }

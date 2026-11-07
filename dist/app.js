@@ -1,15 +1,14 @@
 import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission, normalizeLookupCode } from './data.js';
 import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
-import { SUPPORT_DRAFT_KEY, normalizeSupport, validateSupport, parseSupportDraft, formatSupportRequest } from './support.js';
-import { REQUEST_DRAFT_KEY, readableRequests, effectiveReportRecipient, SAMPLE_FORMS, IMAGE_CHOICES, IMAGE_STYLES } from './submission.js';
 import { createRequestPage } from './request-page.js';
 import { createCustomerAccountClient } from './customer-account.js';
+import { createContactForm } from './contact-form.js';
+import { requestKind } from './account-requests.js';
 import { createAccountPage } from './account-page.js';
 import { SAMPLE_REPORT_DATA } from './reports/sample-data.js';
 
 const dialog = document.querySelector('#app-dialog');
 const dialogContent = document.querySelector('#dialog-content');
-const storageKey = REQUEST_DRAFT_KEY;
 const toast = document.querySelector('#toast');
 let previousFocus;
 let toastTimer;
@@ -45,11 +44,6 @@ async function fetchPublishedReport(code) {
 const icon = (name, small = false) => `<svg class="icon${small ? ' small' : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 
-function readRequests() {
-  try { return readableRequests(localStorage.getItem(storageKey)); }
-  catch { return []; }
-}
-
 function makeSampleId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -59,9 +53,32 @@ function makeSampleId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-const requestPage = createRequestPage(document.querySelector('#request-flow'), { storage: { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, makeId: makeSampleId, openSavedDrafts: destination => destination === 'account' ? navigateToURL('/account') : renderPortal(), accountEnabled: accountsEnabled, saveAccountDraft: (record, options) => accountClient.saveDraft(record, options), onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/submit-sample')) });
-const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => { if (requestPage.resume(doc.record, { destination: 'account', id: doc.id, revision: doc.revision, ownerId })) navigateToURL('/submit-sample'); }, onNewRequest: () => renderSubmission(undefined, true), onDeviceDrafts: renderPortal }) : null;
-accountClient?.subscribe((user, reason) => requestPage.setAccountSession(user, reason));
+const requestPage = createRequestPage(document.querySelector('#request-flow'), { makeId: makeSampleId, openMyRequests: () => navigateToURL('/account'), accountEnabled: accountsEnabled, saveAccountRequest: (record, options) => accountClient.saveRequest(record, options), onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/submit-sample')) });
+const contactForm = createContactForm(document.querySelector('#contact-form'), { client: accountClient, accountEnabled: accountsEnabled, makeId: makeSampleId, onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/contact')), onView: () => navigateToURL('/account') });
+let recoveryForm = null, recoveryOwnerId = null, recoveryReturn = null, recoveryCloseForAuth = false;
+function clearRecoveryReturn() { recoveryReturn?.controller.destroy(); recoveryReturn = null; }
+function signInForRecovery() {
+  if (!recoveryForm || !recoveryOwnerId) return;
+  recoveryForm.suspend();
+  const node = dialogContent.firstElementChild;
+  if (!node) return;
+  recoveryReturn = { controller: recoveryForm, node, ownerId: recoveryOwnerId };
+  node.remove(); recoveryForm = null; recoveryOwnerId = null; recoveryCloseForAuth = true;
+  navigateToURL('/login?next=' + encodeURIComponent('/contact?request=report-recovery'));
+}
+const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => {
+  const kind = requestKind(doc.record);
+  if (kind === 'testing') { if (requestPage.resume(doc.record, { ...doc, ownerId })) navigateToURL('/submit-sample'); }
+  else if (kind === 'contact') { navigateToURL('/contact'); contactForm?.resume(doc, ownerId); }
+  else { navigateToURL('/contact'); renderRecovery(doc, ownerId); }
+}, onNewRequest: () => renderSubmission(undefined, true) }) : null;
+accountClient?.subscribe((user, reason) => {
+  requestPage.setAccountSession(user, reason); contactForm?.setAccountSession(user, reason); recoveryForm?.setAccountSession(user, reason);
+  if (recoveryReturn) {
+    if (reason === 'logout' || user && user.id !== recoveryReturn.ownerId) clearRecoveryReturn();
+    else recoveryReturn.controller.setAccountSession(user, reason);
+  }
+});
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -86,6 +103,8 @@ function openDialog(html, wide = false) {
 function closeDialog() { dialog.close(); }
 dialog.addEventListener('close', () => {
   if (dialog.open) return;
+  recoveryForm?.destroy(); recoveryForm = null; recoveryOwnerId = null;
+  if (!recoveryCloseForAuth) clearRecoveryReturn(); recoveryCloseForAuth = false;
   document.body.classList.remove('dialog-open');
   if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
 });
@@ -101,133 +120,21 @@ function renderSubmission(service, reset = false) {
   navigateToURL('/submit-sample');
 }
 
-function resumeRequest(id) {
-  const request = readRequests().find(entry => entry.id === id);
-  if (requestPage.resume(request)) navigateToURL('/submit-sample');
-}
-
-function copyDeviceRequest(id, destination = 'device') {
-  const request = readRequests().find(entry => entry.id === id);
-  if (!request) return;
-  const opened = request.version === 2 ? requestPage.resume(request, { destination, idempotencyKey: destination === 'account' ? 'device-' + request.id : undefined }) : requestPage.openLegacy(request, { destination });
-  if (opened) navigateToURL('/submit-sample');
-  else showToast('This older draft needs updated details. Start a new request; the original is unchanged.');
-}
-
-function renderRecovery() {
-  let saved = null;
-  let readFailed = false;
-  try { saved = parseSupportDraft(localStorage.getItem(SUPPORT_DRAFT_KEY)); }
-  catch { readFailed = true; }
-  const values = saved || { email: '', reference: '', notes: '' };
-  openDialog(`<div class="nova-support-dialog">
-    <p class="dialog-eyebrow">NOVA SUPPORT</p>
-    <h2 class="dialog-title" id="dialog-title">Recover your report.</h2>
-    <p class="dialog-description">Use the email used for testing and your company or project name to prepare a report recovery request.</p>
-    <form id="recovery-form" class="recovery-form" novalidate>
-      <div class="form-grid">
-        <div class="form-field full"><label for="support-email">Testing email</label><input id="support-email" name="email" type="email" required maxlength="160" autocomplete="email" value="${escape(values.email)}" placeholder="you@company.com" aria-describedby="support-email-help support-error-email"><small id="support-email-help" class="field-helper">Use the contact email associated with the original testing request.</small><span class="field-error" id="support-error-email"></span></div>
-        <div class="form-field full"><label for="support-reference">Company or project name</label><input id="support-reference" name="reference" required maxlength="160" value="${escape(values.reference)}" placeholder="Your company or project" aria-describedby="support-reference-help support-error-reference"><small id="support-reference-help" class="field-helper">Additional verification may be needed before a report is shared.</small><span class="field-error" id="support-error-reference"></span></div>
-        <div class="form-field full"><label for="support-notes">Additional context <span>Optional</span></label><textarea id="support-notes" name="notes" maxlength="1200" placeholder="Sample name, approximate testing date, or anything else that helps" aria-describedby="support-error-notes">${escape(values.notes)}</textarea><span class="field-error" id="support-error-notes"></span></div>
-      </div>
-      <div class="demo-notice email-connection"><p class="email-connection-heading"><strong>Recovery draft</strong><span class="email-connection-status">On this device</span></p><p>Saving or copying prepares your request. Nothing is sent to Nova Support.</p></div>
-      <p id="support-error" class="inline-error" role="alert">${readFailed ? 'Your saved recovery draft could not be opened. You can still prepare a request below.' : ''}</p>
-      <p id="support-status" class="support-status" role="status"></p>
-      <div id="support-copy-fallback" class="support-copy-fallback" role="region" aria-label="Manual request copy" hidden><p>Automatic copying was unavailable. Select and copy the complete request below.</p><label for="support-copy-value">Request details</label><textarea id="support-copy-value" readonly></textarea><button type="button" class="text-button" data-recovery-action="select">Select all</button></div>
-      <div class="form-footer support-footer"><button class="button button-teal" type="submit">Save draft ${icon('arrow', true)}</button><button class="button button-outline" type="button" data-recovery-action="copy">Copy request</button><button class="text-button" type="button" data-recovery-action="clear">Clear saved draft</button></div>
-    </form>
-  </div>`);
-  const form = document.querySelector('#recovery-form');
-  const field = (key) => form.elements.namedItem(key);
-  const error = form.querySelector('#support-error');
-  const status = form.querySelector('#support-status');
-  const fallback = form.querySelector('#support-copy-fallback');
-  const copyField = form.querySelector('#support-copy-value');
-  let operation = 0;
-  const currentValues = () => Object.fromEntries(['email', 'reference', 'notes'].map((key) => [key, field(key).value]));
-  function resetFeedback() {
-    operation++;
-    error.textContent = '';
-    status.textContent = '';
-    fallback.hidden = true;
-    copyField.value = '';
+function renderRecovery(documentToEdit = null, ownerId = null) {
+  const user = accountClient?.snapshot().user;
+  if (!accountsEnabled) { navigateToURL('/contact'); return; }
+  if (!user) { navigateToURL('/login?next=' + encodeURIComponent('/contact?request=report-recovery')); return; }
+  recoveryForm?.destroy(); recoveryForm = null; recoveryOwnerId = user.id;
+  if (recoveryReturn && recoveryReturn.ownerId === user.id && !documentToEdit) {
+    const held = recoveryReturn; recoveryReturn = null; recoveryCloseForAuth = false;
+    openDialog(''); dialogContent.appendChild(held.node); recoveryForm = held.controller;
+    recoveryForm.setAccountSession(user); recoveryForm.activate(); dialogContent.querySelector('#dialog-title')?.focus({ preventScroll: true }); return;
   }
-  function validatedValues() {
-    const current = currentValues();
-    const errors = validateSupport(current);
-    for (const key of ['email', 'reference', 'notes']) {
-      form.querySelector('#support-error-' + key).textContent = errors[key] || '';
-      if (errors[key]) field(key).setAttribute('aria-invalid', 'true');
-      else field(key).removeAttribute('aria-invalid');
-    }
-    const invalid = ['email', 'reference', 'notes'].find((key) => errors[key]);
-    if (invalid) { field(invalid).focus(); return null; }
-    return normalizeSupport(current);
-  }
-  form.addEventListener('input', (event) => {
-    resetFeedback();
-    if (['email', 'reference', 'notes'].includes(event.target.name)) {
-      event.target.removeAttribute('aria-invalid');
-      form.querySelector('#support-error-' + event.target.name).textContent = '';
-    }
-  });
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    resetFeedback();
-    const current = validatedValues();
-    if (!current) return;
-    try {
-      const serialized = JSON.stringify({ version: 1, ...current });
-      localStorage.setItem(SUPPORT_DRAFT_KEY, serialized);
-      if (localStorage.getItem(SUPPORT_DRAFT_KEY) !== serialized) throw new Error('Recovery draft was not persisted');
-      status.textContent = 'Draft saved on this device. Nothing has been sent to Nova Support.';
-    } catch { error.textContent = 'Your recovery draft could not be saved. Keep this form open or copy the request details.'; }
-  });
-  form.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-recovery-action]');
-    if (!button) return;
-    const action = button.dataset.recoveryAction;
-    if (action === 'select') { copyField.focus(); copyField.select(); return; }
-    resetFeedback();
-    if (action === 'clear') {
-      try {
-        localStorage.removeItem(SUPPORT_DRAFT_KEY);
-        if (localStorage.getItem(SUPPORT_DRAFT_KEY) !== null) throw new Error('Recovery draft was not removed');
-        for (const key of ['email', 'reference', 'notes']) { field(key).value = ''; field(key).removeAttribute('aria-invalid'); form.querySelector('#support-error-' + key).textContent = ''; }
-        status.textContent = 'Saved recovery draft cleared from this device.';
-        field('email').focus();
-      } catch { error.textContent = 'Your saved recovery draft could not be cleared. Your current details have been kept.'; }
-      return;
-    }
-    if (action !== 'copy') return;
-    const current = validatedValues();
-    if (!current) return;
-    const value = formatSupportRequest(current);
-    const revision = operation;
-    const snapshot = JSON.stringify(currentValues());
-    const stillCurrent = () => dialog.open && document.querySelector('#recovery-form') === form && revision === operation && JSON.stringify(currentValues()) === snapshot;
-    try {
-      await navigator.clipboard.writeText(value);
-      if (stillCurrent()) status.textContent = 'Request details copied. Nothing has been sent.';
-    } catch {
-      if (!stillCurrent()) return;
-      fallback.hidden = false;
-      copyField.value = value;
-      copyField.focus();
-      copyField.select();
-    }
-  });
-}
-
-function renderSuccess(request) {
-  openDialog(`<div class="dialog-padding"><div class="success-icon">${icon('check')}</div>
-    <p class="dialog-eyebrow">SAVED DRAFT</p>
-    <h2 class="dialog-title" id="dialog-title">Draft saved on this device.</h2>
-    <p class="dialog-description">Your request draft is saved on this device. It has not been sent to the laboratory.</p>
-    <div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div>
-    <dl class="success-details"><div><dt>Sample</dt><dd>${escape(request.sample)}</dd></div><div><dt>Contact email</dt><dd>${escape(request.email)}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Number of samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div></dl>
-    <p class="demo-notice">No email is sent when a draft is saved. Reopen this draft from Saved drafts on this device.</p>
-    <div class="dialog-buttons"><button class="button button-teal" data-action="requests">View saved drafts ${icon('arrow', true)}</button><button class="text-button" data-action="close">Back to website</button></div></div>`);
+  clearRecoveryReturn();
+  openDialog('<div class="nova-support-dialog" data-request-private><p class="dialog-eyebrow">NOVA SUPPORT</p><h2 class="dialog-title" id="dialog-title">Recover your report.</h2><p class="dialog-description">Submit a recovery request with the email used for testing and your company or project name. Manual identity verification is required before a report can be shared.</p><form id="recovery-form" class="recovery-form" novalidate><div class="form-grid" data-inquiry-fields><div class="form-field full"><label for="support-email">Testing email</label><input id="support-email" type="email" required maxlength="160" autocomplete="email" aria-describedby="support-error-email"><span class="field-error" id="support-error-email"></span></div><div class="form-field full"><label for="support-reference">Company or project name</label><input id="support-reference" required maxlength="160" aria-describedby="support-error-reference"><span class="field-error" id="support-error-reference"></span></div><div class="form-field full"><label for="support-notes">Additional context <span>Optional</span></label><textarea id="support-notes" maxlength="1200" aria-describedby="support-error-notes"></textarea><span class="field-error" id="support-error-notes"></span></div></div><p class="demo-notice" data-inquiry-gate></p><p id="support-error" class="inline-error" role="alert"></p><p id="support-status" role="status" data-request-private></p><div class="form-footer support-footer"><button class="button button-teal" type="submit" disabled>Submit recovery request</button><button class="text-button" type="button" data-inquiry-action="sign-in" hidden>Sign in to continue</button><button class="text-button" type="button" data-inquiry-action="view" hidden>View in My requests</button><button class="text-button" type="button" data-inquiry-action="new">New request</button></div></form></div>');
+  recoveryForm = createContactForm(dialogContent.querySelector('#recovery-form'), { client: accountClient, accountEnabled: true, kind: 'report-recovery', makeId: makeSampleId, isVisible: () => dialog.open && location.pathname === '/contact', onSignIn: signInForRecovery, onView: () => navigateToURL('/account') });
+  recoveryForm.setAccountSession(user); recoveryForm.activate();
+  if (documentToEdit) recoveryForm.resume(documentToEdit, ownerId);
 }
 
 const SAMPLE_REPORT_ASSETS = Object.freeze({
@@ -302,6 +209,10 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
   accountLoadRevision++; accountLoadController?.abort(); accountLoadController = null;
   if (renderedURL && new URL(renderedURL, location.href).pathname === '/submit-sample' && current.url.pathname !== '/submit-sample') requestPage.suspend();
   accountPage?.leave();
+  contactForm?.suspend();
+  recoveryForm?.destroy(); recoveryForm = null; recoveryOwnerId = null;
+  const recoveryAuthPath = ['/login', '/register', '/recover-account'].includes(current.url.pathname) || current.url.pathname === '/contact' && current.url.search === '?request=report-recovery';
+  if (!recoveryAuthPath) clearRecoveryReturn();
   if (current.url.href !== location.href) history.replaceState(null, '', current.url.pathname + current.url.search + current.url.hash);
   activeReport = null;
   clearTimeout(toastTimer);
@@ -338,12 +249,25 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
     }
   } else document.title = page.title;
   if (!current.coa && page.path === '/submit-sample') {
-    requestPage.activate();
+    requestPage.checkAccountSession(); requestPage.activate();
     if (accountClient) { const ticket = accountLoadRevision; const controller = new AbortController(); accountLoadController = controller; accountClient.getSession({ signal: controller.signal }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) requestPage.setAccountSession(null, 'session'); }); }
   }
   if (!current.coa && ['/account', '/login', '/register', '/recover-account'].includes(page.path)) {
     if (accountPage) void accountPage.activate(page.path, current.url.searchParams.get('next'));
-    else { const content = pageViews[page.path]?.querySelector('[data-account-content]'); if (content) content.innerHTML = '<div class="ac-card"><h2>Accounts are unavailable in this view.</h2><p>You can still prepare a draft on this device and use public COA lookup.</p><a href="/submit-sample">Prepare a request</a></div>'; }
+    else { const content = pageViews[page.path]?.querySelector('[data-account-content]'); if (content) content.innerHTML = '<div class="ac-card"><h2>Accounts are unavailable in this view.</h2><p>Public testing information and COA lookup remain available.</p><a href="/submit-sample">Explore testing</a></div>'; }
+  }
+  if (!current.coa && page.path === '/contact') {
+    contactForm?.activate({ checking: !!accountClient });
+    if (accountClient) {
+      const ticket = accountLoadRevision, expectedURL = location.href, controller = new AbortController(); accountLoadController = controller;
+      accountClient.getSession({ signal: controller.signal }).then(user => {
+        if (ticket !== accountLoadRevision || controller.signal.aborted || location.href !== expectedURL) return;
+        if (current.url.search === '?request=report-recovery') {
+          if (!user) { navigateToURL('/login?next=' + encodeURIComponent('/contact?request=report-recovery'), { replace: true }); return; }
+          history.replaceState(null, '', '/contact'); renderedURL = location.href; renderRecovery();
+        }
+      }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) contactForm?.setAccountSession(null); });
+    }
   }
   const activePath = current.coa ? '/verify' : page.path;
   for (const link of document.querySelectorAll('.desktop-nav a,.mobile-nav a')) {
@@ -379,30 +303,10 @@ function navigateToURL(address, { replace = false, checked = null } = {}) {
 
 function navigateToReport(code, checked = null) { navigateToURL(lookupResultPath(code), { checked }); }
 
-function renderPortal() {
-  const requests = readRequests();
-  const requestRows = requests.map((request) => {
-    const multiple = request.version === 2;
-    const sample = multiple ? `${request.samples.length} sample entr${request.samples.length === 1 ? 'y' : 'ies'} · ${request.samples[0].name}` : request.sample;
-    const service = multiple && new Set(request.samples.map(entry => entry.service)).size > 1 ? 'Multiple testing services' : SERVICE_NAMES[request.service];
-    return `<tr><td><strong>${escape(sample)}</strong><small>${escape(request.id)}</small></td><td>${escape(service)}<small>${escape(request.quantity)} ${multiple ? (Number(request.quantity) === 1 ? 'planned unit' : 'planned units') : `sample${request.quantity === 1 ? '' : 's'}`}</small></td><td><span class="state-tag state-pending">Draft · Not sent</span></td><td><button class="text-button" data-action="request-detail" data-id="${escape(request.id)}">Details ${icon('arrow-up', true)}</button></td></tr>`;
-  }).join('');
-  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">ON THIS DEVICE</p><h2 class="dialog-title" id="dialog-title">Saved drafts</h2><p class="dialog-description">These drafts are stored only in this browser. Select a draft to open it${accountsEnabled ? ' or save a copy to your account' : ''}.</p>
-    <p class="demo-notice">These are saved drafts, not submitted requests. No email is sent when a draft is saved.</p>
-    <div class="portal-toolbar"><h3 class="drafts-heading" id="saved-drafts-title">${requests.length} saved draft${requests.length === 1 ? '' : 's'}</h3><button class="button button-dark" data-action="request-new">${icon('plus', true)} New request</button></div>
-    <section class="portal-panel" id="panel-requests" aria-labelledby="saved-drafts-title" tabindex="0">${requests.length ? `<table class="portal-table"><thead><tr><th scope="col">SAMPLE / REFERENCE</th><th scope="col">REQUESTED SERVICE</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead><tbody>${requestRows}</tbody></table><p class="portal-bottom-note">Drafts stay on this device until you clear this site's data. They have not been sent to the laboratory.</p>` : `<div class="empty-state">${icon('flask')}<h3>No saved drafts yet.</h3><p>Save a request draft to keep its details on this device. Nothing is sent.</p><button class="button button-teal" data-action="request-new">New request ${icon('arrow', true)}</button></div>`}</section></div>`, true);
-}
-
-function renderRequestDetail(id) {
-  const request = readRequests().find((entry) => entry.id === id);
-  if (!request) { renderPortal(); return; }
-  if (request.version === 2) {
-    openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">Your saved request.</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div><div data-request-private><dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Email</dt><dd>${escape(request.email)}</dd></div><div><dt>Report recipient</dt><dd>${escape(effectiveReportRecipient(request))}</dd></div><div><dt>Context</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl>${request.samples.map((sample, index) => `<section><h3>Sample ${index + 1} · ${escape(sample.name)}</h3><dl class="success-details"><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[sample.service])}</dd></div><div><dt>Planned units</dt><dd>${sample.quantity}</dd></div><div><dt>Form</dt><dd>${escape(SAMPLE_FORMS[sample.form])}</dd></div><div><dt>Product image</dt><dd>${escape(IMAGE_CHOICES[sample.image])}${sample.image === 'include' ? ' · ' + escape(IMAGE_STYLES[sample.imageStyle]) : ''}</dd></div></dl></section>`).join('')}</div><p class="demo-notice">Draft · Not sent. Saved on this device; no request or email has been sent. Image files are not retained.</p><div class="dialog-buttons"><button class="button button-teal" data-action="request-resume" data-id="${escape(request.id)}">Resume editing</button><button class="button button-outline" data-action="request-new">New request</button>${accountsEnabled ? `<button class="button button-outline" data-action="request-account" data-id="${escape(request.id)}">Save to account</button>` : ''}<button class="text-button" data-action="requests">Back to saved drafts</button></div></div>`, true);
-    return;
-  }
-  openDialog(`<div class="dialog-padding"><p class="dialog-eyebrow">SAVED REQUEST</p><h2 class="dialog-title" id="dialog-title">${escape(request.sample)}</h2><div class="reference-box"><p>REQUEST REFERENCE</p><strong>${escape(request.id)}</strong></div>
-    <dl class="success-details"><div><dt>Contact</dt><dd>${escape(request.name)}</dd></div><div><dt>Contact email</dt><dd>${escape(request.email)}</dd></div><div><dt>Organization</dt><dd>${escape(request.company || 'Not provided')}</dd></div><div><dt>Service</dt><dd>${escape(SERVICE_NAMES[request.service])}</dd></div><div><dt>Samples</dt><dd>${escape(request.quantity)}</dd></div><div><dt>Status</dt><dd>Draft · Not sent</dd></div><div><dt>Notes</dt><dd>${escape(request.notes || 'No additional notes')}</dd></div></dl><p class="demo-notice">Saved on this device. Not sent to the laboratory. No email is sent when a draft is saved.</p><div class="dialog-buttons"><button class="button button-teal" data-action="request-legacy" data-id="${escape(request.id)}">Open as new draft</button>${accountsEnabled ? `<button class="button button-outline" data-action="request-account" data-id="${escape(request.id)}">Save to account</button>` : ''}<button class="button button-dark" data-action="requests">Back to saved drafts ${icon('arrow', true)}</button></div></div>`);
-}
+// Keep existing development locator declarations as safe account redirects.
+function renderSuccess() { navigateToURL('/account'); }
+function renderPortal() { navigateToURL('/account'); }
+function renderRequestDetail() { navigateToURL('/account'); }
 
 async function copyReportValue(kind) {
   const report = activeReport;
@@ -446,21 +350,21 @@ document.addEventListener('click', (event) => {
   const actions = {
     submit: () => renderSubmission(target.dataset.service),
     'request-new': () => renderSubmission(target.dataset.service, true),
-    'request-resume': () => resumeRequest(target.dataset.id),
-    'request-account': () => copyDeviceRequest(target.dataset.id, 'account'),
-    'request-legacy': () => copyDeviceRequest(target.dataset.id),
-    'recover-report': () => renderRecovery(),
+    'request-resume': () => navigateToURL('/account'),
+    'request-account': () => navigateToURL('/account'),
+    'request-legacy': () => navigateToURL('/account'),
+    'recover-report': () => navigateToURL('/contact?request=report-recovery'),
     report: () => navigateToReport(target.dataset.lookupCode),
     home: () => navigateToURL('/'),
-    portal: () => renderPortal(),
-    requests: () => renderPortal(),
+    portal: renderPortal,
+    requests: renderPortal,
     close: closeDialog,
     print: () => { if (activeReport) window.print(); },
     'copy-code': () => copyReportValue('code'),
     'copy-link': () => copyReportValue('link'),
     'copy-retry': () => copyReportValue(pendingCopyKind),
     'copy-select': () => { const field = document.querySelector('#report-copy-value'); field?.focus(); field?.select(); },
-    'request-detail': () => renderRequestDetail(target.dataset.id)
+    'request-detail': renderRequestDetail
   };
   actions[target.dataset.action]?.();
   if (returnToMobileMenu && dialog.open) previousFocus = menuButton;

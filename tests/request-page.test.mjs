@@ -53,10 +53,10 @@ function harness(options = {}) {
     removeEventListener(type, callback) { events.set(type, (events.get(type) || []).filter(value => value !== callback)); }
   };
   const storage = { getItem(key) { if (options.readFailure) throw Error('Synthetic read restriction'); return values.get(key) ?? null; }, setItem(key, value) { if (options.writeFailure) throw Error('Synthetic write restriction'); writes.push([key, value]); if (!options.silentWrite) values.set(key, value); } };
-  const config = { makeId: () => 'test-' + ++counter, now: options.now || (() => '2026-11-05T00:00:00.000Z'), openSavedDrafts: () => openedSaved++, accountEnabled: !!options.accountEnabled, saveAccountDraft: options.saveAccountDraft, objectURLs: { createObjectURL(file) { const url = 'blob:synthetic-' + (createdURLs.length + 1); createdURLs.push({ url, file }); return url; }, revokeObjectURL(url) { revokedURLs.push(url); } } };
+  const config = { makeId: () => 'test-' + ++counter, now: options.now || (() => '2026-11-05T00:00:00.000Z'), openMyRequests: () => openedSaved++, accountEnabled: options.accountEnabled !== false, saveAccountRequest: options.saveAccountDraft || (async record => documentFor(record)), objectURLs: { createObjectURL(file) { const url = 'blob:synthetic-' + (createdURLs.length + 1); createdURLs.push({ url, file }); return url; }, revokeObjectURL(url) { revokedURLs.push(url); } } };
   if (!options.lazyStorage) config.storage = storage;
   const api = createRequestPage(root, config);
-  if (options.accountUser) api.setAccountSession(options.accountUser);
+  if (options.accountUser !== null) api.setAccountSession(options.accountUser || userA);
   const emit = (type, target) => { for (const fn of events.get(type) || []) fn({ type, target, preventDefault() {} }); };
   const query = selector => { const node = root.querySelector(selector); assert.ok(node, 'Expected DOM control ' + selector); return node; };
   const click = selector => { const node = query(selector); if (!node.disabled) emit('click', node); };
@@ -135,65 +135,6 @@ test('local image previews preserve valid files on rejection and revoke on repla
   h.api.destroy(); assert.ok(h.revokedURLs.includes('blob:synthetic-5')); assert.ok([...h.events.values()].every(handlers => handlers.length === 0)); assert.equal(h.writes.length, 0);
 });
 
-test('actual final Save persists only chosen options, reopens v2 and updates one ID while preserving legacy drafts', () => {
-  const legacy = { id: 'AN-DEMO-LEGACY', sample: 'Legacy', service: 'purity', quantity: 1 };
-  const h = harness({ initial: JSON.stringify([legacy]) }).start(); const id = h.sampleIds()[0]; h.input(`sample:${id}:name`, 'First'); h.submit(); h.contact(); h.input(`sample:${id}:image`, 'include', 'change'); h.file(id, { type: 'image/png', size: 100, name: 'NEVER-SAVE.png' }); h.submit(); h.submit();
-  const raw = h.values.get(REQUEST_DRAFT_KEY); const records = JSON.parse(raw); assert.equal(records.length, 2); assert.deepEqual(records[1], legacy);
-  assert.ok(!/NEVER-SAVE|blob:|filename|base64/.test(raw)); assert.equal(records[0].samples[0].image, 'include'); assert.match(h.root.innerHTML, /Draft · Not sent/);
-  h.step(1); h.input(`sample:${id}:name`, 'Edited after saving');
-  assert.equal(h.root.querySelector('#rq-saved-title'), null, 'Typing removes the previous Saved claim');
-  assert.equal(h.values.get(REQUEST_DRAFT_KEY), raw, 'Editing never autosaves over the saved draft');
-  const reloaded = harness({ initial: raw }); assert.equal(reloaded.api.resume(records[0]), true); const resumedId = reloaded.sampleIds()[0]; reloaded.input(`sample:${resumedId}:name`, 'Updated'); reloaded.submit(); assert.match(reloaded.root.innerHTML, /Reselect an optional reference image/); reloaded.submit(); reloaded.submit();
-  const updated = JSON.parse(reloaded.values.get(REQUEST_DRAFT_KEY)); assert.equal(updated.length, 2); assert.equal(updated[0].id, records[0].id); assert.equal(updated[0].createdAt, records[0].createdAt); assert.equal(updated[0].sample, 'Updated');
-  reloaded.action('saved'); assert.equal(reloaded.openedSaved(), 1);
-});
-
-test('save refuses read/write/silent failures and corrupt lists, preserves fields and makes no success claim', () => {
-  for (const options of [{ readFailure: true }, { writeFailure: true }, { silentWrite: true }, { initial: '{}' }, { initial: '{' }]) {
-    const h = harness(options).validReview(); h.submit(); assert.match(h.root.innerHTML, /could not save/); assert.equal(h.root.querySelector('#rq-saved-title'), null); assert.equal(h.focused(), 'rq-errors'); h.step(1); assert.equal(h.field(`sample:${h.sampleIds()[0]}:name`).value, 'Synthetic sample');
-  }
-});
-
-test('a throwing localStorage getter is accessed lazily inside Save, not controller creation', () => {
-  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage'); let reads = 0;
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { reads++; throw Error('Synthetic SecurityError'); } });
-  try { const h = harness({ lazyStorage: true }).validReview(); assert.equal(reads, 0); h.submit(); assert.equal(reads, 1); assert.match(h.root.innerHTML, /could not save/); }
-  finally { if (original) Object.defineProperty(globalThis, 'localStorage', original); else delete globalThis.localStorage; }
-});
-
-test('trimmed request UI hides historical fields but Resume and Save preserve their canonical values', () => {
-  for (const recipient of ['', 'Retained recipient']) {
-    const state = newSubmission('historical');
-    Object.assign(state, { name: 'Original contact', email: 'qa@example.invalid', company: ' Historical Lab ', reportRecipient: recipient });
-    Object.assign(state.samples[0], { name: 'Historical sample', batch: ' LOT-42 ', amount: ' 80 mg ' });
-    const record = createRequestRecord(state, { id: 'AN-REQ-HISTORICAL', createdAt: '2026-11-05T00:00:00.000Z' });
-    const h = harness({ initial: JSON.stringify([record]) });
-    assert.equal(h.api.resume(record), true);
-    assert.equal(h.root.querySelector('[data-rq-field="sample:historical:batch"]'), null);
-    assert.equal(h.root.querySelector('[data-rq-field="sample:historical:amount"]'), null);
-    assert.ok(!/Batch or lot|Stated amount/.test(h.root.innerHTML));
-    h.input('sample:historical:name', 'Updated visible sample');
-    h.submit();
-    assert.equal(h.root.querySelector('[data-rq-field="company"]'), null);
-    assert.equal(h.field('reportRecipient').value, recipient);
-    assert.match(h.root.innerHTML, /Report recipient name/);
-    assert.match(h.root.innerHTML, /If left blank, your contact name will be used/);
-    h.input('name', 'Updated contact');
-    h.submit();
-    assert.ok(!/<dt>Company<|<dt>Batch \/ lot<|<dt>Stated amount</.test(h.root.innerHTML));
-    assert.ok(!/Historical Lab|LOT-42|80 mg/.test(h.root.innerHTML));
-    assert.ok(h.root.innerHTML.includes(recipient || 'Updated contact'));
-    h.submit();
-    const saved = JSON.parse(h.values.get(REQUEST_DRAFT_KEY));
-    assert.equal(saved.length, 1); assert.equal(saved[0].id, record.id); assert.equal(saved[0].createdAt, record.createdAt);
-    assert.equal(saved[0].company, record.company); assert.equal(saved[0].samples[0].batch, record.samples[0].batch); assert.equal(saved[0].samples[0].amount, record.samples[0].amount);
-    assert.equal(saved[0].reportRecipient, recipient); assert.equal(saved[0].name, 'Updated contact'); assert.equal(saved[0].sample, 'Updated visible sample');
-  }
-  const fresh = harness().validReview(); fresh.submit(); const value = JSON.parse(fresh.values.get(REQUEST_DRAFT_KEY))[0];
-  assert.equal(value.company, ''); assert.equal(value.samples[0].batch, ''); assert.equal(value.samples[0].amount, '');
-});
-
-
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const userA = { id: 'user-a' }, userB = { id: 'user-b' };
 const documentFor = (record, revision = 1) => ({ id: 'doc-a', revision, record, createdAt: '2026-11-07T00:00:00.000Z', updatedAt: '2026-11-07T00:00:00.000Z' });
@@ -201,10 +142,10 @@ const documentFor = (record, revision = 1) => ({ id: 'doc-a', revision, record, 
 test('account save waits for durable acknowledgement, blocks duplicates and never writes local drafts', async () => {
   const calls = []; let acknowledge;
   const h = harness({ accountEnabled: true, accountUser: userA, saveAccountDraft(record, metadata) { calls.push({ record: structuredClone(record), metadata }); return new Promise(resolve => { acknowledge = resolve; }); } }).validReview();
-  h.submit(); assert.equal(calls.length, 1); assert.match(h.root.innerHTML, /Saving…/); assert.equal(h.query('#request-step-form').getAttribute('aria-busy'), 'true');
+  h.submit(); assert.equal(calls.length, 1); assert.match(h.root.innerHTML, /Submitting…/); assert.equal(h.query('#request-step-form').getAttribute('aria-busy'), 'true');
   h.submit(); assert.equal(calls.length, 1); assert.equal(h.writes.length, 0); assert.equal(h.root.querySelector('#rq-saved-title'), null);
   acknowledge(documentFor(calls[0].record)); await settle();
-  assert.match(h.root.innerHTML, /Saved to your account/); assert.equal(h.writes.length, 0); assert.equal(calls[0].metadata.ownerId, userA.id);
+  assert.match(h.root.innerHTML, /Request submitted/); assert.equal(h.writes.length, 0); assert.equal(calls[0].metadata.ownerId, userA.id);
 });
 
 test('lost create acknowledgement replays identical frozen POST then updates latest edits in the same document', async () => {
@@ -221,7 +162,7 @@ test('lost create acknowledgement replays identical frozen POST then updates lat
   h.step(1); h.input(`sample:${h.sampleIds()[0]}:name`, 'Latest edited sample'); h.step(3); h.submit(); await settle();
   assert.equal(calls.length, 3); assert.deepEqual(calls[0].record, calls[1].record); assert.equal(calls[0].metadata.idempotencyKey, calls[1].metadata.idempotencyKey);
   assert.equal(calls[2].record.id, calls[0].record.id); assert.equal(calls[2].record.createdAt, calls[0].record.createdAt); assert.equal(clock, 1);
-  assert.equal(serverDocument.record.sample, 'Latest edited sample'); assert.equal(serverDocument.revision, 2); assert.match(h.root.innerHTML, /Saved to your account/); assert.equal(h.writes.length, 0);
+  assert.equal(serverDocument.record.details.samples[0].name, 'Latest edited sample'); assert.equal(serverDocument.revision, 2); assert.match(h.root.innerHTML, /Request submitted/); assert.equal(h.writes.length, 0);
 });
 
 test('cloud failures preserve entered values and destination without silent device fallback', async () => {
@@ -242,19 +183,41 @@ test('same-user relogin retains pending intent, while owner switch and logout wi
   h.api.setAccountSession(null, 'logout'); assert.equal(h.writes.length, 0);
 });
 
-test('device resume stays local for a signed-in user; explicit destination is required to import', async () => {
-  const record = createRequestRecord(Object.assign(newSubmission('sample-old'), { name: 'Local person', email: 'local@example.invalid', samples: [{ ...newSubmission('sample-old').samples[0], name: 'Local sample' }] }), { id: 'AN-REQ-LOCAL', createdAt: '2026-11-05T00:00:00.000Z' });
-  const initial = JSON.stringify([record]); let uploads = 0;
-  const h = harness({ initial, accountEnabled: true, accountUser: userA, saveAccountDraft: async value => { uploads++; return documentFor(value); } });
-  assert.equal(uploads, 0); assert.equal(h.api.resume(record), true); h.submit(); h.submit(); h.submit();
-  assert.equal(uploads, 0); assert.match(h.root.innerHTML, /Saved on this device/);
-  h.destination('account'); h.submit(); await settle(); assert.equal(uploads, 1); assert.equal(JSON.parse(h.values.get(REQUEST_DRAFT_KEY)).length, 1);
-});
-
 test('navigation aborts UI acknowledgement while retaining the frozen intent for safe retry', async () => {
   const calls = []; let acknowledge;
   const h = harness({ accountEnabled: true, accountUser: userA, saveAccountDraft: (record, metadata) => { calls.push({ record: structuredClone(record), metadata }); return new Promise(resolve => { acknowledge = resolve; }); } }).validReview();
   h.submit(); h.api.suspend(); assert.equal(h.root.innerHTML, ''); assert.equal(calls[0].metadata.signal.aborted, true);
   acknowledge(documentFor(calls[0].record)); await settle(); assert.equal(h.root.innerHTML, '');
   h.api.activate(); h.submit(); assert.equal(calls.length, 2); assert.deepEqual(calls[0].record, calls[1].record); assert.equal(calls[0].metadata.idempotencyKey, calls[1].metadata.idempotencyKey);
+});
+
+test('testing guests and disabled mode cannot submit or access any legacy browser storage', async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage'); let reads = 0;
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { reads++; throw Error('Legacy keys must remain untouched'); } });
+  try {
+    const guest = harness({ accountUser: null }).start('identity'); assert.match(guest.root.innerHTML, /Checking your account/); guest.api.setAccountSession(null); assert.match(guest.root.innerHTML, /Sign in to submit/);
+    guest.api.setAccountSession(userA); assert.equal(guest.field('sample:' + guest.sampleIds()[0] + ':service').value, 'identity');
+    const disabled = harness({ accountEnabled: false }).start(); assert.match(disabled.root.innerHTML, /unavailable/); assert.equal(disabled.root.querySelector('#request-step-form'), null);
+    const ready = harness().validReview(); ready.submit(); await settle(); assert.match(ready.root.innerHTML, /Request submitted/); assert.equal(reads, 0);
+    assert.doesNotMatch(ready.root.innerHTML, /Save draft|This device|data-rq-destination/);
+  } finally { if (original) Object.defineProperty(globalThis, 'localStorage', original); else delete globalThis.localStorage; }
+});
+
+test('legacy account review explicitly converts to v3 with original identity, revision and hidden historical fields', async () => {
+  const state = newSubmission('historical'); Object.assign(state, {name:'Original',email:'fixture@example.invalid',company:'Retained company'}); Object.assign(state.samples[0],{name:'Historical',batch:'LOT-42',amount:'80 mg'});
+  const record=createRequestRecord(state,{id:'AN-REQ-HISTORICAL',createdAt:'2026-11-05T00:00:00.000Z'}); const before=JSON.stringify(record); const calls=[];
+  const h=harness({saveAccountDraft:async (value,metadata)=>{calls.push({value,metadata});return documentFor(value,2);}});
+  assert.equal(h.api.resume(record),false);
+  assert.equal(h.api.resume(record,{id:'doc-a',revision:1,ownerId:userA.id}),true); h.submit();h.submit();h.submit();await settle();
+  assert.equal(calls.length,1);assert.equal(calls[0].metadata.expectedRevision,1);assert.equal(calls[0].value.version,3);assert.equal(calls[0].value.id,record.id);assert.equal(calls[0].value.details.company,'Retained company');assert.equal(calls[0].value.details.samples[0].batch,'LOT-42');assert.equal(JSON.stringify(record),before);
+});
+
+test('testing rejects altered acknowledgement identity, revision and payload before success', async () => {
+  for (const alter of [doc=>({...doc,revision:2}),doc=>({...doc,record:{...doc.record,status:'Accepted'}}),doc=>({...doc,record:{...doc.record,id:'AN-REQ-OTHER'}})]) {
+    const h=harness({saveAccountDraft:async record=>alter(documentFor(record))}).validReview(); h.submit(); await settle(); assert.equal(h.root.querySelector('#rq-saved-title'),null); assert.match(h.root.innerHTML,/could not confirm/);
+  }
+});
+
+test('testing session refresh withholds a prior private editor until owner confirmation',()=>{
+ const h=harness().validReview();h.api.checkAccountSession();assert.match(h.root.innerHTML,/Checking your account/);assert.doesNotMatch(h.root.innerHTML,/Synthetic sample/);h.api.setAccountSession(userB);assert.equal(h.field('sample:'+h.sampleIds()[0]+':name').value,'');
 });

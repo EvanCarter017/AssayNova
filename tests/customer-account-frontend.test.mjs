@@ -1,3 +1,4 @@
+import { createAccountRequest } from '../dist/account-requests.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCustomerAccountClient, safeAccountNext, validAccountPassword, accountDraft, AccountError, accountErrorMessage } from '../dist/customer-account.js';
@@ -20,8 +21,8 @@ const browserFetcher = (active, hook = () => {}) => async (url, options) => {
 
 test('account client is lazy, has strict safe returns and validates Unicode password limits without trimming', () => {
   let calls = 0; createCustomerAccountClient({ fetcher: () => { calls++; } }); assert.equal(calls, 0);
-  for (const path of ['/account', '/submit-sample']) assert.equal(safeAccountNext(path), path);
-  for (const path of ['https://outside.invalid', '//outside.invalid', '/account?x=1', '/account#main', '/%61ccount', '/login', '/account/../submit-sample', '\\account', null]) assert.equal(safeAccountNext(path), '/account');
+  for (const path of ['/account', '/submit-sample', '/contact', '/contact?request=report-recovery']) assert.equal(safeAccountNext(path), path);
+  for (const path of ['https://outside.invalid', '//outside.invalid', '/account?x=1', '/account#main', '/%61ccount', '/login', '/account/../submit-sample', '/contact?request=%72eport-recovery', '/contact?request=report-recovery&email=private', '/contact%3frequest=report-recovery', '/contact#request=report-recovery', '\\account', null]) assert.equal(safeAccountNext(path), '/account');
   assert.equal(validAccountPassword(' '.repeat(15)), true); assert.equal(validAccountPassword('😀'.repeat(128)), true);
   assert.equal(validAccountPassword('short'), false); assert.equal(validAccountPassword('x'.repeat(129)), false); assert.equal(validAccountPassword('x'.repeat(15) + '\ud800'), false);
 });
@@ -37,7 +38,7 @@ test('transport uses same-origin no-store fixed paths and session-bound CSRF; no
     return response({ request: document }, 201);
   } });
   assert.equal(calls.length, 0); const saved = await client.saveDraft(record, { ownerId: user.id, idempotencyKey: 'intent-a' }); assert.deepEqual(saved, document);
-  assert.deepEqual(calls.map(c => c.url), ['/api/account/session', '/api/account/requests']);
+  assert.deepEqual(calls.map(c => c.url), ['/api/account/session', '/api/account/requests', '/api/account/session']);
   for (const call of calls) { assert.equal(call.options.credentials, 'same-origin'); assert.equal(call.options.cache, 'no-store'); assert.equal(call.options.redirect, 'error'); }
   assert.equal(calls[1].options.headers['X-Account-CSRF'], 'synthetic-csrf'); assert.deepEqual(JSON.parse(calls[1].options.body), { record, idempotencyKey: 'intent-a' });
   assert.throws(() => accountDraft({ ...document, record: { ...record, ownerId: 'foreign' } }));
@@ -77,9 +78,9 @@ test('real uppercase API errors keep specific static feedback ahead of status fa
     const saved = await transport.call('/requests', 'POST', { record: draftRecord('Synthetic draft ' + i, 'LIMIT' + i), idempotencyKey: 'frontend-limit-key-' + String(i).padStart(3, '0') });
     assert.equal(saved.status, 201); first ??= saved.data.request;
   }
-  await assert.rejects(client.saveDraft(draftRecord('One too many', 'EXCESS'), { ownerId: created.user.id, idempotencyKey: 'frontend-over-limit-key' }), expectError('DRAFT_LIMIT', /Remove an existing draft/));
+  await assert.rejects(client.saveDraft(draftRecord('One too many', 'EXCESS'), { ownerId: created.user.id, idempotencyKey: 'frontend-over-limit-key' }), expectError('DRAFT_LIMIT', /Remove an existing request/));
   await assert.rejects(client.saveDraft(first.record, { ownerId: created.user.id, id: first.id, expectedRevision: 2 }), error => {
-    assert.equal(error.code, 'revision_conflict'); assert.match(accountErrorMessage(error), /draft has changed/); return true;
+    assert.equal(error.code, 'revision_conflict'); assert.match(accountErrorMessage(error), /request has changed/); return true;
   });
   for (const [code, status] of [['ACCOUNT_EXISTS', 409], ['INVALID_CREDENTIALS', 401], ['INVALID_RECOVERY', 401], ['DRAFT_LIMIT', 409], ['REVISION_CONFLICT', 409]]) {
     assert.equal(new AccountError(code, status).code, code.toLowerCase());
@@ -165,7 +166,7 @@ function domRoot() {
 function pageHarness({ initialUser = null, overrides = {}, clipboard } = {}) {
   const root = domRoot(), navigations = []; let currentUser = initialUser, deviceReads = 0; const listeners = new Set();
   const emit = (value, reason) => { currentUser = value; for (const fn of listeners) fn(value, reason); };
-  const client = { getSession: async () => currentUser, snapshot: () => ({ user: currentUser }), subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }, listDrafts: async () => [],
+  const client = { getSession: async () => currentUser, snapshot: () => ({ user: currentUser }), subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }, listRequests: async () => [],
     signup: async () => { emit(user, 'login'); return { user, recoveryCodes: codes }; }, recover: async () => { emit(null, 'recovered'); return { ok: true, recoveryCodes: codes }; }, ...overrides };
   const page = createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account'].map(path => [path, root])), client, navigate: (...args) => navigations.push(args), onResume() {}, onNewRequest() {}, onDeviceDrafts: () => deviceReads++, clipboard });
   return { root, page, client, emit, navigations, deviceReads: () => deviceReads };
@@ -198,4 +199,20 @@ test('leaving or switching account suppresses pending private page and late clip
   let rejectCopy; const k = pageHarness({ clipboard: () => new Promise((_, reject) => { rejectCopy = reject; }) }); await k.page.activate('/register');
   const form = k.root.querySelector('[data-account-form="register"]'); for (const [name, value] of Object.entries({ email: user.email, name: '', company: '', password: 'synthetic password', confirmPassword: 'synthetic password' })) form.elements.namedItem(name).value = value;
   k.root.emit('submit', form); await tick(); k.root.click('[data-account-action="copy-codes"]'); await tick(); k.emit(null, 'logout'); rejectCopy(Error('Synthetic late rejection')); await tick(); assert.equal(k.root.innerHTML, '');
+});
+
+test('account request tab renders all kinds and legacy truth with escaped details and context-preserving edits',async()=>{
+ const old=draftRecord('<img src=x onerror=alert(1)>','OLD099');
+ const records=[old,createAccountRequest('testing',(({name,email,company,notes,reportRecipient,samples})=>({name,email,company,notes,reportRecipient,samples}))(old),{...old,id:'AN-REQ-TEST099'}),createAccountRequest('contact',{name:'Contact person',email:'fixture@example.invalid',topic:'website',message:'<script>hostile text</script>'},{...old,id:'AN-REQ-CONTACT099'}),createAccountRequest('report-recovery',{email:'fixture@example.invalid',reference:'Recovery project',notes:'Recovery context'},{...old,id:'AN-REQ-RECOVERY099'})];
+ const documents=records.map((record,index)=>({id:'doc-'+index,revision:1,record,createdAt:old.createdAt,updatedAt:old.createdAt}));const root=domRoot(),resumed=[];const client={getSession:async()=>user,snapshot:()=>({user}),subscribe:()=>()=>{},listRequests:async()=>documents};
+ const page=createAccountPage({roots:{'/account':root},client,navigate(){},onResume:(doc,owner)=>resumed.push({doc,owner}),onNewRequest(){}});await page.activate('/account');assert.match(root.innerHTML,/My requests/);assert.match(root.innerHTML,/Saved · Not submitted/);assert.match(root.innerHTML,/Report recovery/);assert.match(root.innerHTML,/Contact/);assert.doesNotMatch(root.innerHTML,/<img src=x|device-drafts/);
+ for(const document of documents){root.click('[data-account-action="details"][data-id="'+document.id+'"]');assert.match(root.innerHTML,/Delete request/);if(document.record.kind==='contact')assert.match(root.innerHTML,/&lt;script&gt;hostile text/);if(document.record.kind==='testing'){assert.match(root.innerHTML,/Purity|Comprehensive/);assert.doesNotMatch(root.innerHTML,/Batch: Not provided|none · branded/);}root.click('[data-account-action="resume"]');assert.equal(resumed.at(-1).doc.id,document.id);assert.equal(resumed.at(-1).owner,user.id);root.click('[data-account-action="back"]');}
+ page.destroy();
+});
+
+test('real API acknowledgement is withheld if the cookie owner changes immediately after a successful write',async t=>{
+ const fixture=await accountFixture();t.after(()=>fixture.close());const a=browser(fixture.base),b=browser(fixture.base);const accountA=await a.signup('write099-a@example.invalid');await b.signup('write099-b@example.invalid');let active=a;
+ const client=createCustomerAccountClient({fetcher:browserFetcher(()=>active,async(route,stage,options)=>{if(route==='/requests'&&options.method==='POST'&&stage==='after')active=b;})});await client.getSession();
+ const record=createAccountRequest('contact',{name:'Only A',email:'a@example.invalid',topic:'other',message:'Private A write'},{id:'AN-REQ-WRITE099',createdAt:'2026-11-07T00:00:00.000Z'});
+ await assert.rejects(client.saveRequest(record,{ownerId:accountA.data.user.id,idempotencyKey:'post-write-owner-099-key'}),error=>error.code==='owner_changed');assert.equal((await a.call('/requests')).data.requests.length,1);assert.equal((await b.call('/requests')).data.requests.length,0);assert.equal(client.snapshot().user.id,(await b.call('/session')).data.user.id);
 });

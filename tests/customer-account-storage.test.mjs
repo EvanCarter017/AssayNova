@@ -1,3 +1,4 @@
+import { createAccountRequest, requestStatus } from '../dist/account-requests.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -58,4 +59,14 @@ test('default-on account configuration preserves explicit static opt-out and a D
   for (const address of ['127.tenant.example', '127.evil', '::ffff:127.evil', '192.168.example']) { assert.equal(loopback(address), false); assert.equal(privatePeer(address), false); }
   for (const address of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) assert.equal(loopback(address), true);
   assert.throws(() => accountConfiguration({ argv: ['--account-origin=http://127.tenant.example:4317'], env: {}, bindAddress: '127.0.0.1', port: 4317 }), /limited to local/);
+});
+
+test('schema one stores v3 beside exact legacy JSON and reopening never rewrites or promotes old records',async t=>{
+ const f=await accountFixture();const a=browser(f.base);await a.signup('legacy099@example.invalid');const legacy=draftRecord('Legacy saved request','LEGACY099');legacy.notes='  exact old representation  ';
+ const old=(await a.call('/requests','POST',{record:legacy,idempotencyKey:'legacy099-preserved-key'})).data.request;
+ const submitted=createAccountRequest('contact',{name:'Fixture',email:'fixture@example.invalid',topic:'website',message:'Submitted contact'}, {id:'AN-REQ-CONTACT099',createdAt:'2026-11-07T00:00:00.000Z'});
+ assert.equal((await a.call('/requests','POST',{record:submitted,idempotencyKey:'legacy099-new-contact-key'})).status,201);await f.close();
+ const db=new DatabaseSync(path.join(f.directory,'accounts.sqlite'),{readOnly:true});assert.equal(db.prepare('PRAGMA user_version').get().user_version,1);const before=db.prepare('SELECT record_json FROM account_requests WHERE id=?').get(old.id).record_json;db.close();assert.equal(before,JSON.stringify(legacy));
+ const restarted=await accountFixture({directory:f.directory});t.after(()=>restarted.close());const login=browser(restarted.base);await login.call('/session');assert.equal((await login.call('/login','POST',{email:'legacy099@example.invalid',password:fixturePassword})).status,200);const records=(await login.call('/requests')).data.requests;assert.equal(records.length,2);const preserved=records.find(doc=>doc.id===old.id);assert.equal(JSON.stringify(preserved.record),before);assert.equal(requestStatus(preserved.record),'Saved · Not submitted');
+ const canonical=(({name,email,company,notes,reportRecipient,samples})=>({name,email,company,notes,reportRecipient,samples}))(legacy);const converted=createAccountRequest('testing',canonical,legacy);const updated=await login.call('/requests/'+old.id,'PUT',{record:converted,expectedRevision:1});assert.equal(updated.status,200);assert.equal(updated.data.request.id,old.id);assert.equal(updated.data.request.revision,2);assert.equal(updated.data.request.record.status,'Submitted');
 });

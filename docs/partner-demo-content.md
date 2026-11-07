@@ -1,6 +1,6 @@
 # Contact details and enquiry handling
 
-AssayNova contact addresses and service information are maintained below. The Contact page provides local enquiry preparation and native email links; website message delivery is a separate integration.
+AssayNova contact addresses and service information are maintained below. The Contact page provides signed-in account enquiries and native email links. Email delivery remains a separate integration.
 
 ## Current contact configuration
 
@@ -15,24 +15,18 @@ Keep visible addresses and their mailto hrefs aligned when changing configuratio
 
 The homepage and testing pages use the existing ~1 Week Turnaround estimate. Practical sample requirements, service scope, turnaround and pricing are confirmed with the laboratory; the estimate is not a delivery guarantee.
 
-## Contact enquiry draft
+## Account enquiries and recovery
 
-Contact us provides Name, Email, Topic and Message fields with explicit Save draft, Copy message, Restore saved draft and Clear saved draft controls. One version-1 record is stored in `assaynova.contact.enquiry.v1` only after Save draft and verified read-back. Input and SPA navigation do not persist it. Restore reads only on request; Clear removes only this key and retains current inputs. Copy prepares complete plain text without saving, and failed clipboard access exposes the full manual-copy field. No action sends a message or grants optional consent.
+Contact us submits Name, Email, Topic and Message through the signed-in account with Submit message. Nova Support submits testing email, company/project and optional context with Submit recovery request. Testing retains its three-step review and Submit request action. All three appear in My requests with view, edit and delete. Their Submitted status acknowledges durable platform storage only; no email, staff notification or laboratory processing is simulated.
 
-The draft remains until Clear saved draft on Contact us or browser site-data clearing, with no automatic expiry. Static controls have no name attributes and remain disabled until the controller installs its handlers, avoiding native GET disclosure if boot fails.
+New records use strict version-3 envelopes. Older account version-2 records display Saved · Not submitted and require explicit review/resubmission. The server preserves ownership, reference, creation time, kind and revisions. No email/company matching attaches reports. Support requests never perform COA lookup; manual identity verification remains necessary.
 
-## Sample requests and report recovery
+Existing browser values in assaynova.prototype.requests.v1, assaynova.contact.enquiry.v1 and assaynova.support.recovery.v1 remain untouched and are no longer accessed by active forms. Save, copy, restore, clear, device destination and import actions have been removed. No automatic upload occurs. Browser site-data clearing can remove the old values; privacy choices never read or delete them. Optional reference images are local previews and are not uploaded or persisted.
 
-The independent sample request flow saves only on its final Save request action, using `assaynova.prototype.requests.v1` with up to 50 drafts. Existing records, version-2 multi-sample requests and legacy IDs stay compatible. Drafts remain on this device until browser site-data clearing; image files, filenames and preview URLs are not saved. Saving does not submit to a laboratory, verify an email address or send email.
+Static contact and dynamically created recovery submit controls remain disabled until the account-aware controller binds them. Private fields have no native form names, preventing accidental GET disclosure on failed boot. Request editing and retries keep details in memory for the same owner, clear on logout/account replacement and ignore late results after navigation/close.
 
-Nova Support prepares a report recovery request from the original testing email, company or project name and optional context. Save draft stores one versioned record in `assaynova.support.recovery.v1`; Copy request prepares the current text without saving. Clear saved draft removes only that recovery record. It remains until that clear action or browser site-data clearing. No ticket is created and no report is automatically matched or disclosed; additional verification may be needed.
+## Delivery and validation
 
-These three local draft keys are independent. Privacy choices neither read their contents nor remove them. Public sample COA records retain their fictional-data and not-valid-certificate disclosures.
+The existing account API and SQLite schema-1 JSON column persist submitted requests. No mail provider or laboratory integration is configured. Native mailto links remain available independently. See [email-notifications.md](email-notifications.md) for the actual boundaries. Optional consent behavior is unchanged.
 
-## Future delivery integration
-
-No provider, send API, request backend, database, authentication or delivery state is implemented. Adding delivery requires separately authorized server-side validation and storage, explicit customer submission, truthful outcomes, retries, failure handling and server-only secrets; see [email-notifications.md](email-notifications.md). Do not automatically upload or send an existing device draft. Optional marketing consent does not authorize transactional request handling.
-
-## Verification boundary
-
-Production-handler tests use synthetic, ephemeral drafts. Live browser review covers presentation and navigation without mailto activation or Save, Copy, Restore or Clear actions. Isolated QA may use synthetic contact values to verify those local controls, then clears only its test draft through the UI.
+Tests and browser review use fabricated accounts, synthetic fields and explicit disposable account/report directories. Actual customer records, account credentials, report stores and administrator data are never used for acceptance checks.

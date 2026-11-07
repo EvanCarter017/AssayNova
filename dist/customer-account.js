@@ -1,7 +1,7 @@
-import { parseRequestRecord } from './submission.js';
+import { parseAccountRequest, createAccountRequest, requestKind } from './account-requests.js';
 
 // Customer-only transport. Importing this module has no DOM/storage/network I/O.
-export const safeAccountNext = value => ['/account', '/submit-sample'].includes(value) ? value : '/account';
+export const safeAccountNext = value => ['/account', '/submit-sample', '/contact', '/contact?request=report-recovery'].includes(value) ? value : '/account';
 const opaque = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const iso = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT/.test(value) && Number.isFinite(Date.parse(value));
 export function validAccountPassword(value) {
@@ -17,8 +17,8 @@ export function accountUser(value) {
   if (!value || !opaque(value.id) || typeof value.email !== 'string' || value.email.length > 160 || value.emailVerified !== false || typeof value.name !== 'string' || value.name.length > 100 || typeof value.company !== 'string' || value.company.length > 160) throw new AccountError('invalid_response');
   return { id: value.id, email: value.email, emailVerified: false, name: value.name, company: value.company };
 }
-export function accountDraft(value) {
-  const record = parseRequestRecord(value?.record);
+export function accountRequest(value) {
+  const record = parseAccountRequest(value?.record);
   if (!value || !opaque(value.id) || !Number.isSafeInteger(value.revision) || value.revision < 1 || !record || !iso(value.createdAt) || !iso(value.updatedAt)) throw new AccountError('invalid_response');
   return { id: value.id, revision: value.revision, record, createdAt: value.createdAt, updatedAt: value.updatedAt };
 }
@@ -26,11 +26,11 @@ export class AccountError extends Error {
   constructor(code = 'request_failed', status = 0) { super('Customer account request could not be completed.'); this.name = 'AccountError'; this.code = typeof code === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(code) ? code.toLowerCase() : 'request_failed'; this.status = status; }
 }
 export function accountErrorMessage(error) {
-  const message = ({ invalid_credentials: 'The email and password could not be confirmed.', invalid_recovery: 'Those recovery details could not be confirmed.', recovery_failed: 'Those recovery details could not be confirmed.', account_exists: 'An account could not be created with these details. Try signing in or use account recovery.', email_exists: 'An account could not be created with these details. Try signing in or use account recovery.', draft_limit: 'Your account already has 50 drafts. Remove an existing draft before saving another.', revision_conflict: 'This draft has changed. Your details are still here. Reopen it from My account before replacing a newer version.', idempotency_conflict: 'This save reference already has different details. Your details are still here. Reopen the saved draft from My account.', request_deleted: 'This saved draft was deleted. Your details are still here. Open My account before starting a new save.', request_not_found: 'This draft is no longer available. Open My account to see your current drafts.', account_changed: 'Account security changed. Please sign in again before continuing.', invalid_password: 'Use a password of 15–128 characters.', invalid_input: 'Check the details and try again.', validation_error: 'Check the details and try again.', invalid_record: 'Check the request draft details and try again.', invalid_revision: 'Reopen the draft from My account before saving again.', invalid_response: 'We could not confirm the saved result. Please retry safely.', owner_changed: 'The signed-in account changed. Open the draft again from My account.', network: 'The connection did not confirm the result. Your details are still here; retrying will not create another draft.', aborted: 'The result was not confirmed here. Check My account or retry the save safely.', unavailable: 'Account access is unavailable in this view.' })[error?.code];
+  const message = ({ invalid_credentials: 'The email and password could not be confirmed.', invalid_recovery: 'Those recovery details could not be confirmed.', recovery_failed: 'Those recovery details could not be confirmed.', account_exists: 'An account could not be created with these details. Try signing in or use account recovery.', email_exists: 'An account could not be created with these details. Try signing in or use account recovery.', draft_limit: 'Your account already has 50 requests. Remove an existing request before submitting another.', revision_conflict: 'This request has changed. Your details are still here. Reopen it from My account before replacing a newer version.', idempotency_conflict: 'This submission reference already has different details. Your details are still here. Reopen the request from My account.', request_deleted: 'This request was deleted. Your details are still here. Open My account before starting a new request.', request_not_found: 'This request is no longer available. Open My account to see your current requests.', account_changed: 'Account security changed. Please sign in again before continuing.', invalid_password: 'Use a password of 15–128 characters.', invalid_input: 'Check the details and try again.', validation_error: 'Check the details and try again.', invalid_record: 'Check the request details and try again.', invalid_revision: 'Reopen the request from My account before submitting again.', invalid_response: 'We could not confirm the submitted result. Please retry safely.', owner_changed: 'The signed-in account changed. Open the request again from My account.', network: 'The connection did not confirm the result. Your details are still here; retrying will not create another request.', aborted: 'The result was not confirmed here. Check My account or retry the submission safely.', unavailable: 'Account access is unavailable in this view.' })[error?.code];
   if (message) return message;
   if (error?.status === 429) return 'Too many attempts. Please wait a moment and try again.';
   if (error?.status === 401) return 'Please sign in again. Your unsaved details are still here.';
-  if (error?.status === 409) return 'This draft has changed or was already saved. Your details are still here. Reopen it from My account before replacing a newer version.';
+  if (error?.status === 409) return 'This request has changed or was already submitted. Your details are still here. Reopen it from My account before replacing a newer version.';
   if (error?.status === 403) return 'Your sign-in check expired. Please retry the action.';
   return 'We could not complete that action. Please check your details and try again.';
 }
@@ -97,7 +97,7 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     await confirmOwner(ownerId, options);
     return value;
   }
-  return Object.freeze({
+  const client = {
     getSession, snapshot: () => ({ user, loaded }), subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     signup: (values, options) => authenticate('/signup', values, options), login: (values, options) => authenticate('/login', values, options),
     async logout(all = false, options) { const ticket = ++revision; const value = await mutate(all ? '/logout-all' : '/logout', {}, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'logout'); },
@@ -106,14 +106,59 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     async password(values, options) { const ticket = ++revision; const value = await mutate('/password', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response'); setSession(value.user, value.csrfToken, 'password'); return user; },
     async recoveryCodes(values, options) { const ticket = revision; const value = await mutate('/recovery-codes', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken === 'string') csrf = value.csrfToken; return value; },
     async listDrafts(options) { const value = await readOwnedDrafts('/requests', options); if (!Array.isArray(value.requests) || value.requests.length > 50) throw new AccountError('invalid_response'); return value.requests.map(accountDraft); },
-    async getDraft(id, options) { return accountDraft((await readOwnedDrafts(idPath(id), options)).request); },
+    async getDraft(id, options) { return accountRequest((await readOwnedDrafts(idPath(id), options)).request); },
     async saveDraft(record, { id, expectedRevision, idempotencyKey, ownerId, signal } = {}) {
       // Session-bound CSRF also prevents a cookie changed in another tab from
       // accepting the previous owner's body between this check and the write.
       const current = await getSession({ signal });
       if (!current || current.id !== ownerId) throw new AccountError('owner_changed');
-      return accountDraft((await mutate(id ? idPath(id) : '/requests', id ? { record, expectedRevision } : { record, idempotencyKey }, { signal }, id ? 'PUT' : 'POST')).request);
+      const value = await mutate(id ? idPath(id) : '/requests', id ? { record, expectedRevision } : { record, idempotencyKey }, { signal }, id ? 'PUT' : 'POST');
+      await confirmOwner(ownerId, { signal });
+      return accountRequest(value.request);
     },
     async deleteDraft(id, expectedRevision, options) { const ownerId = user?.id; await confirmOwner(ownerId, options); const value = await mutate(idPath(id), { expectedRevision }, options, 'DELETE'); if (value.ok !== true) throw new AccountError('invalid_response'); }
+  };
+  client.listRequests = client.listDrafts; client.getRequest = client.getDraft; client.saveRequest = client.saveDraft; client.deleteRequest = client.deleteDraft;
+  return Object.freeze(client);
+}
+
+export const accountDraft = accountRequest;
+
+// One in-memory intent state machine for all forms. A lost acknowledgement is
+// replayed exactly before applying current edits with the acknowledged revision.
+export function createSubmissionIntent({ save, makeId = () => crypto.randomUUID(), now = () => new Date().toISOString() }) {
+  let reference = null, remote = null, pending = null, owner = null, busy = false, generation = 0;
+  return Object.freeze({
+    cancel() { generation++; busy = false; },
+    reset() { generation++; reference = remote = pending = owner = null; busy = false; },
+    resume(document, ownerId) { generation++; const doc = accountRequest(document); reference = { id: doc.record.id, createdAt: doc.record.createdAt }; remote = { ...doc, ownerId }; pending = null; owner = ownerId; },
+    async submit(kind, details, ownerId, { signal, current = () => true } = {}) {
+      if (busy) throw new AccountError('aborted');
+      if (!ownerId || owner && owner !== ownerId) throw new AccountError('owner_changed');
+      owner = ownerId;
+      if (remote && requestKind(remote.record) !== kind) throw new AccountError('invalid_record');
+      if (!reference) reference = { id: 'AN-REQ-' + makeId().toUpperCase().slice(0, 64), createdAt: now() };
+      const latest = createAccountRequest(kind, details, reference);
+      if (!remote && !pending) pending = { record: latest, key: 'request-' + makeId(), ownerId };
+      busy = true; const ticket = generation;
+      const check = () => { if (ticket !== generation || signal?.aborted || !current() || owner !== ownerId) throw new AccountError('aborted'); };
+      try {
+        if (!remote) {
+          const attempt = pending;
+          const ack = accountRequest(await save(attempt.record, { ownerId, idempotencyKey: attempt.key, signal }));
+          check();
+          if (ack.revision !== 1 || JSON.stringify(ack.record) !== JSON.stringify(attempt.record)) throw new AccountError('invalid_response');
+          remote = { ...ack, ownerId }; pending = null;
+        }
+        if (JSON.stringify(latest) !== JSON.stringify(remote.record)) {
+          const previous = remote;
+          const ack = accountRequest(await save(latest, { id: previous.id, expectedRevision: previous.revision, ownerId, signal }));
+          check();
+          if (ack.id !== previous.id || ack.revision !== previous.revision + 1 || JSON.stringify(ack.record) !== JSON.stringify(latest)) throw new AccountError('invalid_response');
+          remote = { ...ack, ownerId };
+        }
+        check(); return remote;
+      } finally { if (ticket === generation) busy = false; }
+    }
   });
 }

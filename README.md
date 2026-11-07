@@ -69,8 +69,8 @@ node server.mjs --host=0.0.0.0 --port=4318 --conference-reports --admin-proxy=ht
 - 原生 History API 单页导航：Home、Testing Methods、About us、Verify COA、Contact us 为独立视图。普通站内导航保留同一文档；修饰键、新标签页、下载、外链和未知路径仍由浏览器原生处理。
 - COA Lookup Code 精确查询：`AN-7K9Q-2M4X` 与 `AN-8P6R-3N5Y` 分别打开不同的公开样例报告页。支持大小写和首尾空格处理，不做模糊匹配或默认首条回退。
 - 独立报告页、浏览器前进/后退、打印 / 保存示例 PDF、复制当前查找码或同源报告链接；剪贴板失败时显示可全选的手动复制文本。
-- 请求表单提供明确的 Account / This device 草稿保存位置。账户草稿由当前登录用户拥有；设备草稿保留原有浏览器保存、恢复与详情，不会因登录自动上传。保存草稿不等于送检或邮件发送。
-- Contact us 提供本地咨询表单，配置 `hello@assaynova.com`、`reports@assaynova.com`、办公时间与响应估计。`mailto` 交给外部邮件客户端，网站表单只保存或复制草稿；[联系配置与咨询处理说明](docs/partner-demo-content.md) 记录当前行为。
+- Testing、Contact us 和 Nova Support 统一要求确认登录后显式提交，记录持久保存在当前账户的 My requests 中，可查看、编辑和确认删除。Submitted 仅表示平台 API 已持久接收，不代表邮件送达或实验室受理。
+- Contact us 提供账户咨询提交，并保留配置的 hello@assaynova.com、reports@assaynova.com 联系方式、办公时间与响应估计。mailto 仍交给外部邮件客户端；[联系配置与咨询处理说明](docs/partner-demo-content.md) 记录实际行为。
 - 可直接访问 `/coa/AN-7K9Q-2M4X` 或 `/coa/AN-8P6R-3N5Y` 并刷新。旧链接 `/?coa=AN-2026-0042` 仅在这个显式兼容入口识别旧报告编号，并替换为对应的规范查找码 URL。
 - 键盘操作、焦点管理、减少动态效果的系统偏好支持。
 - 未实现用户参考图中的价格动画，遵循用户最新要求。
@@ -95,27 +95,29 @@ COA Lookup Code 与报告编号、送检请求编号是不同的标识。普通�
 | 路径 | 独立视图 |
 | --- | --- |
 | `/` | Home：品牌介绍、流程、公开样例报告与 FAQ |
-| `/testing-methods` | 完整检测服务与请求草稿入口 |
+| `/testing-methods` | 完整检测服务与账户请求入口 |
 | `/about` | 现有服务介绍与报告访问说明 |
 | `/verify` | 完整 COA Lookup Code 查找表单 |
-| `/contact` | 姓名、邮箱、主题、留言咨询表单；显式保存/复制/恢复/清除本地草稿，联系信息与请求/报告恢复/查询快捷入口 |
-| `/submit-sample` | 三步独立请求页：检测与样品、联系与报告要求、复核后保存本地草稿 |
-| `/account` | 账户资料、密码、安全与自己的请求草稿 |
+| `/contact` | 姓名、邮箱、主题、留言咨询表单；登录后显式提交到 My requests，保留公开联系信息与 COA 查询入口 |
+| `/submit-sample` | 三步独立请求页：检测与样品、联系与报告要求、复核后提交到账户 |
+| `/account` | 账户资料、密码、安全与自己的全部请求 |
 | `/login`、`/register`、`/recover-account` | 登录、注册与一次性恢复码重设密码 |
 
 这些路径均支持直接打开、刷新、前进/后退与 GET/HEAD。末尾斜杠在客户端归一化；重复选择当前页面不会新增历史记录。常规导航更新页面标题、可见视图和两个导航菜单的 `aria-current`，并聚焦新页面标题；前进/后退不强制滚到顶部，保留浏览器默认滚动恢复。
 
-旧 `/#testing`、`/#verify` 会转到 `/testing-methods`、`/verify`，旧链接点击只增加一个规范历史条目。`/#process` 仍定位首页流程，`#main` 跳过导航链接保持原生行为。有效的旧 `/?coa=报告编号` 进入对应 COA；未知旧编号进入 Verify COA 并显示提示。请求入口进入 `/submit-sample`；Saved drafts 与 Nova Support 仍使用弹窗。History 导航关闭旧弹窗，隐私控制器在页面切换中保留单一实例和既有选择。
+旧 `/#testing`、`/#verify` 会转到 `/testing-methods`、`/verify`，旧链接点击只增加一个规范历史条目。`/#process` 仍定位首页流程，`#main` 跳过导航链接保持原生行为。有效的旧 `/?coa=报告编号` 进入对应 COA；未知旧编号进入 Verify COA 并显示提示。请求入口进入 `/submit-sample`；My requests 进入账户页；Nova Support 登录确认后使用弹窗，恢复意图标记不包含个人信息并在打开前清除。History 导航关闭旧弹窗，隐私控制器在页面切换中保留单一实例和既有选择。
 
 页面白名单位于 `dist/routes.js`，浏览器与本地服务器共用。将来增加页面需同步维护视图、标题、导航和 HTTP 测试；实际部署托管需配置同样精确的路径重写与 404 状态规则。当前使用原生 Node HTTP、SQLite 与浏览器模块，没有框架或第三方路由依赖。
 
-当前固定报告内容是公开的虚构样例，不是有效检测报告。设备草稿保存在当前浏览器的 localStorage（最多 50 条），账户草稿显式保存在登录用户的服务端空间（最多 50 条）；两者都不会发送给实验室。新草稿引用使用 `AN-REQ-*`；保留既有存储键和旧 `AN-DEMO-*` 草稿，不清空旧记录。Version 2 草稿支持 1–10 个样品条目，每条计划数量 1–100；保存后可 Resume editing 并更新原引用。产品图偏好会保存，本地图片预览不上传、不保存文件、文件名或 blob URL。输入和页面导航不自动保存。
+当前固定报告内容是公开的虚构样例，不是有效检测报告。新 UI 仅创建严格的 version 3 账户请求，种类为 testing、contact、report-recovery。每个账户最多 50 条请求；引用为 AN-REQ-*，重试复用冻结的引用、时间、幂等键和载荷，后续修改使用版本号。旧账户 version 2 记录显示 Saved · Not submitted，显式复核提交后才转换，保留原引用、创建时间、服务端 ID 与请求种类。SQLite schema 1 无需迁移。
 
-设备 Saved drafts 只列出本浏览器保存的记录；My account 列出当前账户自己的服务端草稿，两者不会自动合并，也没有由邮箱匹配出的私人报告列表。Contact us 的咨询草稿只在显式 Save draft 后写入 `assaynova.contact.enquiry.v1`，Copy message 不保存，Restore 仅在点击时读取，Clear 只清除该键并保留当前输入。静态 mailto 链接使用配置的 AssayNova.com 联系地址，与草稿或站内请求交付无关。邮件服务与送检投递仍未实现；后续接入边界见 `docs/email-notifications.md`。
+既有三个浏览器键 assaynova.prototype.requests.v1、assaynova.contact.enquiry.v1、assaynova.support.recovery.v1 保留原字节，活动表单不再读取、保存、恢复、清除或上传；旧入口安全转到账户。浏览器站点数据清除可由用户自行处理。无设备保存位置或自动导入。产品图仅作本地预览；只提交图像偏好与样式，不上传文件、文件名或 blob URL。未提交输入仅留在当前页面内存，同账户会话过期可安全重试；退出或换账户清除私人编辑内容。
+
+My requests 不会按邮箱、姓名或公司匹配私人报告。报告恢复请求需人工身份核实，不执行 COA 搜索或自动恢复。静态 mailto 链接、公开 COA 与隐私偏好行为保持不变。邮件、实验室处理和物流未接入；边界详见 docs/email-notifications.md。
 
 本站面向 AssayNova。当前样例记录不构成身份验证、签发或访问控制后端；真实报告需在服务端查询实际已发布记录，并明确修订、撤回等状态。后续接入实际资料时应保持已分配查找码稳定。
 
-当前账户与数据库用于身份和请求草稿，不包含支付、样品物流或实验室系统接入。服务范围、样品要求、报价、时效和实验室资质仍需以实际资料确认；页面不把保存草稿描述为已提交实验室。联系地址、办公时间与响应估计作为站点配置维护，详见[联系配置与咨询处理说明](docs/partner-demo-content.md)；配置地址不代表网站已启用邮件投递。
+当前账户与数据库用于身份和账户请求，不包含支付、样品物流或实验室系统接入。服务范围、样品要求、报价、时效和实验室资质仍需以实际资料确认；页面不把平台持久接收描述为实验室已受理。联系地址、办公时间与响应估计作为站点配置维护，详见[联系配置与咨询处理说明](docs/partner-demo-content.md)；配置地址不代表网站已启用邮件投递。
 
 ## 文件
 

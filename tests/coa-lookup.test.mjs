@@ -13,6 +13,9 @@ import { SAMPLE_REPORT_DATA } from '../dist/reports/sample-data.js';
 import * as pageData from '../dist/routes.js';
 import * as supportData from '../dist/support.js';
 import * as submissionData from '../dist/submission.js';
+import { createContactForm } from '../dist/contact-form.js';
+import { createCustomerAccountClient } from '../dist/customer-account.js';
+import { requestKind } from '../dist/account-requests.js';
 import { createRequestPage } from '../dist/request-page.js';
 import { DEMO_REPORT, DEMO_REPORTS, normalizeLookupCode, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from '../dist/data.js';
 
@@ -95,7 +98,7 @@ test('failed lookup destinations are safe, refreshable not-found routes rather t
 
 // Minimal DOM adapters run the actual app event handlers and History transitions.
 // They do not replace browser acceptance for layout, focus or native navigation.
-function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false, storageReadBlocked = false, storageSilent = false, savedSupport, clipboardWrite, cryptoSource, publishedReader = false, remoteFetch, lookupTimeouts } = {}) {
+function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false, clipboardBlocked = false, storageReadBlocked = false, storageSilent = false, savedSupport, clipboardWrite, cryptoSource, publishedReader = false, remoteFetch, lookupTimeouts, accountTransport } = {}) {
   const documentEvents = new Map();
   const windowEvents = new Map();
   const nodes = new Map();
@@ -138,7 +141,8 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
           }
         }
         if (name === '#dialog-content') {
-          for (const [key, child] of [...nodes]) if (key === '#recovery-form' || key.startsWith('#support-')) { child.isConnected = false; nodes.delete(key); }
+          const heldRecovery = nodes.get('#recovery-container')?.isConnected === false;
+          if (!heldRecovery) for (const [key, child] of [...nodes]) if (key === '#recovery-form' || key.startsWith('#support-')) { child.isConnected = false; nodes.delete(key); }
           if (value.includes('id="recovery-form"')) {
             node('#recovery-form');
             const decode = (text) => text.replace(/&(amp|lt|gt|quot|#39);/g, (_match, entity) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[entity]);
@@ -152,7 +156,9 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
         }
       },
       classList: { add() {}, remove() {}, toggle() {} },
-      addEventListener(type, callback) { events.set(type, callback); },
+      addEventListener(type, callback) { events.set(type, callback); }, removeEventListener(type) { events.delete(type); },
+      get firstElementChild() { return this.heldChild || (name === '#dialog-content' && html.includes('nova-support-dialog') ? node('#recovery-container') : null); },
+      appendChild(child) { this.heldChild = child; child.parent = this; child.isConnected = true; return child; },
       setAttribute(key, value) { attributes.set(key, String(value)); }, getAttribute(key) { return attributes.get(key) ?? null; }, hasAttribute(key) { return attributes.has(key); }, removeAttribute(key) { attributes.delete(key); },
       focus() { focused = name; document.activeElement = this; }, select() {}, remove() { this.isConnected = false; }, scrollIntoView() { scrolls.push(this.id); },
       matches(selector) { return selector.split(',').some((item) => {
@@ -215,8 +221,10 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   assert.notEqual(runnable, appSource);
   const unexpectedNetwork = (...args) => { networkCalls.push(args); throw new Error('This draft-only workflow must not send network requests'); };
   if (publishedReader) node('meta[name="assaynova-report-reader"]').setAttribute('content','enabled');
-  runInNewContext(runnable, {
-    ...reportData, ...pageData, ...supportData, ...submissionData, SAMPLE_REPORT_DATA, createRequestPage, document, window, location, history, URL,
+  const internals = {};
+  if (accountTransport) node('meta[name="assaynova-accounts"]').setAttribute('content','enabled');
+  runInNewContext(runnable + '\nObject.assign(testInternals, { accountClient, getRecovery: () => recoveryForm, getReturn: () => recoveryReturn, navigateToURL });', {
+    ...reportData, ...pageData, ...supportData, ...submissionData, SAMPLE_REPORT_DATA, createRequestPage, createContactForm, requestKind, createCustomerAccountClient: () => createCustomerAccountClient({ fetcher: accountTransport }), createAccountPage: () => ({ leave() {}, activate() {} }), testInternals: internals, document, window, location, history, URL,
     navigator: { clipboard: { writeText(value) { copied.push(value); if (clipboardWrite) return clipboardWrite(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
     fetch: remoteFetch ?? unexpectedNetwork, AbortController, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
     localStorage: {
@@ -252,7 +260,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
     return event;
   }
   return {
-    nodes, copied, location, networkCalls, document, navLinks, scrolls, storageCalls, storageSnapshot: () => new Map(storage), printed: () => printed, focused: () => focused, entryCount: () => entries.length,
+    nodes, copied, location, networkCalls, document, internals, navLinks, scrolls, storageCalls, storageSnapshot: () => new Map(storage), printed: () => printed, focused: () => focused, entryCount: () => entries.length,
     visibleViews: () => [...pageData.PAGE_ROUTES.map(({ view }) => '#' + view), '#coa-view'].filter((id) => !node(id).hidden),
     requests: () => JSON.parse(storage.get('assaynova.prototype.requests.v1')),
     click(action, extra = {}, { mobile = false } = {}) {
@@ -380,7 +388,7 @@ test('public lookup has no sample shortcuts while sample reports and drafts pres
   assert.ok(!homeHTML.includes('class="preview-bar"'));
   assert.ok(!/\b(?:demo|concept|prototype|preview)\b/i.test(text(homeHTML)));
   assert.equal((homeHTML.match(/href="\/account" data-account-entry hidden/g) || []).length, 3);
-  assert.match(homeHTML, /data-action="portal">Device drafts/);
+  assert.match(homeHTML, /data-action="portal">My requests/);
   assert.ok(!/Client portal|CLIENT WORKSPACE|No account (?:is )?needed/.test(homeHTML));
   const publicReports = homeHTML.match(/<section id="home-reports"[\s\S]*?<\/section>/)[0];
   assert.doesNotMatch(homeHTML, /home-report-samples|Sample reports|data-action="report"|methods-report-link|AN-7K9Q-2M4X|AN-8P6R-3N5Y/);
@@ -391,112 +399,10 @@ test('public lookup has no sample shortcuts while sample reports and drafts pres
   assert.match(sample.nodes.get('#coa-view').innerHTML, /id="coa-lookup-code"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
   assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Sample report/);
   assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Not a valid certificate of analysis/);
-  const old = { id: 'AN-DEMO-OLD12345', sample: 'Older saved sample', name: 'Saved name', email: 'saved@example.invalid', service: 'purity', quantity: 1 };
-  const app = bootApp('/', [old]);
-  app.click('requests');
-  assert.ok(app.nodes.get('#dialog-content').innerHTML.includes(old.id));
-  app.click('submit');
-  assert.equal(app.location.pathname, '/submit-sample');
-  assert.match(app.nodes.get('#request-flow').innerHTML, /Testing &amp; samples|Testing & samples/);
-  assert.equal(app.nodes.get('#app-dialog').open, false);
-  app.saveRequest({ name: 'New saved name', email: 'new@example.invalid', company: '', sample: 'New saved sample', service: 'purity', quantity: '1', notes: '' });
-  assert.equal(app.requests().length, 2);
-  assert.match(app.requests()[0].id, /^AN-REQ-/);
-  assert.equal(app.requests()[1].id, old.id);
-  const confirmation = text(app.nodes.get('#request-flow').innerHTML);
-  assert.match(confirmation, /Draft · Not sent/);
-  assert.match(confirmation, /Saving does not send your request or email/);
-  assert.ok(!/\b(?:demo|concept|prototype|preview)\b/i.test(confirmation));
-});
+  const app = bootApp('/submit-sample');
+  assert.match(app.nodes.get('#request-flow').innerHTML, /Submissions are unavailable/);
+  assert.deepEqual(app.storageCalls, []);
 
-test('both saved-draft entry actions show only this device drafts with a keyboard-scrollable native panel', () => {
-  const old = { id: 'AN-DEMO-LEGACY01', sample: 'Synthetic local draft', email: 'local@example.invalid', service: 'purity', quantity: 1 };
-  for (const saved of [[], [old]]) {
-    const app = bootApp('/', saved);
-    let firstView;
-    for (const action of ['portal', 'requests']) {
-      app.click(action);
-      const html = app.nodes.get('#dialog-content').innerHTML;
-      assert.match(html, /id="dialog-title">Saved drafts/);
-      assert.match(html, /stored only in this browser/);
-      assert.match(html, /These are saved drafts, not submitted requests/);
-      assert.match(html, /<section[^>]*id="panel-requests"[^>]*tabindex="0"/);
-      assert.ok(!/role="tab|panel-reports|data-tab=|data-action="report"|Reference sample [AC]|AN-2026-004[23]/.test(html));
-      assert.ok(html.includes(saved.length ? old.id : 'No saved drafts yet.'));
-      if (firstView) assert.equal(html, firstView);
-      firstView = html;
-    }
-    app.click('request-detail', { id: 'missing-synthetic-id' });
-    assert.equal(app.nodes.get('#dialog-content').innerHTML, firstView);
-    app.click('submit');
-    assert.equal(app.location.pathname, '/submit-sample');
-    assert.match(app.nodes.get('#request-flow').innerHTML, /id="request-step-form"/);
-    assert.equal(app.nodes.get('#app-dialog').open, false);
-    app.click('close');
-    assert.equal(app.nodes.get('#app-dialog').open, false);
-    assert.equal(app.networkCalls.length, 0);
-  }
-});
-
-test('actual independent request requires a contact email and saves an unverified unsent local draft', () => {
-  const old = { id: 'AN-DEMO-KEEP001', sample: 'Synthetic older draft', email: 'older@example.invalid', service: 'purity', quantity: 1 };
-  const app = bootApp('/', [old]);
-  app.click('submit'); app.enterRequestContact();
-  const formHTML = app.nodes.get('#request-flow').innerHTML;
-  const emailInput = formHTML.match(/<input[^>]*id="rq-email"[^>]*>/)[0];
-  for (const attribute of ['type="email"', 'required', 'maxlength="160"', 'autocomplete="email"', 'aria-describedby="rq-email-help rq-email-error"']) assert.ok(emailInput.includes(attribute));
-  assert.match(formHTML, /Use the contact address you want associated/);
-  assert.ok(!/type="password"|data-action="(?:login|register|send)"|mailto:/.test(formHTML));
-  const values = { name: 'Synthetic contact', email: '', company: '', sample: 'Synthetic new draft', service: 'purity', quantity: '1', notes: '' };
-  for (const email of ['', 'invalid-address']) {
-    app.saveRequest({ ...values, email });
-    assert.match(app.nodes.get('#rq-email-error').textContent, /valid email address|contact email/);
-    assert.equal(app.nodes.get('#rq-email').getAttribute('aria-invalid'), 'true');
-    assert.equal(app.focused(), '#rq-email'); assert.deepEqual(app.requests(), [old]);
-  }
-  app.saveRequest({ ...values, email: '  a&b@example.invalid  ' });
-  assert.equal(app.requests().length, 2); assert.equal(app.requests()[0].email, 'a&b@example.invalid');
-  assert.equal(app.requests()[0].version, 2); assert.equal(app.requests()[0].status, 'Draft request'); assert.match(app.requests()[0].id, /^AN-REQ-/); assert.equal(app.requests()[1].id, old.id);
-  const confirmation = app.nodes.get('#request-flow').innerHTML;
-  assert.match(confirmation, /Request draft/); assert.match(confirmation, /On this device/); assert.match(confirmation, /Draft · Not sent/); assert.match(confirmation, /Saving does not send your request or email/); assert.match(confirmation, /No email is sent when a draft is saved/);
-  assert.ok(confirmation.includes('a&amp;b@example.invalid'));
-  assert.match(confirmation, /data-request-private/); assert.equal(app.networkCalls.length, 0);
-});
-
-test('saved detail escapes supplied legacy strings and keeps the email in the private success-details region', () => {
-  const old = { id: 'AN-DEMO-ESCAPE01', sample: '<b>Synthetic sample</b>', name: '<img src=x>', email: 'name"><img src=x>@example.invalid', company: 'A&B', service: 'purity', quantity: '<svg>', notes: '<script>synthetic</script>' };
-  const app = bootApp('/', [old]);
-  app.click('portal');
-  assert.ok(!app.nodes.get('#dialog-content').innerHTML.includes('<svg>'));
-  app.click('request-detail', { id: old.id });
-  const html = app.nodes.get('#dialog-content').innerHTML;
-  for (const escaped of ['&lt;b&gt;Synthetic sample&lt;/b&gt;', '&lt;img src=x&gt;', 'name&quot;&gt;&lt;img src=x&gt;@example.invalid', 'A&amp;B', '&lt;svg&gt;', '&lt;script&gt;synthetic&lt;/script&gt;']) assert.ok(html.includes(escaped), escaped);
-  assert.ok(!/<b>Synthetic|<img src=x>|<script>synthetic/.test(html));
-  const details = html.match(/<dl class="success-details">[\s\S]*?<\/dl>/)[0];
-  assert.ok(details.includes('name&quot;&gt;&lt;img src=x&gt;@example.invalid'));
-  assert.ok(!html.replace(details, '').includes('@example.invalid'));
-  assert.match(html, /Draft · Not sent/);
-  assert.match(html, /No email is sent/);
-  assert.equal(app.networkCalls.length, 0);
-});
-
-test('local save keeps the 50-draft cap and reports blocked storage without submission or mail success', () => {
-  const saved = Array.from({ length: 50 }, (_, index) => ({ id: `AN-DEMO-LOCAL${index}`, sample: `Synthetic draft ${index}`, email: 'local@example.invalid', service: 'purity', quantity: 1 }));
-  const values = { name: 'Synthetic contact', email: 'local@example.invalid', company: '', sample: 'Synthetic newest draft', service: 'purity', quantity: '1', notes: '' };
-  const app = bootApp('/', saved);
-  app.click('submit');
-  app.saveRequest(values);
-  assert.equal(app.requests().length, 50);
-  assert.match(app.requests()[0].id, /^AN-REQ-/);
-  assert.equal(app.requests()[1].id, saved[0].id);
-  assert.equal(app.requests().at(-1).id, saved[48].id);
-  const blocked = bootApp('/', [saved[0]], { storageBlocked: true });
-  blocked.click('submit');
-  blocked.saveRequest(values);
-  assert.match(blocked.nodes.get('#rq-errors').textContent, /could not save/);
-  assert.match(blocked.nodes.get('#request-flow').innerHTML, /id="request-step-form"/);
-  assert.deepEqual(blocked.requests(), [saved[0]]);
-  assert.equal(app.networkCalls.length + blocked.networkCalls.length, 0);
 });
 
 test('actual SPA anchors select one view/title/active navigation without replacing the document or duplicating history', () => {
@@ -666,8 +572,8 @@ test('request navigation uses its own page while saved-draft dialogs and mobile 
     app.openMenu();
     app.click('portal', {}, { mobile: true });
     assert.equal(app.nodes.get('#mobile-nav').hidden, true);
-    app.click('close');
-    assert.equal(app.focused(), '.menu-toggle');
+    assert.equal(app.location.pathname, '/account');
+    assert.equal(app.focused(), '#account-title');
     app.click('submit');
     app.clickLink('/contact');
     assert.equal(app.nodes.get('#app-dialog').open, false);
@@ -836,191 +742,6 @@ for (const mode of ['default', 'production', 'watch']) {
   });
 }
 
-test('Nova Support saves/reopens one separate recovery draft and clears only its own key', async () => {
-  const old = Array.from({ length: 50 }, (_, i) => ({ id: 'AN-DEMO-' + i, sample: 'Existing synthetic ' + i, service: 'purity', quantity: 1 }));
-  const app = bootApp('/', old);
-  const trigger = app.click('recover-report').target;
-  assert.deepEqual(app.storageCalls, [['get', supportData.SUPPORT_DRAFT_KEY]]);
-  assert.match(app.nodes.get('#dialog-content').innerHTML, /NOVA SUPPORT/);
-  assert.match(app.nodes.get('#dialog-content').innerHTML, /Nothing is sent to Nova Support/);
-  app.saveRecovery();
-  assert.equal(app.focused(), '#support-email');
-  assert.equal(app.nodes.get('#support-email').getAttribute('aria-invalid'), 'true');
-  app.recoveryInput('email', ' QA@example.invalid ');
-  assert.equal(app.nodes.get('#support-email').hasAttribute('aria-invalid'), false);
-  app.saveRecovery();
-  assert.equal(app.focused(), '#support-reference');
-  app.fillRecovery({ reference: ' Project Case ', notes: 'n'.repeat(1201) });
-  app.saveRecovery();
-  assert.equal(app.focused(), '#support-notes');
-  app.recoveryInput('notes', ' A sample from October ');
-  app.saveRecovery();
-  const saved = JSON.parse(app.storageSnapshot().get(supportData.SUPPORT_DRAFT_KEY));
-  assert.deepEqual(saved, { version: 1, email: 'QA@example.invalid', reference: 'Project Case', notes: 'A sample from October' });
-  assert.equal(app.nodes.get('#support-status').textContent, 'Draft saved on this device. Nothing has been sent to Nova Support.');
-  assert.deepEqual(app.requests(), old);
-  assert.ok(app.storageCalls.every(([, key]) => key === supportData.SUPPORT_DRAFT_KEY));
-  app.click('close');
-  assert.equal(app.document.activeElement, trigger);
-  app.click('recover-report');
-  assert.equal(app.nodes.get('#support-reference').value, saved.reference);
-  assert.equal(app.nodes.get('#support-notes').value, saved.notes);
-  assert.equal(app.location.pathname, '/');
-  assert.equal(app.nodes.get('#coa-view').innerHTML, '');
-  await app.recoveryAction('clear');
-  assert.equal(app.storageSnapshot().has(supportData.SUPPORT_DRAFT_KEY), false);
-  assert.deepEqual(app.requests(), old);
-  assert.equal(app.nodes.get('#support-email').value, '');
-  assert.equal(app.focused(), '#support-email');
-  assert.deepEqual(app.storageCalls.filter(([operation]) => operation === 'remove'), [['remove', supportData.SUPPORT_DRAFT_KEY]]);
-  assert.equal(app.networkCalls.length, 0);
-});
-
-test('Nova Support storage failures preserve input and never claim a saved or cleared draft', async () => {
-  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: 'Keep these details' };
-  for (const restriction of [{ storageBlocked: true }, { storageSilent: true }]) {
-    const app = bootApp('/', [], { ...restriction, savedSupport: JSON.stringify({ version: 1, ...values }) });
-    app.click('recover-report');
-    app.fillRecovery({ ...values, reference: 'Changed project' });
-    app.saveRecovery();
-    assert.match(app.nodes.get('#support-error').textContent, /could not be saved/);
-    assert.equal(app.nodes.get('#support-status').textContent, '');
-    assert.equal(app.nodes.get('#support-reference').value, 'Changed project');
-    await app.recoveryAction('clear');
-    assert.match(app.nodes.get('#support-error').textContent, /could not be cleared/);
-    assert.equal(app.nodes.get('#support-reference').value, 'Changed project');
-    assert.ok(app.storageSnapshot().has(supportData.SUPPORT_DRAFT_KEY));
-    assert.equal(app.networkCalls.length, 0);
-  }
-  const blockedRead = bootApp('/', [], { storageReadBlocked: true });
-  blockedRead.click('recover-report');
-  assert.match(blockedRead.nodes.get('#dialog-content').innerHTML, /could not be opened/);
-  assert.equal(blockedRead.nodes.get('#support-email').value, '');
-});
-
-test('Nova Support reopens a successfully saved draft with long JSON-escaped notes', () => {
-  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: 'A\u0001'.repeat(590) };
-  const app = bootApp('/');
-  app.click('recover-report');
-  app.fillRecovery(values);
-  app.saveRecovery();
-  assert.match(app.nodes.get('#support-status').textContent, /^Draft saved/);
-  assert.ok(app.storageSnapshot().get(supportData.SUPPORT_DRAFT_KEY).length > 4096);
-  app.click('close');
-  app.click('recover-report');
-  assert.equal(app.nodes.get('#support-email').value, values.email);
-  assert.equal(app.nodes.get('#support-reference').value, values.reference);
-  assert.equal(app.nodes.get('#support-notes').value, values.notes);
-  assert.equal(app.networkCalls.length, 0);
-});
-
-test('Nova Support copies validated current details without saving and exposes complete manual copy on failure', async () => {
-  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: 'Full context\nSecond line' };
-  for (const clipboardBlocked of [false, true]) {
-    const app = bootApp('/', [], { clipboardBlocked });
-    app.click('recover-report');
-    await app.recoveryAction('copy');
-    assert.equal(app.focused(), '#support-email');
-    assert.equal(app.copied.length, 0);
-    app.fillRecovery(values);
-    const before = app.storageSnapshot();
-    await app.recoveryAction('copy');
-    assert.equal(app.copied[0], supportData.formatSupportRequest(values));
-    assert.deepEqual(app.storageSnapshot(), before);
-    assert.equal(app.storageCalls.filter(([action]) => action !== 'get').length, 0);
-    if (clipboardBlocked) {
-      assert.equal(app.nodes.get('#support-status').textContent, '');
-      assert.equal(app.nodes.get('#support-copy-fallback').hidden, false);
-      assert.equal(app.nodes.get('#support-copy-value').value, supportData.formatSupportRequest(values));
-      await app.recoveryAction('select');
-      assert.equal(app.focused(), '#support-copy-value');
-    } else assert.equal(app.nodes.get('#support-status').textContent, 'Request details copied. Nothing has been sent.');
-    app.recoveryInput('reference', 'Edited project');
-    assert.equal(app.nodes.get('#support-copy-fallback').hidden, true);
-    assert.equal(app.nodes.get('#support-status').textContent, '');
-    assert.equal(app.nodes.get('#support-copy-value').value, '');
-    assert.equal(app.networkCalls.length, 0);
-  }
-});
-
-test('Nova Support ignores late clipboard outcomes after close, replacement, input, Save, Clear or a newer copy', async () => {
-  const values = { email: 'qa@example.invalid', reference: 'Synthetic project', notes: '' };
-  for (const action of ['close', 'replace', 'input', 'save', 'clear', 'new-copy']) {
-    const pending = [];
-    const app = bootApp('/', [], { clipboardWrite: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) });
-    app.click('recover-report');
-    app.fillRecovery(values);
-    const form = app.nodes.get('#recovery-form');
-    const status = app.nodes.get('#support-status');
-    const fallback = app.nodes.get('#support-copy-fallback');
-    const first = app.recoveryAction('copy');
-    if (action === 'close') app.click('close');
-    if (action === 'replace') app.click('submit', { service: 'purity' });
-    if (action === 'input') { app.recoveryInput('reference', 'Edited'); app.recoveryInput('reference', values.reference); }
-    if (action === 'save') app.saveRecovery();
-    if (action === 'clear') await app.recoveryAction('clear');
-    if (action === 'new-copy') { const second = app.recoveryAction('copy'); pending[1].resolve(); await second; }
-    const latest = status.textContent;
-    pending[0].reject(new Error('Late synthetic failure'));
-    await first;
-    assert.equal(status.textContent, latest, action);
-    assert.equal(fallback.hidden, true, action);
-    if (action === 'save') assert.match(latest, /^Draft saved/);
-    if (action === 'new-copy') assert.match(latest, /^Request details copied/);
-    if (action === 'replace') { assert.equal(app.nodes.get('#app-dialog').open, false); assert.equal(app.location.pathname, '/submit-sample'); assert.match(app.nodes.get('#request-flow').innerHTML, /id="request-step-form"/); }
-    assert.equal(app.networkCalls.length, 0);
-  }
-});
-
-test('Nova Support rejects malformed saved drafts and safely prefills hostile text as text', () => {
-  for (const savedSupport of ['{', '[]', JSON.stringify({ version: 2, email: 'qa@example.invalid', reference: 'Synthetic', notes: '' }), JSON.stringify({ version: 1, email: 'qa@example.invalid', reference: 'Synthetic', notes: 'x'.repeat(1201) })]) {
-    const app = bootApp('/', [], { savedSupport });
-    app.click('recover-report');
-    assert.equal(app.nodes.get('#support-email').value, '');
-    assert.equal(app.nodes.get('#support-reference').value, '');
-  }
-  const values = { email: 'qa"><img>@example.invalid', reference: '<Project & Team>', notes: '</textarea><script>text only</script>' };
-  const app = bootApp('/', [], { savedSupport: JSON.stringify({ version: 1, ...values }) });
-  app.click('recover-report');
-  const html = app.nodes.get('#dialog-content').innerHTML;
-  assert.ok(html.includes('qa&quot;&gt;&lt;img&gt;@example.invalid'));
-  assert.ok(html.includes('&lt;Project &amp; Team&gt;'));
-  assert.ok(html.includes('&lt;/textarea&gt;&lt;script&gt;text only&lt;/script&gt;'));
-  assert.ok(!html.includes('<script>text only'));
-  assert.equal(app.nodes.get('#support-notes').value, values.notes);
-  assert.equal(app.networkCalls.length, 0);
-});
-
-test('independent request keeps presets, native sample groups and browser Back/Forward focus', () => {
-  const app = bootApp('/testing-methods'); app.click('submit', { service: 'purity' });
-  assert.equal(app.location.pathname, '/submit-sample'); assert.equal(app.focused(), '#request-page-title'); assert.equal(app.nodes.get('#app-dialog').open, false);
-  const html = app.nodes.get('#request-flow').innerHTML;
-  assert.match(html, /<fieldset class="rq-sample"/); assert.match(html, /value="purity" selected/);
-  assert.match(html, /href="\/testing-methods">Back to Our Testing/);
-  app.travel(-1); app.flushFrames(); assert.equal(app.location.pathname, '/testing-methods'); assert.equal(app.focused(), '#testing-page-title');
-  app.travel(1); app.flushFrames(); assert.equal(app.location.pathname, '/submit-sample'); assert.equal(app.focused(), '#request-page-title'); assert.equal(app.networkCalls.length, 0);
-});
-
-test('v2 saved details omit retired fields without changing storage and Resume preserves their values', () => {
-  const state = submissionData.newSubmission('history');
-  Object.assign(state, { name: 'Historical contact', email: 'qa@example.invalid', company: 'Historical company', reportRecipient: '' });
-  Object.assign(state.samples[0], { name: 'Historical sample', batch: 'HIST-LOT', amount: '75 mg' });
-  const record = submissionData.createRequestRecord(state, { id: 'AN-REQ-HISTORY', createdAt: '2026-11-05T00:00:00.000Z' });
-  const app = bootApp('/', [record]);
-  app.click('request-detail', { id: record.id });
-  const html = app.nodes.get('#dialog-content').innerHTML;
-  assert.ok(!/<dt>Company<|<dt>Batch \/ lot<|<dt>Stated amount</.test(html));
-  assert.ok(!/Historical company|HIST-LOT|75 mg/.test(html));
-  assert.match(html, /<dt>Report recipient<\/dt><dd>Historical contact<\/dd>/);
-  assert.deepEqual(app.requests(), [record]);
-  app.click('request-resume', { id: record.id });
-  app.saveRequest({ name: 'Edited contact', email: record.email, sample: 'Edited sample', service: 'purity', quantity: '2', notes: '' });
-  const updated = app.requests();
-  assert.equal(updated.length, 1); assert.equal(updated[0].id, record.id);
-  assert.equal(updated[0].company, record.company); assert.equal(updated[0].samples[0].batch, record.samples[0].batch); assert.equal(updated[0].samples[0].amount, record.samples[0].amount);
-  assert.equal(app.networkCalls.length, 0);
-});
-
 test('public report module matches its authoritative fictional catalog and published summaries', async () => {
   const catalog = JSON.parse(await readFile(new URL('../templates/coa/sample_reports.json', import.meta.url), 'utf8'));
   assert.deepEqual(SAMPLE_REPORT_DATA, catalog);
@@ -1078,32 +799,6 @@ test('sample ion envelopes use primary neutral masses, charge spacing and purity
     }
     assert.equal(record.spectra[3].status, code === 'AN-8P6R-3N5Y' ? 'Low signal' : 'Observed');
   }
-});
-
-test('actual app boots on LAN without randomUUID and saves/resumes distinct UUIDv4 sample entries', () => {
-  let fills = 0;
-  const cryptoSource = { getRandomValues(bytes) { assert.equal(bytes.length, 16); fills++; for (let i = 0; i < bytes.length; i++) bytes[i] = (fills + i * 13) & 255; return bytes; } };
-  const app = bootApp('/testing-methods', [], { cryptoSource });
-  assert.deepEqual(app.visibleViews(), ['#testing-view']);
-  app.click('submit', { service: 'purity' });
-  assert.equal(app.location.pathname, '/submit-sample'); assert.equal(app.focused(), '#request-page-title');
-  const flow = app.nodes.get('#request-flow');
-  flow.events.get('click')({ target: flow.querySelector('#rq-add-sample') });
-  const ids = [...flow.innerHTML.matchAll(/data-rq-field="sample:([^:]+):name"/g)].map(match => match[1]);
-  assert.equal(ids.length, 2); assert.notEqual(ids[0], ids[1]);
-  ids.forEach(id => assert.match(id, /^s-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/));
-  const field = (key, value) => { const target = flow.querySelector(`[data-rq-field="${key}"]`); assert.ok(target, key); target.value = value; flow.events.get('input')({ type: 'input', target }); };
-  ids.forEach((id, i) => field(`sample:${id}:name`, `LAN sample ${i + 1}`));
-  const submit = () => flow.events.get('submit')({ target: { id: 'request-step-form' }, preventDefault() {} });
-  submit(); field('name', 'LAN test contact'); field('email', 'lan@example.invalid'); submit(); submit();
-  const saved = app.requests(); assert.equal(saved.length, 1); assert.equal(saved[0].samples.length, 2);
-  assert.deepEqual(Array.from(saved[0].samples, sample => sample.id), ids); assert.match(saved[0].id, /^AN-REQ-[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/);
-  assert.match(flow.innerHTML, /Draft · Not sent/);
-  app.click('request-resume', { id: saved[0].id }); assert.equal(app.location.pathname, '/submit-sample'); ids.forEach(id => assert.ok(flow.innerHTML.includes(id)));
-  assert.equal(app.networkCalls.length, 0); assert.ok(fills >= 3);
-  let nativeCalls = 0;
-  bootApp('/', [], { cryptoSource: { randomUUID() { nativeCalls++; return '12345678-1234-4234-9234-123456789abc'; }, getRandomValues() { assert.fail('Native UUID must be preferred'); } } });
-  assert.ok(nativeCalls > 0);
 });
 
 function generatedFixture(code='AN-ABCD-1234') {
@@ -1223,4 +918,25 @@ test('generated cached reports revalidate on fresh lookup and back navigation, c
   const pending=[];const late=bootApp('/coa/AN-ABCD-1234',[],{publishedReader:true,remoteFetch:(url,options)=>new Promise(resolve=>pending.push({url,options,resolve}))});
   late.clickLink('/about');late.clickLink('/coa/AN-ABCD-1234');pending[1].resolve({ok:false});await flushLookup();pending[0].resolve({ok:true,json:async()=>generatedFixture()});await flushLookup();assert.match(late.nodes.get('#coa-view').innerHTML,/No COA found/);assert.doesNotMatch(late.nodes.get('#coa-view').innerHTML,/HCG|Download PDF/);
   late.clickLink('/about');late.travel(-1);assert.equal(pending.length,3);pending[2].resolve({ok:false});await flushLookup();assert.match(late.nodes.get('#coa-view').innerHTML,/No COA found/);
+});
+
+test('legacy portal and request actions navigate to account without reading, changing or importing any local bytes',()=>{
+ const prior=[{id:'AN-DEMO-KEEP',sample:'Private legacy text',service:'purity',quantity:1}];
+ for(const action of ['portal','requests','request-detail','request-resume','request-account','request-legacy']){const app=bootApp('/',prior,{storageReadBlocked:true});app.click(action,{id:prior[0].id});assert.equal(app.location.pathname,'/account');assert.deepEqual(app.storageCalls,[]);assert.deepEqual(app.requests(),prior);assert.doesNotMatch(app.nodes.get('#dialog-content').innerHTML,/Private legacy text/);}
+ const recovery=bootApp('/');recovery.click('recover-report');assert.equal(recovery.location.pathname,'/contact');assert.equal(recovery.nodes.get('#app-dialog').open,false);assert.deepEqual(recovery.storageCalls,[]);
+});
+
+test('actual recovery auth return keeps the same-owner pending tuple through login and clears it for replacement owner',async()=>{
+ const a={id:'account-a',email:'a@example.invalid',emailVerified:false,name:'A',company:''},b={...a,id:'account-b',email:'b@example.invalid'};
+ for(const replacement of [false,true]){
+  let session=a,remote=null;const writes=[];
+  const transport=async(url,options)=>{const route=url.slice('/api/account'.length);if(route==='/session')return {ok:true,json:async()=>({authenticated:!!session,user:session,csrfToken:'synthetic-csrf'})};if(route==='/login'){session=replacement?b:a;return {ok:true,json:async()=>({user:session,csrfToken:'synthetic-csrf'})};}if(route==='/requests'){const body=JSON.parse(options.body);writes.push(body);if(!remote){remote={id:'doc-a',revision:1,record:body.record,createdAt:body.record.createdAt,updatedAt:body.record.createdAt};throw Error('Synthetic lost acknowledgement');}return {ok:true,json:async()=>({request:remote})};}throw Error('Unexpected synthetic route');};
+  const app=bootApp('/contact?request=report-recovery',[],{accountTransport:transport});for(let i=0;i<24;i++)await Promise.resolve();assert.equal(app.location.search,'');assert.equal(app.nodes.get('#app-dialog').open,true);
+  app.fillRecovery({email:'private-a@example.invalid',reference:'Private A project',notes:'Private A context'});await app.nodes.get('#recovery-form').events.get('submit')({preventDefault(){}});assert.equal(writes.length,1);
+  session=null;await app.internals.accountClient.getSession();const form=app.nodes.get('#recovery-form');const button={dataset:{inquiryAction:'sign-in'},closest(){return this;}};form.events.get('click')({target:button});assert.equal(app.location.pathname,'/login');assert.ok(app.internals.getReturn());assert.equal(app.nodes.get('#app-dialog').open,false);
+  await app.internals.accountClient.login({email:'synthetic@example.invalid',password:'Synthetic testing password'});app.internals.navigateToURL('/contact?request=report-recovery');for(let i=0;i<24;i++)await Promise.resolve();assert.equal(app.location.search,'');assert.equal(app.nodes.get('#app-dialog').open,true);
+  if(replacement){assert.equal(app.internals.getReturn(),null);assert.equal(app.nodes.get('#support-reference').value,'');assert.doesNotMatch(app.nodes.get('#dialog-content').innerHTML,/Private A/);}
+  else{assert.equal(app.nodes.get('#support-reference').value,'Private A project');await app.nodes.get('#recovery-form').events.get('submit')({preventDefault(){}});assert.equal(writes.length,2);assert.deepEqual(writes[0],writes[1]);assert.match(app.nodes.get('#support-status').textContent,/Request submitted/);}
+  assert.deepEqual(app.storageCalls,[]);
+ }
 });

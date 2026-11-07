@@ -1,3 +1,4 @@
+import { createAccountRequest } from '../dist/account-requests.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -73,4 +74,12 @@ test('bridge admits new challenge GETs while reusing its issued valid nonce with
   const nonce = a.csrf; assert.equal((await a.call('/session')).data.csrfToken, nonce);
   const forged = `an_customer_csrf_${proxy.port}=${'a'.repeat(64)}`;
   assert.equal((await raw(proxy.base, '/api/account/session', { headers: { Cookie: forged } })).status, 429);
+});
+
+test('LAN bridge transports the same owned contact and recovery request records with unchanged CSRF checks',async t=>{
+ const primary=await accountFixture();t.after(()=>primary.close());const proxy=await bridge(primary.base);t.after(()=>proxy.close());const remote=browser(proxy.base);await remote.signup('proxy099@example.invalid');const local=browser(primary.base);await local.call('/session');await local.call('/login','POST',{email:'proxy099@example.invalid',password:fixturePassword});
+ for(const[kind,details]of Object.entries({contact:{name:'Fixture',email:'fixture@example.invalid',topic:'other',message:'LAN inquiry'},'report-recovery':{email:'fixture@example.invalid',reference:'LAN project',notes:'Synthetic only'}})){
+  const record=createAccountRequest(kind,details,{id:'AN-REQ-'+kind.toUpperCase(),createdAt:'2026-11-07T00:00:00.000Z'});const created=await remote.call('/requests','POST',{record,idempotencyKey:'proxy099-'+kind+'-request-key'});assert.equal(created.status,201);const id=created.data.request.id;assert.deepEqual((await local.call('/requests/'+id)).data.request.record,record);assert.equal((await remote.call('/requests/'+id,'PUT',{record,expectedRevision:1},{headers:{'X-Account-CSRF':'invalid'}})).status,403);
+ }
+ assert.equal((await local.call('/requests')).data.requests.length,2);
 });
