@@ -61,14 +61,16 @@ export const accountSchemaObjects = connection => connection.prepare("SELECT nam
 export async function accountSchemaDefinitions() {
   const schema = await readFile(new URL('./schema.sql', import.meta.url), 'utf8');
   const migration = await readFile(new URL('./migrate-1-to-2.sql', import.meta.url), 'utf8');
-  const previousSchema = schema.split('-- Transactional mail tables')[0]
+  const schema2 = await readFile(new URL('./schema-v2.sql', import.meta.url), 'utf8');
+  const migrationTo3 = await readFile(new URL('./migrate-2-to-3.sql', import.meta.url), 'utf8');
+  const previousSchema = schema2.split('-- Transactional mail tables')[0]
     .replace(/,\s*email_verified_at INTEGER CHECK\(email_verified_at IS NULL OR email_verified_at>0\)/, '')
     .replace(/,\s*notification_revision INTEGER CHECK\(notification_revision IS NULL OR notification_revision>0\)/, '');
-  return { schema, migration, oldShape: expected(previousSchema), newShape: expected(schema) };
+  return { schema, migration, migrationTo3, shapes: { 1: expected(previousSchema), 2: expected(schema2), 3: expected(schema) } };
 }
 
 export async function openAccountDatabase({ directory = DEFAULT_ACCOUNT_STORE, projectRoot = PROJECT_ROOT } = {}) {
-  const { schema, migration, oldShape, newShape } = await accountSchemaDefinitions();
+  const { schema, migration, migrationTo3, shapes } = await accountSchemaDefinitions();
   const root = await privateDirectory(directory, { projectRoot });
   let db;
   try {
@@ -81,11 +83,13 @@ export async function openAccountDatabase({ directory = DEFAULT_ACCOUNT_STORE, p
       if (version === 0) {
         if (accountSchemaObjects(db).length) throw new Error('Unknown account database schema.');
         db.exec(schema);
-      } else if (version === 1) {
-        if (JSON.stringify(accountSchemaObjects(db)) !== oldShape) throw new Error('Invalid previous account schema.');
-        db.exec(migration);
-      } else if (version !== 2) throw new Error('Unsupported account database version.');
-      if (db.prepare('PRAGMA user_version').get().user_version !== 2 || JSON.stringify(accountSchemaObjects(db)) !== newShape || db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Invalid account schema.');
+      } else {
+        if (![1,2,3].includes(version) || JSON.stringify(accountSchemaObjects(db)) !== shapes[version]) throw new Error('Invalid previous account schema.');
+        if (version === 1) { db.exec(migration); if (JSON.stringify(accountSchemaObjects(db)) !== shapes[2]) throw new Error('Invalid intermediate account schema.'); }
+        if (version <= 2) db.exec(migrationTo3);
+      }
+      if (db.prepare('PRAGMA user_version').get().user_version !== 3 || JSON.stringify(accountSchemaObjects(db)) !== shapes[3] || db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Invalid account schema.');
+      if (db.prepare('SELECT 1 FROM account_sessions WHERE (google_reauth_at IS NULL)<>(google_reauth_purpose IS NULL) LIMIT 1').get()) throw new Error('Invalid session grant.');
       db.prepare('SELECT id,email,email_verified_at,password_hash,security_version FROM account_users LIMIT 0').all();
       db.prepare('SELECT token_hash,csrf_hash FROM account_sessions LIMIT 0').all();
       db.prepare('SELECT event_key,nonce,tag,ciphertext,lease_id FROM account_mail_outbox LIMIT 0').all();

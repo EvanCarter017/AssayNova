@@ -194,7 +194,7 @@ function pageHarness({ initialUser = null, overrides = {}, clipboard } = {}) {
   const emit = (value, reason) => { currentUser = value; for (const fn of listeners) fn(value, reason); };
   const client = { getSession: async () => currentUser, snapshot: () => ({ user: currentUser }), subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }, listRequests: async () => [],
     signup: async () => { emit(user, 'login'); return { user, recoveryCodes: codes }; }, recover: async () => { emit(null, 'recovered'); return { ok: true, recoveryCodes: codes }; }, ...overrides };
-  const page = createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password'].map(path => [path, root])), client, navigate: (...args) => navigations.push(args), onResume() {}, onNewRequest() {}, onDeviceDrafts: () => deviceReads++, clipboard });
+  const page = createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'].map(path => [path, root])), client, navigate: (...args) => navigations.push(args), onResume() {}, onNewRequest() {}, onDeviceDrafts: () => deviceReads++, clipboard });
   return { root, page, client, emit, navigations, deviceReads: () => deviceReads };
 }
 
@@ -241,4 +241,16 @@ test('real API acknowledgement is withheld if the cookie owner changes immediate
  const client=createCustomerAccountClient({fetcher:browserFetcher(()=>active,async(route,stage,options)=>{if(route==='/requests'&&options.method==='POST'&&stage==='after')active=b;})});await client.getSession();
  const record=createAccountRequest('contact',{name:'Only A',email:'a@example.invalid',topic:'other',message:'Private A write'},{id:'AN-REQ-WRITE099',createdAt:'2026-11-07T00:00:00.000Z'});
  await assert.rejects(client.saveRequest(record,{ownerId:accountA.data.user.id,idempotencyKey:'post-write-owner-099-key'}),error=>error.code==='owner_changed');assert.equal((await a.call('/requests')).data.requests.length,1);assert.equal((await b.call('/requests')).data.requests.length,0);assert.equal(client.snapshot().user.id,(await b.call('/session')).data.user.id);
+});
+
+
+test('Google button is conditional and Google-only security never asks for a fictitious current password', async () => {
+ const h=pageHarness();await h.page.activate('/login');assert.equal(h.root.querySelector('[data-account-action="google-login"]'),null);
+ const signed={...user,passwordEnabled:false,googleLinked:true};const g=pageHarness({initialUser:signed,overrides:{snapshot:()=>({user:signed,google:{enabled:true}})}});await g.page.activate('/login');
+ const fresh=pageHarness({overrides:{snapshot:()=>({user:null,google:{enabled:true}})}});await fresh.page.activate('/register');assert.ok(fresh.root.querySelector('[data-account-action="google-login"]'));assert.match(fresh.root.innerHTML,/google-signin-light.png/);
+ await g.page.activate('/account');g.root.click('[data-account-tab="security"]');assert.ok(g.root.querySelector('[data-account-form="password-setup"]'));assert.equal(g.root.querySelector('[name="currentPassword"]'),null);assert.match(g.root.innerHTML,/Set a password before disconnecting/);
+ const ids=[...g.root.innerHTML.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(ids.length,new Set(ids).size);
+});
+test('actual Google result page reuses the private codes pane once and clears codes on leave',async()=>{
+ let calls=0;const h=pageHarness({overrides:{googleStatus:async()=>({ready:true,intent:'login'}),googleComplete:async()=>{calls++;return{intent:'login',next:'/account',recoveryCodes:codes,user};}}});await h.page.activate('/google-signin');assert.equal(calls,1);assert.match(h.root.innerHTML,/Your eight recovery codes/);assert.ok(h.root.innerHTML.includes(codes[0]));h.page.leave();assert.equal(h.root.innerHTML,'');await h.page.activate('/google-signin');assert.equal(calls,1);assert.ok(!h.root.innerHTML.includes(codes[0]));
 });

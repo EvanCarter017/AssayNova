@@ -6,7 +6,7 @@ import { mailTemplate } from './mail-templates.mjs';
 
 const invalid = () => accountError(400, 'INVALID_ACTION', 'This link is invalid, used or expired. Request a new link.');
 const hashToken = (purpose, token) => digest(purpose + '\0' + token);
-export function createMailActions({ db, auth, mail, clock = Date.now } = {}) {
+export function createMailActions({ db, auth, mail, clock = Date.now, securityChanged = userId => mail.invalidateUser(userId) } = {}) {
   const config = mail.config;
   function issue(user, purpose) {
     if (!mail.enabled()) return 'not_configured';
@@ -78,8 +78,8 @@ export function createMailActions({ db, auth, mail, clock = Date.now } = {}) {
       return db.transaction(() => {
         const current = snapshot('reset_password', input.token, context);
         if (current.user.password_hash !== original.user.password_hash || current.token.created_at !== original.token.created_at) throw invalid();
-        db.run('UPDATE account_users SET password_salt=?,password_hash=?,security_version=security_version+1,recovery_version=recovery_version+1,updated_at=? WHERE id=?', password.salt, password.hash, clock(), current.user.id);
-        db.run('DELETE FROM account_sessions WHERE user_id=?', current.user.id); mail.invalidateUser(current.user.id);
+        db.run('UPDATE account_users SET password_salt=?,password_hash=?,password_enabled=1,security_version=security_version+1,recovery_version=recovery_version+1,updated_at=? WHERE id=?', password.salt, password.hash, clock(), current.user.id);
+        db.run('DELETE FROM account_sessions WHERE user_id=?', current.user.id); securityChanged(current.user.id);
         db.run('DELETE FROM account_challenges WHERE token_hash=?', digest(context.csrf));
         return { ok: true, recoveryCodes: auth.mailRecoveryCodes(current.user.id) };
       });

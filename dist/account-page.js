@@ -4,6 +4,7 @@ import { REQUEST_KINDS, requestDetails, requestKind, requestStatus, requestSumma
 import { CONTACT_TOPICS } from './contact.js';
 import { validAccountPassword, safeAccountNext, accountErrorMessage, AccountError } from './customer-account.js';
 import { createMailActionState, notificationText } from './account-mail.js';
+import { createGoogleAccountController } from './account-google.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const emailOK = value => typeof value === 'string' && value.length <= 160 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -17,9 +18,21 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
   let recoverWithCode = false, verificationNotice = '', resendAt = 0;
   let path = '', root = null, revision = 0, actionRevision = 0, controller = null, busy = false;
   let user = null, documents = [], tab = 'requests', selected = null, pendingDelete = null, codes = null, codesNext = '/account', next = '/account';
+  let returnSecurity = false;
+  const googleButton = () => client.snapshot().google?.enabled ? '<div class="ac-google-choice"><button class="ac-google-button" type="button" data-account-action="google-login" aria-label="Continue with Google"><img src="/assets/google-signin-light.png" alt=""></button><p class="ac-help">Google shares your basic identity with AssayNova. <a href="/privacy-policy">Privacy policy</a></p><p class="ac-divider">or use your email</p></div>' : '';
+  const googleController = createGoogleAccountController({ client, onComplete(result) {
+    user = client.snapshot().user;
+    if (result.recoveryCodes) showCodes(result.recoveryCodes, result.next);
+    else { returnSecurity = result.intent !== 'login'; navigate(result.next, { replace: true }); }
+  }, onState(state, error) {
+    if (!root) return;
+    if (path !== '/google-signin') { setBusy(state === 'pending'); if (error) report(accountErrorMessage(error)); return; }
+    shell('<section class="ac-card"><h2>' + (state === 'pending' ? 'Confirming your sign-in…' : state === 'confirmed' ? 'Your account is ready.' : 'Let’s reconnect safely.') + '</h2><p role="status">' + (state === 'pending' ? 'Checking this browser’s requested Google action.' : state === 'confirmed' ? 'The account session is confirmed. Open My account to continue.' : 'This Google action could not be completed here. Start again from sign-in or account Security.') + '</p>' + (state === 'retryable' ? '<button class="button button-outline" type="button" data-account-action="google-retry">Retry this action</button>' : '') + '<p class="ac-links"><a href="/login">Sign in</a><a href="/account">My account</a></p></section>');
+    if (error) report(accountErrorMessage(error));
+  } });
   const current = (ticket, action) => root && ticket === revision && (action === undefined || action === actionRevision) && !controller?.signal.aborted;
   function clearCodes() { if (codes) codes.fill(''); codes = null; }
-  function leave() { mailAction.clear(); verificationNotice = ''; recoverWithCode = false; revision++; actionRevision++; controller?.abort(); controller = null; clearCodes(); for (const node of Object.values(roots)) if (node) node.innerHTML = ''; path = ''; root = null; busy = false; user = null; documents = []; selected = null; pendingDelete = null; }
+  function leave() { googleController.leave(); mailAction.clear(); verificationNotice = ''; recoverWithCode = false; revision++; actionRevision++; controller?.abort(); controller = null; clearCodes(); for (const node of Object.values(roots)) if (node) node.innerHTML = ''; path = ''; root = null; busy = false; user = null; documents = []; selected = null; pendingDelete = null; }
   const errorNode = () => root?.querySelector('[data-account-error]');
   function report(message) { const node = errorNode(); if (node) { node.textContent = message; node.focus?.({ preventScroll: true }); } }
   function status(message) { const node = root?.querySelector('[data-account-status]'); if (node) node.textContent = message; }
@@ -33,15 +46,21 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     if (path === '/recover-account' && client.snapshot().mail?.enabled && !recoverWithCode) {
       shell('<section class="ac-card"><h2>Reset your password by email.</h2><p>Enter your account email. If it is eligible, you will receive a reset link.</p>' + form('reset-request', field('email', 'Account email', { type: 'email', maximum: 160, autocomplete: 'email' }) + submit('Request reset link')) + '<button class="text-button" type="button" data-account-action="use-code">Use a saved recovery code</button><p class="ac-links"><a href="/login">Back to sign in</a></p></section>'); return;
     }
-    if (path === '/login') shell(`<div class="ac-card"><p class="ac-kicker">WELCOME BACK</p><h2>Sign in to your workspace.</h2><p class="ac-intro">Submit and manage your requests in one account.</p>${form('login', field('email', 'Email', { type: 'email', maximum: 160, autocomplete: 'email' }) + password('password', 'Password', true) + submit('Sign in'))}<p class="ac-links"><a href="/register?next=${encodeURIComponent(next)}">Create an account</a><a href="/recover-account?next=${encodeURIComponent(next)}">Recover your account</a></p></div>`);
-    else if (path === '/register') shell(`<div class="ac-card"><p class="ac-kicker">YOUR NEXT ANALYSIS</p><h2>A place for your requests.</h2><p class="ac-intro">Create an account to submit and manage testing, contact and report recovery requests.</p>${form('register', `<div class="ac-field-grid">${field('name', 'Your name', { maximum: 100, autocomplete: 'name', required: false })}${field('company', 'Company', { autocomplete: 'organization', required: false })}</div>` + field('email', 'Email', { type: 'email', maximum: 160, autocomplete: 'email' }) + password('password', 'Password') + password('confirmPassword', 'Repeat password') + submit('Create account'))}<p class="ac-links">Already have an account? <a href="/login?next=${encodeURIComponent(next)}">Sign in</a></p>${notice}</div>`);
+    if (path === '/login') shell(`<div class="ac-card"><p class="ac-kicker">WELCOME BACK</p><h2>Sign in to your workspace.</h2><p class="ac-intro">Submit and manage your requests in one account.</p>${googleButton()}${form('login', field('email', 'Email', { type: 'email', maximum: 160, autocomplete: 'email' }) + password('password', 'Password', true) + submit('Sign in'))}<p class="ac-links"><a href="/register?next=${encodeURIComponent(next)}">Create an account</a><a href="/recover-account?next=${encodeURIComponent(next)}">Recover your account</a></p></div>`);
+    else if (path === '/register') shell(`<div class="ac-card"><p class="ac-kicker">YOUR NEXT ANALYSIS</p><h2>A place for your requests.</h2><p class="ac-intro">Create an account to submit and manage testing, contact and report recovery requests.</p>${googleButton()}${form('register', `<div class="ac-field-grid">${field('name', 'Your name', { maximum: 100, autocomplete: 'name', required: false })}${field('company', 'Company', { autocomplete: 'organization', required: false })}</div>` + field('email', 'Email', { type: 'email', maximum: 160, autocomplete: 'email' }) + password('password', 'Password') + password('confirmPassword', 'Repeat password') + submit('Create account'))}<p class="ac-links">Already have an account? <a href="/login?next=${encodeURIComponent(next)}">Sign in</a></p>${notice}</div>`);
     else shell(`<div class="ac-card"><p class="ac-kicker">ACCOUNT RECOVERY</p><h2>Find your way back.</h2><p class="ac-intro">Use one of your saved recovery codes to set a new password. Keep your recovery codes private.</p>${form('recover', field('email', 'Account email', { type: 'email', maximum: 160, autocomplete: 'email' }) + field('recoveryCode', 'Recovery code', { maximum: 128, autocomplete: 'off' }) + password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Recover account'))}<p class="ac-links"><a href="/login?next=${encodeURIComponent(next)}">Back to sign in</a></p><p class="ac-help">Report recovery is separate. Nova Support can help prepare a report enquiry, but cannot reset an account password.</p></div>`);
   }
   function dashboard(focusHeading = false) {
     const navigation = `<div class="ac-workspace-bar"><div><p class="ac-kicker">YOUR WORKSPACE</p><p class="ac-user-name">${escape(user.name || 'My account')}</p><p class="ac-help">${escape(user.email)} · ${user.emailVerified ? 'Email verified' : 'Email not verified'}</p></div><button type="button" class="text-button" data-account-action="logout">Sign out</button></div><nav class="ac-tabs" aria-label="Account sections">${[['requests', 'My requests'], ['profile', 'Profile'], ['security', 'Security']].map(([key, label]) => `<button type="button" data-account-tab="${key}"${key === tab ? ' aria-current="page"' : ''}>${label}</button>`).join('')}</nav>`;
     let content;
     if (tab === 'profile') content = `<section class="ac-card"><h2>Your profile</h2><p class="ac-help">Your sign-in email stays ${escape(user.email)}. Email verification does not grant access to laboratory reports.</p>${form('profile', field('name', 'Your name', { maximum: 100, autocomplete: 'name', required: false, value: user.name }) + field('company', 'Company', { autocomplete: 'organization', required: false, value: user.company }) + submit('Save profile'))}</section>`;
-    else if (tab === 'security') content = `<section class="ac-card"><h2>Email verification</h2><p>${user.emailVerified ? 'Email verified' : 'Email not verified'}</p>${!user.emailVerified && client.snapshot().mail?.enabled ? '<button class="button button-outline" type="button" data-account-action="resend-verification">Send verification email</button>' : ''}</section><div class="ac-security-grid"><section class="ac-card"><h2>Change your password</h2>${form('password', password('currentPassword', 'Current password', true) + password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Update password'))}<p class="ac-help">Changing your password signs out your other sessions.</p></section><section class="ac-card"><h2>Recovery codes</h2><p>Keep a private copy of your eight one-time codes. Each replacement set invalidates the previous codes.</p>${form('codes', password('currentPassword', 'Current password', true) + submit('Replace recovery codes'))}<p class="ac-help">Save your codes so you can recover access when email is unavailable.</p><button class="text-button" type="button" data-account-action="logout-all">Sign out of all devices</button></section></div>`;
+    else if (tab === 'security') {
+      const enabled = client.snapshot().google?.enabled;
+      const google = enabled ? '<section class="ac-card"><h2>Google sign-in</h2><p>' + (user.googleLinked ? 'Linked to your account.' : 'Not linked.') + '</p>' + (user.googleLinked ? user.passwordEnabled !== false ? form('google-unlink', password('currentPassword', 'Current password', true) + submit('Disconnect Google')) : '<p class="ac-help">Set a password before disconnecting your only sign-in method.</p>' : form('google-link', password('currentPassword', 'Current password', true) + submit('Link Google'))) + '</section>' : '';
+      const passwordPanel = user.passwordEnabled !== false ? '<h2>Change your password</h2>' + form('password', password('currentPassword', 'Current password', true) + password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Update password')) : '<h2>Set a password</h2><p>Use a recent Google confirmation to add an email-and-password sign-in method.</p>' + (enabled ? '<button class="text-button" type="button" data-account-action="google-password-proof">Confirm with Google</button>' + form('password-setup', password('newPassword', 'New password') + password('confirmPassword', 'Repeat new password') + submit('Set password')) : '<p>Google sign-in is currently unavailable. Use account recovery.</p>');
+      const codePanel = user.passwordEnabled !== false ? form('codes', password('currentPassword', 'Current password', true) + submit('Replace recovery codes')) : enabled ? '<button class="text-button" type="button" data-account-action="google-codes-proof">Confirm with Google for recovery codes</button><button class="button button-outline" type="button" data-account-action="google-codes">Replace recovery codes</button>' : '<p>Use account recovery when you need access.</p>';
+      content = '<section class="ac-card"><h2>Email verification</h2><p>' + (user.emailVerified ? 'Email verified' : 'Email not verified') + '</p>' + (!user.emailVerified && client.snapshot().mail?.enabled ? '<button class="button button-outline" type="button" data-account-action="resend-verification">Send verification email</button>' : '') + '</section>' + google + '<div class="ac-security-grid"><section class="ac-card">' + passwordPanel + '<p class="ac-help">Updating your password signs out your other sessions.</p></section><section class="ac-card"><h2>Recovery codes</h2><p>Keep a private copy of your eight one-time codes. Each replacement set invalidates the previous codes.</p>' + codePanel + '<p class="ac-help">Save your codes so you can recover access when email is unavailable.</p><button class="text-button" type="button" data-account-action="logout-all">Sign out of all devices</button></section></div>';
+    }
     else if (selected) {
       const record = selected.record, details = requestDetails(record), kind = requestKind(record);
       const body = kind === 'testing' ? '<p>' + escape(details.name) + ' · ' + escape(details.email) + '</p><p>' + escape(details.company || '') + '</p><p>Report recipient: ' + escape(details.reportRecipient || details.name) + '</p><p>' + escape(details.notes || 'No additional notes.') + '</p><div class="ac-sample-list">' + details.samples.map((sample, index) => '<article><h3>Sample ' + (index + 1) + ' · ' + escape(sample.name) + '</h3><p>' + escape(SERVICE_NAMES[sample.service]) + ' · ' + sample.quantity + ' planned units · ' + escape(SAMPLE_FORMS[sample.form]) + '</p>' + (sample.batch ? '<p>Batch: ' + escape(sample.batch) + '</p>' : '') + (sample.amount ? '<p>Amount: ' + escape(sample.amount) + '</p>' : '') + '<p>Product image: ' + escape(IMAGE_CHOICES[sample.image]) + (sample.image === 'include' ? ' · ' + escape(IMAGE_STYLES[sample.imageStyle]) : '') + '</p></article>').join('') + '</div>' : kind === 'contact' ? '<p>' + escape(details.name) + ' · ' + escape(details.email) + '</p><p>' + escape(CONTACT_TOPICS[details.topic]) + '</p><p>' + escape(details.message) + '</p>' : '<p>Testing email: ' + escape(details.email) + '</p><p>Company or project: ' + escape(details.reference) + '</p><p>' + escape(details.notes || 'No additional context.') + '</p><p>Manual identity verification is required before a report can be shared.</p>';
@@ -66,10 +85,10 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     const errors = {};
     if (['login', 'register', 'recover', 'reset-request'].includes(kind) && !emailOK(data.email)) errors.email = 'Enter a valid email address.';
     if (kind === 'login' && !validAccountPassword(data.password)) errors.password = 'Enter your 15–128 character password.';
-    const newKey = kind === 'register' ? 'password' : ['password', 'recover', 'reset'].includes(kind) ? 'newPassword' : null;
+    const newKey = kind === 'register' ? 'password' : ['password', 'recover', 'reset', 'password-setup'].includes(kind) ? 'newPassword' : null;
     if (newKey && !validAccountPassword(data[newKey])) errors[newKey] = 'Use 15–128 characters.';
     if (newKey && data.confirmPassword !== data[newKey]) errors.confirmPassword = 'Repeat the same password.';
-    if (['password', 'codes'].includes(kind) && !validAccountPassword(data.currentPassword)) errors.currentPassword = 'Enter your current 15–128 character password.';
+    if (['password', 'codes', 'google-link', 'google-unlink'].includes(kind) && !validAccountPassword(data.currentPassword)) errors.currentPassword = 'Enter your current 15–128 character password.';
     if (kind === 'recover' && (!data.recoveryCode || data.recoveryCode.length > 128)) errors.recoveryCode = 'Enter a saved recovery code.';
     if (data.name?.length > 100) errors.name = 'Use 100 characters or fewer.';
     if (data.company?.length > 160) errors.company = 'Use 160 characters or fewer.';
@@ -107,6 +126,9 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     if (kind === 'reset') void execute(signal => mailAction.submit(token => client.resetPassword(token, data.newPassword, { signal })), result => { if (result) showCodes(result.recoveryCodes, '/login'); }, false);
     if (kind === 'profile') void execute(signal => client.profile({ name: data.name, company: data.company }, options(signal)), value => { user = value; dashboard(); status('Profile saved.'); });
     if (kind === 'password') void execute(signal => client.password({ currentPassword: data.currentPassword, newPassword: data.newPassword }, options(signal)), value => { user = value; dashboard(); status('Password updated. Other sessions are signed out.'); });
+    if (kind === 'google-link') void googleController.begin('link', data.currentPassword);
+    if (kind === 'google-unlink') void execute(signal => client.googleUnlink(data.currentPassword, { signal }), value => { user = value; dashboard(); status('Google disconnected.'); });
+    if (kind === 'password-setup') void execute(signal => client.setupPassword(data.newPassword, { signal }), value => { user = value; dashboard(); status('Password is ready.'); });
     if (kind === 'codes') void execute(signal => client.recoveryCodes({ currentPassword: data.currentPassword }, options(signal)), value => showCodes(value.recoveryCodes, '/account'));
   }
   function onClick(event) {
@@ -114,6 +136,10 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     if (!button || !root?.contains(button) || button.disabled || busy) return;
     if (button.dataset.accountTab) { tab = button.dataset.accountTab; selected = null; pendingDelete = null; actionRevision++; dashboard(true); return; }
     const action = button.dataset.accountAction, id = button.dataset.id;
+    if (action === 'google-login') { void googleController.begin('login', next); return; }
+    if (action === 'google-retry') { void googleController.retry(); return; }
+    if (action === 'google-password-proof' || action === 'google-codes-proof') { void googleController.begin('reauth', action === 'google-password-proof' ? 'password_setup' : 'recovery_codes'); return; }
+    if (action === 'google-codes') { void execute(signal => client.googleRecoveryCodes({ signal }), value => showCodes(value.recoveryCodes, '/account')); return; }
     if (action === 'use-code') { recoverWithCode = true; auth(); return; }
     if (action === 'verify-email') { void execute(signal => mailAction.submit(token => client.verifyEmail(token, { signal })), result => { if (result) shell('<section class="ac-card"><h2>Email verified</h2><p>You can now receive account email.</p><a href="/account">My account</a><a href="/login">Sign in</a></section>'); }, false); return; }
     if (action === 'verification-tab') { tab = 'security'; selected = null; dashboard(true); return; }
@@ -150,6 +176,7 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
     async activate(route, returnTo, actionToken) {
       leave(); path = route; root = roots[route]; if (!root) return; mailAction.enter(actionToken);
       next = safeAccountNext(returnTo); controller = new AbortController(); const ticket = revision;
+      if (path === '/google-signin') { await googleController.enter(); return; }
       shell('<div class="ac-card"><p role="status">Opening your account…</p></div>');
       try {
         const confirmedUser = await client.getSession({ signal: controller.signal });
@@ -157,7 +184,7 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
         user = confirmedUser;
         if (path === '/account' && !user) { navigate('/login?next=' + encodeURIComponent('/account'), { replace: true }); return; }
         if (user && ['/login', '/register'].includes(path)) { navigate(next, { replace: true }); return; }
-        if (path === '/account') { const loaded = await client.listRequests({ signal: controller.signal }); if (current(ticket)) { documents = loaded; tab = 'requests'; dashboard(); } }
+        if (path === '/account') { const loaded = await client.listRequests({ signal: controller.signal }); if (current(ticket)) { documents = loaded; tab = returnSecurity ? 'security' : 'requests'; returnSecurity = false; dashboard(); } }
         else auth();
       } catch (error) { if (current(ticket)) { shell('<div class="ac-card"><h2>Let’s try that again.</h2><button type="button" class="button button-outline" data-account-action="retry">Retry</button><a href="/submit-sample">Return to testing</a></div>'); report(accountErrorMessage(error)); } }
     },

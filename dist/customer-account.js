@@ -15,7 +15,8 @@ export function validAccountPassword(value) {
 }
 export function accountUser(value) {
   if (!value || !opaque(value.id) || typeof value.email !== 'string' || value.email.length > 160 || typeof value.emailVerified !== 'boolean' || typeof value.name !== 'string' || value.name.length > 100 || typeof value.company !== 'string' || value.company.length > 160) throw new AccountError('invalid_response');
-  return { id: value.id, email: value.email, emailVerified: value.emailVerified, name: value.name, company: value.company };
+  if (value.passwordEnabled !== undefined && typeof value.passwordEnabled !== 'boolean' || value.googleLinked !== undefined && typeof value.googleLinked !== 'boolean') throw new AccountError('invalid_response');
+  return { id: value.id, email: value.email, emailVerified: value.emailVerified, name: value.name, company: value.company, passwordEnabled: value.passwordEnabled ?? true, googleLinked: value.googleLinked ?? false };
 }
 const notificationStates = new Set(['not_requested','not_verified','not_configured','unsupported_address','backpressure','unavailable','queued','retrying','accepted','failed','expired','canceled']);
 export function accountNotifications(value) {
@@ -34,6 +35,7 @@ export class AccountError extends Error {
 }
 export function accountErrorMessage(error) {
   const message = ({ invalid_action: 'This link is invalid, used or expired. Request a new link.', invalid_credentials: 'The email and password could not be confirmed.', invalid_recovery: 'Those recovery details could not be confirmed.', recovery_failed: 'Those recovery details could not be confirmed.', account_exists: 'An account could not be created with these details. Try signing in or use account recovery.', email_exists: 'An account could not be created with these details. Try signing in or use account recovery.', draft_limit: 'Your account already has 50 requests. Remove an existing request before submitting another.', revision_conflict: 'This request has changed. Your details are still here. Reopen it from My account before replacing a newer version.', idempotency_conflict: 'This submission reference already has different details. Your details are still here. Reopen the request from My account.', request_deleted: 'This request was deleted. Your details are still here. Open My account before starting a new request.', request_not_found: 'This request is no longer available. Open My account to see your current requests.', account_changed: 'Account security changed. Please sign in again before continuing.', invalid_password: 'Use a password of 15–128 characters.', invalid_input: 'Check the details and try again.', validation_error: 'Check the details and try again.', invalid_record: 'Check the request details and try again.', invalid_revision: 'Reopen the request from My account before submitting again.', invalid_response: 'We could not confirm the submitted result. Please retry safely.', owner_changed: 'The signed-in account changed. Open the request again from My account.', network: 'The connection did not confirm the result. Your details are still here; retrying will not create another request.', aborted: 'The result was not confirmed here. Check My account or retry the submission safely.', unavailable: 'Account access is unavailable in this view.' })[error?.code];
+  if (['google_flow_invalid','google_identity_conflict'].includes(error?.code)) return error.code === 'google_identity_conflict' ? 'Sign in with an existing method, then link Google in Security.' : 'Confirm with Google again in Security, then retry.';
   if (message) return message;
   if (error?.status === 429) return 'Too many attempts. Please wait a moment and try again.';
   if (error?.status === 401) return 'Please sign in again. Your unsaved details are still here.';
@@ -43,10 +45,10 @@ export function accountErrorMessage(error) {
 }
 
 export function createCustomerAccountClient({ fetcher = (...args) => globalThis.fetch(...args), timeout = 12000 } = {}) {
-  let user = null, csrf = '', loaded = false, revision = 0, mailEnabled = false;
+  let user = null, csrf = '', loaded = false, revision = 0, mailEnabled = false, googleEnabled = false;
   const listeners = new Set();
   const notify = reason => { for (const listener of listeners) listener(user, reason); };
-  function setSession(nextUser, token, reason, capability = mailEnabled) { mailEnabled = capability; user = nextUser ? accountUser(nextUser) : null; csrf = typeof token === 'string' ? token : ''; loaded = true; notify(reason); }
+  function setSession(nextUser, token, reason, capability = mailEnabled, googleCapability = googleEnabled) { mailEnabled = capability; googleEnabled = googleCapability; user = nextUser ? accountUser(nextUser) : null; csrf = typeof token === 'string' ? token : ''; loaded = true; notify(reason); }
   async function call(method, suffix, body, { signal, token = csrf } = {}) {
     const requestRevision = revision;
     const controller = new AbortController();
@@ -74,7 +76,7 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     const value = await call('GET', '/session', undefined, { signal });
     if (ticket !== revision || signal?.aborted) throw new AccountError('aborted');
     if (typeof value.authenticated !== 'boolean' || typeof value.csrfToken !== 'string' || !value.csrfToken || (!!value.user !== value.authenticated)) throw new AccountError('invalid_response');
-    setSession(value.user, value.csrfToken, 'session', mailCapability(value.mail));
+    setSession(value.user, value.csrfToken, 'session', mailCapability(value.mail), mailCapability(value.google));
     return user;
   }
   async function mutate(suffix, body, options = {}, method = 'POST') {
@@ -86,13 +88,41 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     const value = await mutate(suffix, body, options);
     if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
     if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response');
-    setSession(value.user, value.csrfToken, 'login', mailCapability(value.mail));
+    setSession(value.user, value.csrfToken, 'login', mailCapability(value.mail), mailCapability(value.google));
     return value;
   }
   const idPath = id => { if (!opaque(id)) throw new AccountError('invalid_input'); return '/requests/' + id; };
   async function confirmOwner(ownerId, options) {
     const current = await getSession(options);
     if (!ownerId || !current || current.id !== ownerId) throw new AccountError('owner_changed');
+  }
+  async function confirmAuthenticationResult(value, ticket, options, ownerId = null) {
+    try {
+      if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
+      const returnedUser = accountUser(value.user);
+      if (ownerId && returnedUser.id !== ownerId) throw new AccountError('owner_changed');
+      if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response');
+      mailCapability(value.mail); mailCapability(value.google);
+      // A successful POST can precede a cross-tab cookie replacement. Its JSON
+      // is not proof that the returned owner still controls this browser.
+      const confirmedUser = await getSession(options);
+      if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted');
+      if (!confirmedUser || confirmedUser.id !== returnedUser.id) throw new AccountError('owner_changed');
+      // Preserve the fresh session's user, CSRF and capabilities; an older POST
+      // acknowledgement must not overwrite a rotated or replacement session.
+      setSession(confirmedUser, csrf, 'login');
+      return { ...value, user: confirmedUser, csrfToken: csrf };
+    } catch (error) {
+      if (Array.isArray(value?.recoveryCodes)) value.recoveryCodes.fill('');
+      throw error;
+    }
+  }
+  async function authenticateCurrentOwner(suffix, body, options) {
+    const ownerId = user?.id;
+    await confirmOwner(ownerId, options);
+    const ticket = ++revision, value = await mutate(suffix, body, options);
+    if (user?.id !== ownerId) throw new AccountError('owner_changed');
+    return confirmAuthenticationResult(value, ticket, options, ownerId);
   }
   async function readOwnedDrafts(suffix, options) {
     // Capture before refreshing: a cross-tab replacement must never become the
@@ -105,12 +135,27 @@ export function createCustomerAccountClient({ fetcher = (...args) => globalThis.
     return value;
   }
   const client = {
-    getSession, snapshot: () => ({ user, loaded, mail: { enabled: mailEnabled } }), subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    getSession, snapshot: () => ({ user, loaded, mail: { enabled: mailEnabled }, google: { enabled: googleEnabled } }), subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     signup: (values, options) => authenticate('/signup', values, options), login: (values, options) => authenticate('/login', values, options),
+    async googleStart(next,options) { return mutate('/oauth/google/start',{next:safeAccountNext(next)},options); },
+    async googleLink(currentPassword,options) { const owner=user?.id;await confirmOwner(owner,options);const value=await mutate('/oauth/google/link',{currentPassword},options);await confirmOwner(owner,options);return value; },
+    async googleReauth(purpose,options) { const owner=user?.id;await confirmOwner(owner,options);const value=await mutate('/oauth/google/reauth',{purpose},options);await confirmOwner(owner,options);return value; },
+    async googleStatus(options) { const value=await call('GET','/oauth/google/status',undefined,options);if(!value || Object.keys(value).length!==2 || typeof value.ready!=='boolean' || ![null,'login','link','reauth'].includes(value.intent) || value.ready!==(value.intent!==null))throw new AccountError('invalid_response');return value; },
+    async googleComplete(options) {
+      const owner=user?.id || null,ticket=++revision;const value=await mutate('/oauth/google/complete',{},options);
+      if(ticket!==revision || options?.signal?.aborted)throw new AccountError('aborted');
+      const nextUser=accountUser(value.user);
+      if(!['login','link','reauth'].includes(value.intent) || safeAccountNext(value.next)!==value.next || typeof value.csrfToken!=='string' || !value.csrfToken || (value.intent==='login'?owner!==null:!owner || nextUser.id!==owner) || (user?.id || null)!==owner)throw new AccountError('owner_changed');
+      return confirmAuthenticationResult(value,ticket,options,owner);
+    },
+    async setupPassword(newPassword,options) {return (await authenticateCurrentOwner('/password/setup',{newPassword},options)).user;},
+    async googleUnlink(currentPassword,options) {return (await authenticateCurrentOwner('/oauth/google/unlink',{currentPassword},options)).user;},
+    async googleRecoveryCodes(options) {const owner=user?.id;await confirmOwner(owner,options);const value=await mutate('/oauth/google/recovery-codes',{},options);await confirmOwner(owner,options);return value;},
+
     async logout(all = false, options) { const ticket = ++revision; const value = await mutate(all ? '/logout-all' : '/logout', {}, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'logout'); },
     async recover(values, options) { const ticket = ++revision; const value = await mutate('/recover', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (value.ok !== true) throw new AccountError('invalid_response'); setSession(null, '', 'recovered'); return value; },
-    async profile(values, options) { const ticket = revision; const value = await mutate('/profile', values, options, 'PATCH'); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); setSession(value.user, csrf, 'profile', mailCapability(value.mail)); return user; },
-    async password(values, options) { const ticket = ++revision; const value = await mutate('/password', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response'); setSession(value.user, value.csrfToken, 'password', mailCapability(value.mail)); return user; },
+    async profile(values, options) { const ticket = revision; const value = await mutate('/profile', values, options, 'PATCH'); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); setSession(value.user, csrf, 'profile', mailCapability(value.mail), mailCapability(value.google)); return user; },
+    async password(values, options) { const ticket = ++revision; const value = await mutate('/password', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken !== 'string' || !value.csrfToken) throw new AccountError('invalid_response'); setSession(value.user, value.csrfToken, 'password', mailCapability(value.mail), mailCapability(value.google)); return user; },
     async recoveryCodes(values, options) { const ticket = revision; const value = await mutate('/recovery-codes', values, options); if (ticket !== revision || options?.signal?.aborted) throw new AccountError('aborted'); if (typeof value.csrfToken === 'string') csrf = value.csrfToken; return value; },
     async requestVerification(options) { const ownerId = user?.id; await confirmOwner(ownerId, options); const value = await mutate('/email/verification', {}, options); await confirmOwner(ownerId, options); if (value.ok !== true || !['verified','queued','not_configured','unsupported_address','backpressure','unavailable'].includes(value.status)) throw new AccountError('invalid_response'); return value; },
     async requestPasswordReset(email, options) { const value = await mutate('/password/reset-request', { email }, options); if (value.ok !== true || Object.keys(value).length !== 1) throw new AccountError('invalid_response'); return value; },

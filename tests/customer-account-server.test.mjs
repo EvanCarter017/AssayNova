@@ -16,7 +16,7 @@ const project = fileURLToPath(new URL('../', import.meta.url));
 async function freePort() { const listener = net.createServer(); listener.listen(0, '127.0.0.1'); await once(listener, 'listening'); const port = listener.address().port; await new Promise(resolve => listener.close(resolve)); return port; }
 async function fixtureSource() {
   const root = path.join(fixtureBase, randomUUID()); await mkdir(root, { recursive: true });
-  for (const file of ['server.mjs', 'report-pdf.mjs', 'package.json', 'accounts', 'dist/data.js', 'dist/routes.js', 'dist/index.html', 'dist/submission.js', 'dist/account-requests.js', 'dist/contact.js', 'dist/support.js', 'conference/reader.mjs', 'conference/admin-proxy.mjs', 'conference/import-limits.mjs']) {
+  for (const file of ['server.mjs', 'report-pdf.mjs', 'package.json', 'accounts', 'dist/data.js', 'dist/routes.js', 'dist/index.html', 'dist/submission.js', 'dist/account-requests.js', 'dist/customer-account.js', 'dist/contact.js', 'dist/support.js', 'conference/reader.mjs', 'conference/admin-proxy.mjs', 'conference/import-limits.mjs']) {
     const destination = path.join(root, file); await mkdir(path.dirname(destination), { recursive: true }); await cp(path.join(project, file), destination, { recursive: true });
   }
   return root;
@@ -87,3 +87,15 @@ test('real account API owns all three submitted kinds and preserves kind, refere
 });
 
 test('action pages and accepted aliases are no-referrer/no-store and explicit static opt-out stays unavailable',async t=>{const root=await fixtureSource(),server=await start(root,['--no-accounts']);t.after(()=>server.stop());for(const route of['/verify-email','/verify-email/','/reset-password','/reset-password/']){const response=await fetch(server.base+route);assert.equal(response.status,200);assert.equal(response.headers.get('referrer-policy'),'no-referrer');assert.equal(response.headers.get('cache-control'),'no-store');const html=await response.text();assert.match(html,/verify-email-view/);assert.doesNotMatch(html,/name="assaynova-accounts" content="enabled"/);}assert.equal((await fetch(server.base+'/api/account/email/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:'a'.repeat(64)})})).status,404);});
+
+
+test('actual public privacy and neutral Google result shells refresh without account cookies or mutation',async t=>{
+ const root=await fixtureSource(),server=await start(root);t.after(()=>server.stop());
+ for(const route of ['/privacy-policy','/privacy-policy/','/google-signin']){const response=await fetch(server.base+route);assert.equal(response.status,200);assert.equal(response.headers.get('set-cookie'),null);assert.match(await response.text(),/Privacy policy/);const head=await fetch(server.base+route,{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');assert.equal(head.headers.get('set-cookie'),null);}
+ assert.equal((await fetch(server.base+'/google-signin')).headers.get('referrer-policy'),'no-referrer');assert.equal((await fetch(server.base+'/privacy-policy-extra')).status,404);
+ const a=browser(server.base);assert.deepEqual((await a.call('/session')).data.google,{enabled:false});assert.equal((await a.call('/oauth/google/start','POST',{next:'/account'})).status,404);
+});
+
+test('invalid explicit Google configuration fails before creating an account store',async()=>{
+ const root=await fixtureSource(),directory=path.join(root,'unopened-google102-store');await assert.rejects(start(root,['--account-store='+directory],{ASSAYNOVA_GOOGLE_CONFIG_FILE:path.join(root,'synthetic-missing-config.json')}),/Google sign-in configuration is unavailable/);await assert.rejects(stat(directory),error=>error.code==='ENOENT');
+});

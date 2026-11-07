@@ -9,7 +9,7 @@ import { createRequestRecord, newSubmission } from '../../dist/submission.js';
 
 export const fixturePassword = 'Synthetic customer fixture password 088';
 export const fixtureBase = fileURLToPath(new URL('../../work/accounts-088/test-fixtures/', import.meta.url));
-export async function accountFixture({ directory, port = 0, clock = Date.now, authOptions = {}, origins, ...options } = {}) {
+export async function accountFixture({ directory, port = 0, clock = Date.now, authOptions = {}, origins, factory = createAccountHandler, ...options } = {}) {
   directory ??= path.join(fixtureBase, randomUUID());
   await mkdir(directory, { recursive: true });
   let handler, closed = false;
@@ -18,9 +18,9 @@ export async function accountFixture({ directory, port = 0, clock = Date.now, au
   server.listen(port, '127.0.0.1'); await once(server, 'listening');
   port = server.address().port;
   const base = 'http://127.0.0.1:' + port;
-  try { handler = await createAccountHandler({ directory, origins: origins ?? [base], port, clock, authOptions, ...options }); }
+  try { handler = await factory({ directory, origins: origins ?? [base], port, clock, authOptions, ...options }); }
   catch (error) { server.close(); throw error; }
-  return { directory, port, base, server, async close() { if (closed) return; closed = true; server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); handler.close(); } };
+  return { directory, port, base, server, handler, async close() { if (closed) return; closed = true; server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await handler.close(); } };
 }
 export function browser(base) {
   const jar = new Map(); let csrf = '';

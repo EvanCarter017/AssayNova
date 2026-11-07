@@ -25,7 +25,7 @@ Customer cookies are `an_customer_<port>` and `an_customer_csrf_<port>`, host-on
 
 Logout revokes one session; logout-all increments the security epoch and revokes every session. Password change rechecks the security epoch and live originating session after asynchronous derivation, revokes old sessions and issues a new current cookie. Each account retains at most32 sessions, globally8192. Expired sessions are purged. Persistent auth counters cover identity20, peer200 and global1000 attempts per15-minute window, with Retry-After; a counter table is bounded to4096 entries and expired entries are removed. New anonymous challenge minting has separate persistent peer20/global512 limits per10minutes; valid unexpired challenge reuse is not charged. The bridge additionally limits each peer to100 mutations/new-or-unknown challenge bootstrap requests per15minutes and recognizes only bounded hashes of upstream-issued nonces for reuse. The authority sees a reverse proxy as an aggregate peer; these limits do not claim to identify real downstream IPs through untrusted headers. Registration is capped at10000 accounts. These bounded local defaults are not a substitute for a reviewed Internet abuse policy.
 
-Registration displays **8 one-time recovery codes**. Each has128 random bits, formatted for manual copying; only per-user-bound hashes are stored. A code and new password reset that account, atomically invalidate the entire prior code bundle and all sessions, and display8 replacements. Recovery does not log in automatically. Regenerating codes requires the current password and invalidates the prior bundle. Concurrent reuse has one winner. Keep codes somewhere private; they are not emailed or saved to browser storage. When mail is enabled, a verified stored mailbox can request an explicit reset link. Otherwise saved codes remain the self-service recovery path; Support cannot automatically unlock an account. Administrator recovery remains its separate owner process.
+Registration displays **8 one-time recovery codes**. Each has128 random bits, formatted for manual copying; only per-user-bound hashes are stored. A code and new password reset that account, atomically invalidate the entire prior code bundle and all sessions, and display8 replacements. Recovery does not log in automatically. Regenerating codes requires the current password for password-enabled accounts or fresh purpose-bound Google confirmation for Google-only accounts, and invalidates the prior bundle. Concurrent reuse has one winner. Keep codes somewhere private; they are not emailed or saved to browser storage. When mail is enabled, a verified stored mailbox can request an explicit reset link. Otherwise saved codes remain the self-service recovery path; Support cannot automatically unlock an account. Administrator recovery remains its separate owner process.
 
 ## Owned requests
 
@@ -49,4 +49,19 @@ Valid schema1 and2 backups preserve their source version without migration. Prot
 
 Tests use synthetic identities, disposable account directories, real SQLite/HTTP and a native backup/restore. Account tests never open the actual administrator or customer store. The old external-photo catalog QA remains an explicit pre-existing optional skip after the independent photo task; accounts do not modify importer/catalog logic.
 
-Transactional verification, reset, notification status, private configuration, key backup, bounded worker and schema2 activation/rollback are described in [email notifications](email-notifications.md). Schema1 code cannot reopen schema2; restore is never an implicit downgrade.
+Transactional verification, reset, notification status, private configuration, key backup, bounded worker and historical schema2 mail activation/rollback are described in [email notifications](email-notifications.md). Current schema3 cutover additionally follows the Google sign-in runbook below; old code cannot reopen a newer schema, and restore is never an implicit downgrade.
+
+## Schema 3 and optional Google identity
+
+Schema 3 preserves existing password salt/hash NOT NULL constraints and adds an
+authoritative `password_enabled` flag, identity mappings, short-lived OAuth flows
+and session provenance/one-use reauthentication grants. Existing accounts remain
+password-enabled. Historical schema 2 is fixed in `accounts/schema-v2.sql`;
+1→2→3 is one additive startup transaction with foreign keys on. Native backups
+accept exact versions 1–3 without migration.
+
+Google identity is keyed by provider plus subject, never email. Existing email
+collisions require password sign-in and explicit linking in Security. No report
+ownership is inferred. Every security/recovery epoch change invalidates relevant
+Google flows/mail actions and clears both reauthentication fields on every
+surviving session, including when Google is off. See [Google sign-in](google-signin.md).

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PAGE_ROUTES, resolvePageRoute } from '../dist/routes.js';
 
-test('page allowlist resolves twelve explicit paths and canonical trailing slashes', () => {
-  assert.deepEqual(PAGE_ROUTES.map(({ path }) => path), ['/', '/testing-methods', '/about', '/verify', '/contact', '/submit-sample', '/account', '/login', '/register', '/verify-email', '/reset-password', '/recover-account']);
+test('page allowlist resolves fourteen explicit paths and canonical trailing slashes', () => {
+  assert.deepEqual(PAGE_ROUTES.map(({ path }) => path), ['/', '/testing-methods', '/about', '/verify', '/contact', '/submit-sample', '/privacy-policy', '/google-signin', '/account', '/login', '/register', '/verify-email', '/reset-password', '/recover-account']);
   for (const route of PAGE_ROUTES) {
     assert.equal(resolvePageRoute(route.path), route);
     assert.ok(Object.isFrozen(route));

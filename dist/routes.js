@@ -6,6 +6,8 @@ export const PAGE_ROUTES = Object.freeze([
   { path: '/verify', view: 'verify-view', heading: 'verify-page-title', title: 'Verify COA · AssayNova' },
   { path: '/contact', view: 'contact-view', heading: 'contact-title', title: 'Contact us · AssayNova' },
   { path: '/submit-sample', view: 'request-view', heading: 'request-page-title', title: 'Submit a sample · AssayNova' },
+  { path: '/privacy-policy', view: 'privacy-policy-view', heading: 'privacy-policy-title', title: 'Privacy policy · AssayNova' },
+  { path: '/google-signin', view: 'google-signin-view', heading: 'google-signin-title', title: 'Google sign-in · AssayNova' },
   { path: '/account', view: 'account-view', heading: 'account-title', title: 'My account · AssayNova' },
   { path: '/login', view: 'login-view', heading: 'login-title', title: 'Sign in · AssayNova' },
   { path: '/register', view: 'register-view', heading: 'register-title', title: 'Create account · AssayNova' },

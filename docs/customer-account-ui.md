@@ -23,3 +23,25 @@ Tests use disposable synthetic accounts and actual-source controllers. Coverage 
 Mail-enabled registration highlights Check your email while preserving the one-time private code pane. Recovery offers email reset first with a saved-code fallback. Provider-off recovery retains its original code form. Verify/reset fragments are captured in volatile memory and removed before fetch or rendered links; exact action pages use no-referrer/no-store. GET/HEAD and opening a page never consume a token; explicit confirmation and CSRF-protected POST are required. Malformed links clear too. Reload/leave/owner change clears private action/password/code state; a deliberate initial-session Retry retains the same-page volatile token. Reset finishes at sign-in with eight replacement codes.
 
 Security shows verified truth and bounded resend cooldown. My requests shows receipt/support status separately from Submitted. Mail server accepted does not confirm inbox delivery. Manual owner-confirmed Refresh never enqueues; bounded Retry notifications only admits eligible blocked/missing events. There is no polling or historical backfill. Strict record equality and submission-intent replay do not include this external metadata.
+
+## Google and public privacy UI
+
+The official local Google PNG button appears on sign-in/register only when the
+server capability is enabled. It starts on an explicit user action. The fixed
+`/google-signin` result page bootstraps CSRF, checks ready metadata and completes
+that original intent once automatically, with no second confirmation. It shares
+the existing private one-time recovery-code pane and clears private DOM on leave
+or owner change. A successful completion response is withheld until a fresh
+same-origin session GET confirms its returned owner, retaining the latest
+session profile/CSRF/capabilities. A post-commit cross-tab owner switch or logout
+suppresses the result and one-time codes. Google password setup and unlink use
+the same returned-owner confirmation. Network uncertainty is session-confirmed
+before manual retry; consumed completions never replay automatically.
+Google-only Security offers password setup and fresh purpose-specific Google
+confirmation; it does not require a fictitious current password. Linking/unlinking
+for password-enabled accounts requires current-password proof.
+
+`/privacy-policy` is public and linked separately from footer cookie settings.
+No Google SDK, remote font, import-time provider request or browser persistence
+for unfinished OAuth/form details is introduced. Full external navigation can
+discard unsaved in-memory input; saved owned requests are unaffected.

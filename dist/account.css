@@ -3,3 +3,11 @@
 @media(max-width:600px){.account-page{padding:30px 0 42px}.ac-card{padding:22px}.ac-page-heading h1{font-size:34px}.ac-field-grid,.ac-codes{grid-template-columns:1fr}.ac-drafts li,.ac-workspace-bar{align-items:flex-start;flex-direction:column}.ac-drafts li{gap:12px}.ac-tabs button{padding:12px}.ac-card h2{font-size:24px}.ac-aside h2{font-size:24px}}
 
 .ac-mail-status{margin-top:14px;padding-top:12px;border-top:1px solid #d8e5df;font-size:13px;line-height:1.7;overflow-wrap:anywhere}.ac-mail-status p{margin:0 0 5px}.ac-mail-status button{margin:5px 14px 0 0;white-space:normal}.ac-security-grid{margin-top:20px}
+
+.ac-google-choice { margin: 24px 0; }
+.ac-google-button { display: block; padding: 0; background: transparent; width: 180px; max-width: 100%; border-radius: 4px; cursor: pointer; }
+.ac-google-button img { width: 100%; height: auto; }
+.ac-google-button:focus-visible { outline: 3px solid #008b90; outline-offset: 4px; }
+.ac-google-button:disabled { opacity: .55; cursor: wait; }
+.ac-google-choice .ac-help { margin-top: 12px; }
+.ac-divider { margin-top: 20px; color: #526973; font-size: 14px; }

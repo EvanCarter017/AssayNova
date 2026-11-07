@@ -80,7 +80,7 @@ function signInForRecovery() {
   node.remove(); recoveryForm = null; recoveryOwnerId = null; recoveryCloseForAuth = true;
   navigateToURL('/login?next=' + encodeURIComponent('/contact?request=report-recovery'));
 }
-const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => {
+const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => {
   const kind = requestKind(doc.record);
   if (kind === 'testing') { if (requestPage.resume(doc.record, { ...doc, ownerId })) navigateToURL('/submit-sample'); }
   else if (kind === 'contact') { navigateToURL('/contact'); contactForm?.resume(doc, ownerId); }
@@ -268,7 +268,7 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
     requestPage.checkAccountSession(); requestPage.activate();
     if (accountClient) { const ticket = accountLoadRevision; const controller = new AbortController(); accountLoadController = controller; accountClient.getSession({ signal: controller.signal }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) requestPage.setAccountSession(null, 'session'); }); }
   }
-  if (!current.coa && ['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password'].includes(page.path)) {
+  if (!current.coa && ['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'].includes(page.path)) {
     if (accountPage) void accountPage.activate(page.path, current.url.searchParams.get('next'), actionToken);
     else { const content = pageViews[page.path]?.querySelector('[data-account-content]'); if (content) content.innerHTML = '<div class="ac-card"><h2>Accounts are unavailable in this view.</h2><p>Public testing information and COA lookup remain available.</p><a href="/submit-sample">Explore testing</a></div>'; }
   }

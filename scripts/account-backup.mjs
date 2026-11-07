@@ -19,7 +19,7 @@ export async function backupAccounts({ directory, output, projectRoot } = {}) {
   try {
     db = new DatabaseSync(source, { readOnly: true, allowExtension: false });
     const version = db.prepare('PRAGMA user_version').get().user_version;
-    if (![1, 2].includes(version) || JSON.stringify(accountSchemaObjects(db)) !== (version === 1 ? definitions.oldShape : definitions.newShape)) throw new Error();
+    if (![1, 2, 3].includes(version) || JSON.stringify(accountSchemaObjects(db)) !== definitions.shapes[version]) throw new Error();
     await backup(db, destination);
     check = new DatabaseSync(destination, { readOnly: true, allowExtension: false });
     if (check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok' || check.prepare('PRAGMA user_version').get().user_version !== version || check.prepare('PRAGMA foreign_key_check').all().length) throw new Error();

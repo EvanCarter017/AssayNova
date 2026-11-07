@@ -67,8 +67,9 @@ const mailConfiguration = accountOptions.mode === 'authority' || process.env.ASS
   adminAuthDirectory: process.argv.find(argument => argument.startsWith('--admin-auth-store='))?.slice('--admin-auth-store='.length)
 }) : { enabled: false };
 if (mailConfiguration.enabled && accountOptions.mode !== 'authority') throw new Error('Mail requires the sole account authority.');
+const googleConfiguration = accountOptions.mode === 'authority' || process.env.ASSAYNOVA_GOOGLE_CONFIG_FILE ? await (await import('./accounts/google-config.mjs')).loadGoogleConfig({ accountOptions, bindAddress, reportDirectory: conferenceStore, adminAuthDirectory: process.argv.find(argument => argument.startsWith('--admin-auth-store='))?.slice('--admin-auth-store='.length) }) : { enabled: false };
 const reportMailModule = accountOptions.mode === 'authority' && adminEnabled ? await import('./conference/report-mail.mjs') : null;
-const customerAccounts = accountOptions.mode === 'authority' ? await (await import('./accounts/handler.mjs')).createAccountHandler({ ...accountOptions, mailOptions: { config: mailConfiguration, reportEligible: code => reportMailModule ? reportMailModule.reportMailEligible(conferenceStore, code) : false } }) : null;
+const customerAccounts = accountOptions.mode === 'authority' ? await (await import('./accounts/handler.mjs')).createAccountHandler({ ...accountOptions, googleOptions: { config: googleConfiguration }, mailOptions: { config: mailConfiguration, reportEligible: code => reportMailModule ? reportMailModule.reportMailEligible(conferenceStore, code) : false } }) : null;
 const reportMail = reportMailModule?.createReportMail({ store: conferenceStore, mail: customerAccounts?.reportMail });
 const admin = adminEnabled ? await (await import('./conference/admin.mjs')).createAdmin({
   reportMail, origin: adminOrigin, store: conferenceStore,
@@ -200,7 +201,7 @@ const server = http.createServer(async (request, response) => {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': ['/verify-email', '/reset-password'].includes(pathname.replace(/\/$/, '')) ? 'no-referrer' : 'same-origin',
+      'Referrer-Policy': ['/verify-email', '/reset-password', '/google-signin'].includes(pathname.replace(/\/$/, '')) ? 'no-referrer' : 'same-origin',
       'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     });
     response.end(request.method === 'HEAD' ? undefined : contents);

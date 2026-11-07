@@ -12,7 +12,7 @@ Optional admin notices are initially disabled. A selected published report has a
 
 ## Configuration and encrypted storage
 
-Only accounts/mail-config.mjs reads configuration. No ASSAYNOVA_MAIL_CONFIG_FILE path means off with no mail-file read or network. Configuration/password/key paths must be absolute canonical private files outside project/release/account/report/admin-auth directories, without redirected ancestors. Unix directories are0700, files0600 and owned by the service user. On Windows, explicitly restrict owner ACLs and inherited access; Unix mode bits alone do not enforce Windows privacy.
+Only accounts/mail-config.mjs reads mail configuration. No ASSAYNOVA_MAIL_CONFIG_FILE path means off with no mail-file read or network. Configuration/password/key paths must be absolute canonical private files outside project/release/account/report/admin-auth directories, without redirected ancestors. Unix directories are0700, files0600 and owned by the service user. On Windows, explicitly restrict owner ACLs and inherited access; Unix mode bits alone do not enforce Windows privacy.
 
 Exact top-level JSON field names: version, enabled, publicOrigin, smtp, outboxKeyFile, reportNoticesEnabled. Exact nested SMTP names: host, port, username, passwordFile, from, supportTo. Version is1. Enabled origin must be canonical HTTPS matching the account authority, and admin origin for notices. SMTP is canonical DNS port587 with verified mandatory STARTTLS; username/From/support destination agree. Password comes from a bounded private file allowing one terminal newline; key is32 random bytes. No working credential values belong in examples, units, command lines, environment values or logs. Explicit disabled configuration has false enabled/reportNoticesEnabled and null publicOrigin/smtp/outboxKeyFile; other shapes fail closed. Duplicate decoded JSON keys are rejected.
 
@@ -28,6 +28,19 @@ Schema2 atomically adds nullable verification/submission-marker fields and mail 
 
 Root stages the reviewed release, private configuration/password/key outside git/release and a service drop-in containing only the config-file path. Valid HTTPS is required before public links are enabled. Verify synthetic backup/restore/migration/worker restart in separate fixture directories without inspecting real account rows. Keep scoped Nginx query/token/Cookie/Authorization/body exclusions and unrelated services unchanged. Live provider acceptance requires the intended recipient/purpose and remains untested by fake-provider gates or authentication probes.
 
-After schema2 do not launch schema1 code. Prefer fix-forward or mail disabled under schema2. Restoring a pre-migration snapshot requires a data-loss decision for intervening writes and matching key/config. Never silently downgrade, overwrite, wipe or repair an unknown database. Google, mailbox editing, delivery/bounce tracking and marketing remain separate work.
+The historical mail migration introduced schema2. The current schema3 release must not run under schema1/2 code; prefer fix-forward or mail disabled under schema3. Restoring a pre-migration snapshot requires a data-loss decision for intervening writes and matching key/config. Never silently downgrade, overwrite, wipe or repair an unknown database. Mailbox editing, delivery/bounce tracking and marketing remain separate work; optional Google configuration is documented independently.
 
 Public links use supports@assaynovalabs.com through the external mail client; report-master reports@assaynovalabs.com stays unchanged. Optional analytics/marketing consent does not control requested transactional actions. Legacy browser keys and strict v2 bytes remain untouched, with no active local draft reads/writes/deletion/import or upload.
+
+## Optional Google identity interaction
+
+Google configuration is independent of SMTP and outbox encryption. The existing
+mail config/transport/queue contracts are unchanged. A new Google account is
+mail-verified only for signed verified Gmail or an exactly matching signed
+Workspace domain; other addresses use the existing best-effort verification
+admission. Linked accounts keep their stored mailbox/verification.
+
+A valid verified-mailbox reset can enable a password on a Google-only account;
+code recovery can do the same. Both retain the Google mapping, revoke sessions,
+replace recovery codes and invalidate mail/Google actions atomically without
+auto-login. Transactional Google sign-in never requires analytics consent.

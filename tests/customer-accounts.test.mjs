@@ -10,7 +10,7 @@ import { validPassword } from '../accounts/auth.mjs';
 
 test('customer signup uses real SQLite hashes, browser-bound CSRF, exact Unicode passwords and private cookies', async t => {
   const f = await accountFixture(); t.after(() => f.close()); const a = browser(f.base), b = browser(f.base);
-  const anon = await a.call('/session'); assert.deepEqual({ ...anon.data, csrfToken: '' }, { authenticated: false, user: null, csrfToken: '', mail: { enabled: false } }); assert.match(anon.data.csrfToken, /^[a-f0-9]{64}$/);
+  const anon = await a.call('/session'); assert.deepEqual({ ...anon.data, csrfToken: '' }, { authenticated: false, user: null, csrfToken: '', mail: { enabled: false }, google: { enabled: false } }); assert.match(anon.data.csrfToken, /^[a-f0-9]{64}$/);
   await b.call('/session'); b.csrf = a.csrf;
   assert.equal((await b.call('/signup', 'POST', { email: 'b@example.invalid', password: fixturePassword })).status, 403);
   const password = '  密碼🧪 exact password 088  ';

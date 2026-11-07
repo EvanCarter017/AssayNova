@@ -157,3 +157,11 @@ node --test tests/*.test.mjs
 本轮为本地开发预览，没有注册或部署托管网站。
 
 事务邮件由唯一账户服务运行有界加密队列，默认关闭。公开联系邮箱为 supports@assaynovalabs.com，报告母版中的 reports@assaynovalabs.com 保持不变。真实 SMTP 接收与收件箱送达不属于假提供方测试结果。schema2 上线前须原生备份并停止唯一写入服务；不能用 schema1 旧程序直接回退。详见 [邮件配置及回滚说明](docs/email-notifications.md)。
+
+## Optional Google sign-in
+
+Google account sign-in/linking, Google-only password setup and purpose-bound
+security confirmation are available when explicitly configured. Public
+`/privacy-policy` explains account and Google identity data; cookie settings
+remain separate. See [Google sign-in](docs/google-signin.md) for private config,
+pinned callback, schema 3 cutover and synthetic-versus-live acceptance.
