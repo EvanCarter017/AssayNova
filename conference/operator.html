@@ -53,8 +53,9 @@
               <label><span data-i18n="purity1">Purity replicate 1 (%)</span><input data-i18n-placeholder="automatic" name="purity1" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
               <label><span data-i18n="purity2">Purity replicate 2 (%)</span><input data-i18n-placeholder="automatic" name="purity2" type="number" min="99.05" max="99.95" step="0.01" placeholder="Automatic"></label>
             </div>
-            <p class="hint" data-i18n="defaultsHint">Empty fields use context defaults. Purity is 99.05–99.95%; net content varies within ±2%. Each generation creates a new immutable snapshot and Lookup Code.</p>
-            <div class="buttons"><button type="submit" value="preview" data-i18n="previewOnly">Preview only</button><button class="primary" type="submit" value="publish" data-i18n="publish">Generate &amp; publish</button></div>
+            <p class="hint" data-i18n="defaultsHint">Empty fields use context defaults. Purity is 99.05–99.95%; net content varies within ±2%. Each publication creates a new immutable snapshot and Lookup Code.</p>
+            <div class="live-controls"><p id="live-status" class="hint" role="status" aria-live="polite"></p><button id="preview-retry" type="button" data-i18n="previewRetry" hidden>Retry preview</button></div>
+            <div class="buttons"><button id="publish" class="primary" type="button" data-i18n="publish">Generate &amp; publish</button></div>
           </form>
           <p id="status" role="status" tabindex="-1">Loading catalog…</p>
         </aside>
@@ -65,7 +66,8 @@
             <div class="buttons"><button id="copy-code" data-i18n="copyLC">Copy LC</button><a data-i18n="openCustomer" id="public-link" target="_blank" rel="noopener">Open customer report</a><a data-i18n="downloadPDF" id="pdf" target="_blank" rel="noopener">Download PDF</a></div>
             <label id="manual-label" hidden><span data-i18n="manualCopy">Manual copy</span><input id="manual-copy" readonly></label>
           </div>
-          <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2 data-i18n="reviewTitle">Review your report here</h2><p><span data-i18n="reviewIntro">Choose a product to preview its report.</span><br><span data-i18n="reviewActions">Preview privately or generate and publish.</span></p></div>
+          <div id="live-result" hidden><p class="eyebrow" data-i18n="livePreview">LIVE PREVIEW</p><p id="live-name"></p><p class="hint" data-i18n="liveTemporary">Temporary preview · not saved or published · temporary Lookup Code</p></div>
+          <div id="empty"><span class="paper-icon" aria-hidden="true">▤</span><h2 data-i18n="reviewTitle">Review your report here</h2><p><span data-i18n="reviewIntro">Choose a product to preview its report.</span><br><span data-i18n="reviewActions">The preview updates automatically. Publish when ready.</span></p></div>
           <img id="paper" alt="Report preview" data-i18n-alt="reportPreview" width="595" height="842" hidden>
         </section>
         <section id="published-reports" class="history-panel" aria-labelledby="history-title"><div class="section-heading"><div><p class="eyebrow" data-i18n="reportLibrary">REPORT LIBRARY</p><h2 id="history-title" data-i18n="savedReports">Saved reports</h2></div><p class="hint" data-i18n="stableCodes">Stable Lookup Codes · preserved across restart</p></div><div class="report-library-controls"><label for="report-state" data-i18n="reportVisibility">Show reports</label><select id="report-state"><option value="published" data-i18n="publishedReports">Published reports</option><option value="removed" data-i18n="removedReports">Removed reports</option></select><button id="report-refresh" type="button" data-i18n="refreshReports">Refresh</button></div><p id="report-message" class="hint" role="status" tabindex="-1"></p><div id="history"></div></section>

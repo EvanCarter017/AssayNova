@@ -61,7 +61,7 @@ function documentFixture(html) {
     const attrs=new Map(attributes);let inputValue=attrs.get('value')||'';
     const node={tagName:tag.toUpperCase(),parent,children:[],attributes:attrs,dataset:{},events:new Map(),isConnected:true,hidden:attrs.has('hidden'),disabled:attrs.has('disabled'),text:decode(text),html:'',focusCalls:0,
       get value(){return inputValue;},set value(value){inputValue=this.tagName==='SELECT'&&!this.options.some(option=>option.getAttribute('value')===value)?'':value;},
-      getAttribute(key){return attrs.get(key)??null;},setAttribute(key,value){attrs.set(key,String(value));},removeAttribute(key){attrs.delete(key);},get content(){return attrs.get('content')??'';},addEventListener(type,callback){this.events.set(type,callback);},focus(){document.activeElement=this;this.focusCalls++;},select(){},showModal(){this.open=true;},close(){this.open=false;},reset(){},classList:{toggle(){}},
+      getAttribute(key){return attrs.get(key)??null;},setAttribute(key,value){attrs.set(key,String(value));},removeAttribute(key){attrs.delete(key);},get content(){return attrs.get('content')??'';},addEventListener(type,callback){this.events.set(type,callback);},focus(){document.activeElement=this;this.focusCalls++;},select(){},showModal(){this.open=true;},close(){this.open=false;},reset(){},reportValidity(){return true;},classList:{toggle(){}},
       get textContent(){return this.text;},set textContent(value){for(const child of this.children)disconnect(child);this.children=[];this.text=String(value);},
       get innerHTML(){return this.html;},set innerHTML(value){for(const child of this.children)disconnect(child);this.children=[];this.html=String(value);parse(this.html,this);},
       get options(){return this.children.filter(child=>child.tagName==='OPTION'&&child.isConnected);},
@@ -95,11 +95,16 @@ function documentFixture(html) {
   return {document,node:id=>ids.get(id)};
 }
 function storageFixture(saved) {const writes=[],values=new Map(saved?[[LOCALE_KEY,saved]]:[]);return {writes,values,getItem:key=>values.get(key)??null,setItem(key,value){writes.push([key,value]);values.set(key,value);}};}
-async function boot(source,html,{storage=storageFixture(),fetch,language='en',extra='',reportTimeout}={}) {
-  const dom=documentFixture(html),navigation=[],window={addEventListener(){}},location={replace:value=>navigation.push(value),reload:()=>navigation.push('reload')};
-  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,createImportUI,createCatalogCorrectionUI,createReportRemovalUI:options=>createReportRemovalUI({...options,...(reportTimeout?{timeout:reportTimeout}:{})}),catalogPickerState,catalogIssueText,filterProducts,AbortController,setTimeout,clearTimeout};
+function fakeClock(){
+  let now=Date.now(),id=0;const timers=new Map();
+  return {Date:class extends Date{static now(){return now;}},setTimeout(callback,ms){const key=++id;timers.set(key,{callback,at:now+ms});return key;},clearTimeout:key=>timers.delete(key),size:()=>timers.size,async tick(ms){const end=now+ms;for(;;){await flush();const next=[...timers].filter(([,timer])=>timer.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;now=next[1].at;timers.delete(next[0]);next[1].callback();}now=end;await flush();}};
+}
+async function flush(){for(let i=0;i<20;i++)await Promise.resolve();}
+async function boot(source,html,{storage=storageFixture(),fetch,language='en',extra='',reportTimeout,clock=fakeClock()}={}) {
+  const dom=documentFixture(html),navigation=[],window={events:new Map(),addEventListener(name,callback){this.events.set(name,callback);}},location={replace:value=>navigation.push(value),reload:()=>navigation.push('reload')};let random=0;
+  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,createImportUI,createCatalogCorrectionUI,createReportRemovalUI:options=>createReportRemovalUI({...options,...(reportTimeout?{timeout:reportTimeout}:{})}),catalogPickerState,catalogIssueText,filterProducts,AbortController,Date:clock.Date,crypto:{getRandomValues:array=>array.fill(++random)},setTimeout:clock.setTimeout,clearTimeout:clock.clearTimeout};
   await runInNewContext('(async()=>{'+source.replace(/^import .*;\s*$/gm,'')+'\n'+extra+'})()',context);
-  return {...dom,context,storage,navigation};
+  return {...dom,context,storage,navigation,clock};
 }
 
 test('actual Reports locale switch preserves values, selection, snapshot, manual copy, focus and in-flight work', async () => {
@@ -112,9 +117,9 @@ test('actual Reports locale switch preserves values, selection, snapshot, manual
   app.node('manual-copy').value='AN-TEST-0001';app.node('manual-label').hidden=false;const field=app.node('generate').elements.namedItem('lot');field.focus();const focusCount=field.focusCalls,before=calls.length;
   ui.language.setLocale('zh-CN');assert.equal(calls.length,before);assert.equal(app.document.documentElement.lang,'zh-CN');assert.match(app.document.title,/报告管理/);assert.equal(app.node('search').getAttribute('placeholder'),DICTIONARIES['zh-CN'].searchPlaceholder);assert.equal(app.node('paper').getAttribute('alt'),'报告预览');
   assert.equal(field.value,'QA-084-LOT');assert.equal(field.isConnected,true);assert.equal(app.node('search').value,'KLOW80');assert.equal(app.node('product').value,'klow');assert.equal(app.node('code').textContent,'AN-TEST-0001');assert.match(app.node('paper').src,/AN-TEST-0001/);assert.equal(app.node('manual-copy').value,'AN-TEST-0001');assert.equal(app.node('manual-label').hidden,false);assert.equal(app.document.activeElement,field);assert.equal(field.focusCalls,focusCount);assert.deepEqual(app.navigation,[]);
-  const submit=app.node('generate').events.get('submit')({preventDefault(){},submitter:{value:'preview'}});assert.equal(field.disabled,true);assert.match(app.node('status').textContent,/正在/);const pendingCalls=calls.length;
+  const submit=app.node('publish').events.get('click')();await flush();assert.equal(field.disabled,true);assert.match(app.node('status').textContent,/正在/);const pendingCalls=calls.length;
   const payload=JSON.parse(calls.find(([url])=>url.endsWith('/generate'))[1].body);assert.deepEqual(Object.keys(payload).sort(),['customerId','fields','productId','publish']);assert.equal(payload.customerId,'fixture');assert.equal(Object.hasOwn(payload.fields,'client'),false);assert.equal(payload.productId,'klow');assert.equal(payload.fields.lot,'QA-084-LOT');
-  ui.language.setLocale('en');assert.equal(calls.length,pendingCalls);assert.equal(field.disabled,true);assert.equal(app.node('status').textContent,DICTIONARIES.en.previewing);
+  ui.language.setLocale('en');assert.equal(calls.length,pendingCalls);assert.equal(field.disabled,true);assert.equal(app.node('status').textContent,DICTIONARIES.en.publishing);
   finish({status:400,ok:false,json:async()=>({error:'Use a valid ISO date.'})});await submit;assert.match(app.node('status').textContent,/ISO date/);ui.language.setLocale('zh-CN');assert.match(app.node('status').textContent,/有效日期/);assert.equal(field.disabled,false);assert.equal(app.node('code').textContent,'AN-TEST-0001');
   assert.ok(app.storage.writes.every(([key,value])=>key===LOCALE_KEY&&['en','zh-CN'].includes(value)));
 });
@@ -142,7 +147,7 @@ test('actual v2 chooser keeps 22 problem entries in the dropdown and permits rea
   app.node('search').value = ''; app.context.ui.filter();app.node('product').value='adamax';const readyOption=app.node('product').options.find(option=>option.value==='adamax');readyOption.disabled=true;app.context.ui.selectProduct();assert.equal(app.context.ui.selected(),undefined);readyOption.disabled=false;
   app.node('product').value='adamax';app.context.ui.selectProduct();app.node('product').focus();const focused=app.document.activeElement;
   app.context.ui.language.setLocale('zh-CN');assert.equal(app.node('product').value,'adamax');assert.equal(app.document.activeElement,focused);assert.equal(app.node('catalog-manage').textContent,'处理异常（22）');assert.ok(app.node('product').options.filter(option=>option.disabled&&option.getAttribute('class')==='is-blocked').every(option=>option.textContent.startsWith('内容缺失 · 无法选择 · ')));
-  await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } });
+  await app.node('publish').events.get('click')();
   const payload=JSON.parse(calls.find(([url])=>url.endsWith('/generate'))[1].body);assert.equal(payload.catalogRevision,revision);assert.equal(payload.customerId,'fixture');assert.equal(payload.productId,'adamax');
   const css=await readFile(new URL('../conference/operator.css',import.meta.url),'utf8');assert.match(css,/#product option\.is-blocked:disabled\{[^}]*color:#a32e25/);assert.doesNotMatch(css,/#catalog-blocked/);
 });
@@ -199,7 +204,7 @@ test('actual modal brand switch commits one isolated catalog and clears a shared
   app.context.ui.language.setLocale('zh-CN'); assert.equal(app.node('product').value, ''); assert.equal(app.context.ui.selected(), undefined); assert.equal(app.node('catalog-brand').value, 'brand-b'); assert.equal(app.node('catalog-dialog').open, true);
   await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } }); assert.equal(calls.some(([url]) => url.endsWith('/generate')), false);
   await app.context.ui.correction.select(entryB.id); assert.match(app.node('catalog-image').innerHTML, /44444444444444444444444444444444/); assert.doesNotMatch(app.node('catalog-image').innerHTML, /33333333333333333333333333333333/); assert.equal(app.node('catalog-source-line').textContent, 'B · 第 9 行');
-  app.context.ui.correction.close(); app.node('product').value = 'shared'; app.context.ui.selectProduct(); await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } });
+  app.context.ui.correction.close(); app.node('product').value = 'shared'; app.context.ui.selectProduct(); await app.node('publish').events.get('click')();
   const generation = JSON.parse(calls.find(([url]) => url.endsWith('/generate'))[1].body); assert.equal(generation.customerId, 'brand-b'); assert.equal(generation.productId, 'shared'); assert.equal(generation.catalogRevision, revisionB);
   const brandReads = calls.filter(([url]) => url === '/admin/api/catalog?customerId=brand-b'); assert.equal(brandReads.length, 2); assert.ok(brandReads.every(([, options]) => options.headers['X-Studio-Token'] === 'synthetic'));
 });
@@ -238,9 +243,9 @@ test('actual empty-customer boot enables a localized first import without bogus 
   await app.node('import-form').events.get('submit')({ preventDefault() {} }); assert.deepEqual(JSON.parse(calls.find(([url,options]) => url === '/admin/api/imports' && options.method==='POST')[1].body), { name: 'VialCove' });
   await app.node('import-preview').events.get('click')(); await app.node('import-confirm').events.get('click')();
   assert.equal(app.node('customer').value, profile.id); assert.equal(ui.selected().id, product.id); assert.equal(app.node('search').disabled, false); assert.equal(app.node('customer').disabled, false);
-  assert.equal(app.node('import-target').value, 'current'); assert.equal(app.node('import-target').options.find(option => option.value === 'current').disabled, false); assert.equal(app.node('paper').src, paper); assert.equal(app.node('code').textContent, 'AN-OLD0-0001');
-  await app.node('generate').events.get('submit')({ preventDefault() {}, submitter: { value: 'preview' } }); assert.equal(JSON.parse(calls.find(([url]) => url.endsWith('/generate'))[1].body).customerId, profile.id);
-  assert.equal(app.node('paper').src, paper); assert.equal(calls.some(([url]) => url.includes('/catalog?')), false);
+  assert.equal(app.node('import-target').value, 'current'); assert.equal(app.node('import-target').options.find(option => option.value === 'current').disabled, false); assert.equal(app.node('paper').hidden,true); assert.equal(app.node('code').textContent, '');
+  await app.node('publish').events.get('click')(); assert.equal(JSON.parse(calls.find(([url]) => url.endsWith('/generate'))[1].body).customerId, profile.id);
+  assert.equal(app.node('paper').hidden,true); assert.equal(calls.some(([url]) => url.includes('/catalog?')), false);
 });
 
 test('actual customer handlers preserve reload selection, stale/failure guards, upload fields and snapshots through generation', async () => {
@@ -267,17 +272,17 @@ test('actual customer handlers preserve reload selection, stale/failure guards, 
   oldFailure.resolve({status:400,ok:false,json:async()=>({error:'Customer directory could not be read. Check the saved server directory and reload products.'})});await staleFailure;assert.equal(app.node('status').textContent,latestStatus);
   const failed=ui.loadCustomer(b.id);assert.equal(app.node('customer').value,b.id);
   catalogRequests.shift().resolve({status:400,ok:false,json:async()=>({error:'Customer directory could not be read. Check the saved server directory and reload products.'})});await failed;
-  assert.equal(ui.selected(),undefined);assert.equal(app.node('import-target').disabled,false);assert.equal(app.node('import-folder').disabled,false);assert.equal(app.node('import-sheet').disabled,false);assert.equal(app.node('code').textContent,'AN-OLD0-0001');assert.match(app.node('status').textContent,/Upload/);
+  assert.equal(ui.selected(),undefined);assert.equal(app.node('import-target').disabled,false);assert.equal(app.node('import-folder').disabled,false);assert.equal(app.node('import-sheet').disabled,false);assert.equal(app.node('code').textContent,'');assert.equal(app.node('paper').hidden,true);assert.match(app.node('status').textContent,/Upload/);
   app.node('import-name').value='Future customer';app.node('import-name').focus();
   const focus=app.document.activeElement,io=calls.length;ui.language.setLocale('zh-CN');assert.equal(calls.length,io);assert.equal(app.document.activeElement,focus);assert.equal(app.node('import-name').value,'Future customer');
   const recover=app.node('reload-products').events.get('click')();assert.equal(app.node('generate').elements.namedItem('lot').disabled,true);
   const inFlightCalls=calls.length;ui.language.setLocale('en');assert.equal(calls.length,inFlightCalls);assert.equal(app.node('generate').elements.namedItem('lot').disabled,true);assert.equal(app.document.activeElement,focus);
   catalogRequests.shift().resolve(ok({customer:b,products:[kpv]}));await recover;
-  assert.equal(app.node('customer').value,b.id);assert.equal(ui.selected().id,kpv.id);assert.equal(app.node('code').textContent,'AN-OLD0-0001');assert.equal(app.node('import-name').value,'Future customer');
-  const generate=app.node('generate').events.get('submit')({preventDefault(){},submitter:{value:'preview'}}),generation=mutationRequests.shift(),payload=JSON.parse(generation.options.body);
+  assert.equal(app.node('customer').value,b.id);assert.equal(ui.selected().id,kpv.id);assert.equal(app.node('code').textContent,'');assert.equal(app.node('import-name').value,'Future customer');
+  const generate=app.node('publish').events.get('click')();await flush();const generation=mutationRequests.shift(),payload=JSON.parse(generation.options.body);
   assert.equal(payload.customerId,b.id);assert.equal(payload.productId,kpv.id);assert.equal(Object.hasOwn(payload.fields,'client'),false);assert.equal(app.node('customer').disabled,true);
-  generation.resolve({status:400,ok:false,json:async()=>({error:'Use a valid ISO date.'})});await generate;assert.equal(app.node('code').textContent,'AN-OLD0-0001');assert.equal(app.node('customer').disabled,false);
-  app.node('search').value='SM2';ui.filter();assert.equal(ui.selected(),undefined);assert.equal(app.node('paper').src,'/admin/bundles/previews/AN-OLD0-0001/report.svg');
+  generation.resolve({status:400,ok:false,json:async()=>({error:'Use a valid ISO date.'})});await generate;assert.equal(app.node('code').textContent,'');assert.equal(app.node('customer').disabled,false);
+  app.node('search').value='SM2';ui.filter();assert.equal(ui.selected(),undefined);assert.equal(app.node('paper').hidden,true);
 });
 
 test('actual login stays English with Chinese saved/browser locales and no locale reads or writes', async () => {
@@ -404,4 +409,124 @@ test('actual operator retains acknowledged remove/restore plus library read erro
     failHistory=false;await app.node('report-refresh').events.get('click')();assert.equal(app.node('report-message').textContent,'');assert.equal(mutations,1);assert.equal(app.node('report-refresh').disabled,false);
     app.node('report-state').value=state;await app.node('report-state').events.get('change')();assert.match(app.node('history').innerHTML,/AN-QA92-0001/);
   }
+});
+
+async function liveFixture(options={}){
+  const products=['BPC-157 10mg','BPC-157 40mg'].map((name,index)=>({...catalogDTO({id:'product'+index,name,...parseProduct(name)}),status:'ready'}));
+  const calls=[],pending=[],ok=value=>({status:200,ok:true,json:async()=>value});
+  const session={products,customers:[{id:'fixture',name:'Synthetic'}],defaultCustomerId:'fixture',token:'synthetic',publicOrigin:'https://fixture.invalid',catalogRevision:'a'.repeat(32)};
+  const row={lookupCode:'AN-QA98-0001',label:'Saved fixture',reported:'2026-11-07'};
+  const app=await boot(operatorJS,operatorHTML,{...options,fetch:async(url,request={})=>{
+    calls.push([url,request]);if(url.endsWith('/session'))return ok({...session,...options.session});
+    if(url.startsWith('/admin/api/history'))return ok([row]);if(url==='/admin/api/imports'&&request.method==='GET')return ok({imports:[]});
+    if(options.fetch){const value=options.fetch(url,request);if(value)return value;}
+    return new Promise((resolve,reject)=>pending.push({url,request,resolve,reject}));
+  },extra:'globalThis.ui={language,filter,selectProduct,loadCustomer,showResult,libraryFetch,session:()=>session,selected:()=>selected};'});
+  const select=index=>{app.node('product').value=products[index].id;app.context.ui.selectProduct();};
+  const edit=(name,value)=>{const target=app.node('generate').elements.namedItem(name);target.value=value;app.node('generate').events.get('input')({target});return target;};
+  const preview=(request=pending.shift(),label='Current')=>{request.resolve(ok({label,svg:'<svg xmlns="http://www.w3.org/2000/svg"><text>'+label+'</text></svg>'}));return flush();};
+  return {...app,calls,pending,ok,products,row,select,edit,preview};
+}
+test('live preview debounces ready selection and edits, preserves focus and seed, and ignores locale/same-selection search',async()=>{
+  const app=await liveFixture();await app.clock.tick(1000);assert.equal(app.pending.length,0);
+  app.select(0);await app.clock.tick(349);assert.equal(app.pending.length,0);await app.clock.tick(1);assert.equal(app.pending.length,1);
+  const first=app.pending.shift(),body=JSON.parse(first.request.body);assert.equal(first.url,'/admin/api/preview');assert.equal(body.productId,'product0');assert.match(body.previewSeed,/^[a-f0-9]{48}$/);assert.equal(body.catalogRevision,'a'.repeat(32));assert.equal(Object.hasOwn(body,'publish'),false);
+  const input=app.edit('lot','LOT-A');input.focus();input.selectionStart=3;const focus=input.focusCalls;assert.equal(input.disabled,false);
+  app.edit('lot','LOT-B');await app.clock.tick(350);assert.equal(app.pending.length,0);assert.equal(app.node('paper').hidden,true);
+  await app.preview(first,'Stale');assert.equal(app.node('paper').hidden,true);assert.equal(app.pending.length,1);
+  const next=app.pending.shift(),nextBody=JSON.parse(next.request.body);assert.equal(nextBody.fields.lot,'LOT-B');assert.equal(nextBody.previewSeed,body.previewSeed);
+  await app.preview(next,'Latest 10mg');assert.equal(app.node('paper').hidden,false);assert.match(decodeURIComponent(app.node('paper').src),/Latest 10mg/);assert.equal(app.node('result').hidden,true);assert.equal(app.node('public-link').hidden,true);assert.equal(app.node('pdf').getAttribute('href'),null);assert.equal(app.node('copy-code').hidden,true);
+  assert.equal(app.document.activeElement,input);assert.equal(input.focusCalls,focus);assert.equal(input.selectionStart,3);
+  const count=app.calls.length;app.node('search').value='BC10';app.context.ui.filter();app.context.ui.language.setLocale('zh-CN');await app.clock.tick(1000);assert.equal(app.calls.length,count);assert.equal(input.value,'LOT-B');assert.match(app.node('live-status').textContent,/已更新/);
+  app.context.window.events.get('pagehide')();assert.equal(app.clock.size(),0);
+});
+test('invalid fields, incomplete numeric input, IME, empty and blocked choices never render and clear stale paper',async()=>{
+  const app=await liveFixture();app.select(0);await app.clock.tick(350);await app.preview();
+  for(const [name,value] of [['purity1','98'],['purity1','99.501'],['purity1','Infinity'],['received','2026-02-30'],['lot','中文']]){
+    app.edit(name,value);assert.equal(app.node('paper').hidden,true);await app.clock.tick(350);assert.equal(app.pending.length,0);app.edit(name,'');
+  }
+  app.edit('received','2026-11-08');app.edit('reported','2026-11-07');await app.clock.tick(350);assert.equal(app.pending.length,0);
+  app.edit('received','2026-11-07');const field=app.edit('purity1','');field.validity={badInput:true};app.edit('purity1','');await app.clock.tick(350);assert.equal(app.pending.length,0);field.validity={badInput:false};
+  app.node('generate').events.get('compositionstart')();app.edit('lot','PARTIAL');await app.clock.tick(350);assert.equal(app.pending.length,0);app.node('generate').events.get('compositionend')();await app.clock.tick(350);assert.equal(app.pending.length,1);await app.preview();
+  app.node('search').value='unmatched';app.context.ui.filter();await app.clock.tick(1000);assert.equal(app.pending.length,0);assert.equal(app.node('paper').hidden,true);
+  app.context.window.events.get('pagehide')();
+});
+test('stale success and error cannot win after switching away/back, changing revision or customer',async()=>{
+  const app=await liveFixture();app.select(0);await app.clock.tick(350);const old=app.pending.shift();app.select(1);app.select(0);await app.clock.tick(350);await app.preview(old,'Old 40mg');assert.equal(app.node('paper').hidden,true);assert.equal(app.pending.length,1);
+  const revision=app.pending.shift();app.context.ui.session().catalogRevision='b'.repeat(32);app.context.ui.selectProduct();await app.clock.tick(350);revision.resolve({ok:false,status:400,json:async()=>({error:'Old error'})});await flush();assert.equal(app.node('live-status').textContent,DICTIONARIES.en.liveUpdating);assert.equal(app.pending.length,1);
+  const brand=app.pending.shift(),loading=app.context.ui.loadCustomer('other');const catalog=app.pending.shift();catalog.resolve(app.ok({customer:{id:'other',name:'Other'},products:app.products,catalogRevision:'c'.repeat(32)}));await loading;app.select(0);await app.preview(brand,'Old brand');assert.equal(app.node('paper').hidden,true);await app.clock.tick(350);assert.equal(JSON.parse(app.pending[0].request.body).customerId,'other');app.context.window.events.get('pagehide')();await flush();assert.equal(app.clock.size(),0);
+});
+test('explicit publication drains live work once and Enter never publishes; library snapshots survive search and locale',async()=>{
+  const app=await liveFixture();app.select(0);await app.clock.tick(350);const preview=app.pending.shift();
+  await app.node('generate').events.get('submit')({preventDefault(){},submitter:app.node('publish')});assert.equal(app.pending.length,0);assert.equal(app.node('publish').getAttribute('type'),'button');
+  app.edit('lot','CAPTURED');const publishing=app.node('publish').events.get('click')();await flush();assert.equal(app.pending.length,0);assert.equal(app.node('generate').elements.namedItem('lot').disabled,true);
+  await app.preview(preview,'Ignored');const request=app.pending.shift();assert.equal(request.url,'/admin/api/generate');assert.equal(JSON.parse(request.request.body).publish,true);assert.equal(JSON.parse(request.request.body).fields.lot,'CAPTURED');
+  request.resolve(app.ok({published:true,label:'Published',report:{lookupCode:app.row.lookupCode},previewURL:'/saved.svg',pdfURL:'/saved.pdf',publicURL:'https://fixture.invalid/coa/'+app.row.lookupCode}));await publishing;
+  const count=app.calls.length;app.node('search').value='BC10';app.context.ui.filter();app.context.ui.language.setLocale('zh-CN');await app.clock.tick(1000);assert.equal(app.calls.length,count);assert.equal(app.node('paper').src,'/saved.svg');assert.equal(app.node('copy-code').hidden,false);
+  app.edit('lot','NEW');assert.equal(app.node('paper').hidden,true);assert.equal(app.node('copy-code').hidden,true);await app.clock.tick(350);assert.equal(app.pending[0].url,'/admin/api/preview');app.context.window.events.get('pagehide')();await flush();
+});
+test('preview errors retry only on request; uncertain failures and timeout gate Retry and publication until 75 seconds',async()=>{
+  for(const failure of ['http','network','timeout']){
+    const app=await liveFixture();app.select(0);await app.clock.tick(350);const request=app.pending.shift();
+    if(failure==='http')request.resolve({ok:false,status:400,json:async()=>({error:'Synthetic failure'})});
+    else if(failure==='network')request.reject(new Error('Failed to fetch'));
+    else await app.clock.tick(60000);
+    await flush();assert.equal(app.node('preview-retry').hidden,false);await app.clock.tick(failure==='http'?1000:1);assert.equal(app.pending.length,0);
+    app.node('preview-retry').events.get('click')();await app.clock.tick(350);
+    if(failure==='http'){assert.equal(app.pending.length,1);app.context.window.events.get('pagehide')();await flush();continue;}
+    assert.equal(app.pending.length,0);const publication=app.node('publish').events.get('click')();await flush();assert.equal(app.pending.length,0);
+    await app.clock.tick(failure==='network'?74648:14648);assert.equal(app.pending.length,0);await app.clock.tick(1);assert.equal(app.pending.length,1);assert.equal(app.pending[0].url,'/admin/api/generate');
+    app.pending.shift().resolve({ok:false,status:400,json:async()=>({error:'Use a valid ISO date.'})});await publication;app.context.window.events.get('pagehide')();assert.equal(app.clock.size(),0);
+  }
+});
+test('library mutations drain preview and uncertainty cooldown without dispatching an aborted wrapper late',async()=>{
+  for(const action of ['remove','restore'])for(const uncertain of [false,true]){
+    const app=await liveFixture();app.select(0);await app.clock.tick(350);const preview=app.pending.shift();
+    if(uncertain){preview.reject(new Error('Failed to fetch'));await flush();}
+    const route='/admin/api/reports/'+app.row.lookupCode+'/'+action,controller=new AbortController();
+    const mutation=app.context.ui.libraryFetch(route,{method:'POST',signal:controller.signal});await flush();assert.equal(app.pending.length,0);
+    if(uncertain){await app.clock.tick(74999);assert.equal(app.pending.length,0);await app.clock.tick(1);}else await app.preview(preview,'Ignored');
+    assert.equal(app.pending.length,1);assert.equal(app.pending[0].url,route);app.pending.shift().resolve(app.ok({}));await mutation;
+    app.context.window.events.get('pagehide')();assert.equal(app.clock.size(),0);
+  }
+  const app=await liveFixture();app.select(0);await app.clock.tick(350);app.pending.shift().reject(new Error('Failed to fetch'));await flush();
+  const controller=new AbortController(),mutation=app.context.ui.libraryFetch('/admin/api/reports/'+app.row.lookupCode+'/remove',{method:'POST',signal:controller.signal});controller.abort();await app.clock.tick(75000);await assert.rejects(mutation,/cancelled/);assert.equal(app.pending.length,0);app.context.window.events.get('pagehide')();assert.equal(app.clock.size(),0);
+});
+test('401, logout and pagehide invalidate live queues and release every preview timer',async()=>{
+  for(const stop of ['401','logout','pagehide']){
+    const app=await liveFixture();app.select(0);await app.clock.tick(350);const active=app.pending.shift();app.edit('lot','QUEUED');
+    if(stop==='401')active.resolve({status:401,ok:false,json:async()=>({})});else if(stop==='pagehide')app.context.window.events.get('pagehide')();else{const logout=app.node('logout').events.get('click')();const request=app.pending.shift();request.resolve(app.ok({}));await logout;}
+    await flush();await app.clock.tick(100000);assert.equal(app.pending.length,0);assert.equal(app.clock.size(),0);if(stop!=='pagehide')assert.deepEqual(app.navigation,['/admin']);
+  }
+});
+test('an upload that temporarily blocks dispatch resumes the queued preview after cancellation',async()=>{
+  const app=await liveFixture({fetch:(url)=>url==='/admin/api/imports'?null:undefined});app.select(0);
+  app.node('import-folder').files=[{name:'BC10.png',webkitRelativePath:'photos/BC10.png',size:1,slice:()=>new Blob(['x'])}];
+  const upload=app.node('import-form').events.get('submit')({preventDefault(){}});await flush();await app.clock.tick(350);assert.equal(app.pending.filter(row=>row.url==='/admin/api/preview').length,0);
+  const creating=app.pending.shift();creating.resolve({ok:false,status:400,json:async()=>({error:'Synthetic upload failure'})});await upload;await flush();assert.equal(app.pending.length,1);assert.equal(app.pending[0].url,'/admin/api/preview');app.context.window.events.get('pagehide')();await flush();
+});
+
+test('a unique ready product previews once on boot and HTTP error Retry completes without focus theft',async()=>{
+  const product={...catalogDTO({id:'only',name:'BPC-157 10mg',...parseProduct('BPC-157 10mg')}),status:'ready'};
+  const app=await liveFixture({session:{products:[product]}});await app.clock.tick(349);assert.equal(app.pending.length,0);await app.clock.tick(1);assert.equal(app.pending.length,1);
+  app.pending.shift().resolve({status:400,ok:false,json:async()=>({error:'Synthetic failure'})});await flush();assert.equal(app.node('live-status').textContent,DICTIONARIES.en.liveError);app.node('preview-retry').events.get('click')();await app.clock.tick(350);await app.preview();assert.equal(app.node('live-status').textContent,DICTIONARIES.en.liveReady);assert.equal(app.node('preview-retry').hidden,true);app.context.window.events.get('pagehide')();
+});
+test('unrelated library mutation resumes drained live preview, while failed publication offers Retry',async()=>{
+  for(const action of ['remove','restore']){
+    const app=await liveFixture();if(action==='restore'){app.node('report-state').value='removed';await app.node('report-state').events.get('change')();}
+    app.select(0);await app.clock.tick(350);const preview=app.pending.shift();
+    const button=app.node('history').querySelectorAll('[data-report-action]')[0];app.node('history').events.get('click')({target:{closest:()=>button}});const mutation=app.node('report-confirm').events.get('click')();await flush();assert.equal(app.pending.length,0);
+    await app.preview(preview,'Ignored');assert.equal(app.pending.length,1);assert.ok(app.pending[0].url.endsWith('/'+action));app.pending.shift().resolve(app.ok({lookupCode:app.row.lookupCode,label:app.row.label,state:action==='remove'?'removed':'published'}));await mutation;
+    assert.equal(app.node('live-status').textContent,DICTIONARIES.en.liveUpdating);await app.clock.tick(350);assert.equal(app.pending.length,1);await app.preview();assert.equal(app.node('live-status').textContent,DICTIONARIES.en.liveReady);app.context.window.events.get('pagehide')();
+  }
+  const app=await liveFixture();app.select(0);await app.clock.tick(350);const preview=app.pending.shift(),publication=app.node('publish').events.get('click')();await app.preview(preview,'Ignored');app.pending.shift().resolve({status:400,ok:false,json:async()=>({error:'Use a valid ISO date.'})});await publication;assert.equal(app.node('live-status').textContent,DICTIONARIES.en.liveError);assert.equal(app.node('preview-retry').hidden,false);app.context.window.events.get('pagehide')();
+});
+test('a library timeout before preview drain never dispatches a late mutation or overwrites uncertain ownership',async()=>{
+  const app=await liveFixture({reportTimeout:5});app.select(0);await app.clock.tick(350);const preview=app.pending.shift();
+  const open=app.node('history').querySelectorAll('[data-code]').find(button=>!button.dataset.reportAction),remove=app.node('history').querySelectorAll('[data-report-action]')[0],click=button=>app.node('history').events.get('click')({target:{closest:()=>button}});
+  click(open);click(remove);await app.node('report-confirm').events.get('click')();assert.equal(app.pending.length,0);assert.equal(app.node('result').hidden,true);assert.match(app.node('report-dialog-status').textContent,/could not be confirmed/);
+  await app.preview(preview,'Ignored');await app.clock.tick(1000);assert.equal(app.pending.length,0);assert.equal(app.node('paper').hidden,true);app.context.window.events.get('pagehide')();
+});
+test('failed logout cancels preview timers and clearly requires reload before publication',async()=>{
+  const app=await liveFixture();app.select(0);await app.clock.tick(350);app.pending.shift();const logout=app.node('logout').events.get('click')();app.pending.shift().reject(new Error('Failed to fetch'));await logout;await flush();assert.equal(app.node('live-status').textContent,DICTIONARIES.en.liveDisconnected);assert.equal(app.node('publish').disabled,true);await app.clock.tick(100000);assert.equal(app.pending.length,0);assert.equal(app.clock.size(),0);
 });

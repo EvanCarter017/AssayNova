@@ -65,6 +65,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
   }
 
   async function handle(request, response) {
+    const previewDeadline = Date.now() + 60000;
     const encodedPath = request.url.split('?')[0];
     let pathname;
     try { pathname = decodeURIComponent(encodedPath); }
@@ -156,6 +157,26 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
         const saved = await customers.save(await bodyJSON(request));
         send(response, 200, { customers: saved.customers, ...catalogResponse(saved) });
       } catch (error) { send(response, error.status || 400, { error: error.status ? error.message : 'Customer configuration could not be saved.' }); }
+      return true;
+    }
+    if (pathname === '/admin/api/preview') {
+      if (request.url !== pathname) { send(response, 400, { error: 'Use an exact preview route.' }, undefined, head); return true; }
+      if (request.method !== 'POST') { response.setHeader('Allow', 'POST'); send(response, 405, { error: 'Method not allowed.' }, undefined, head); return true; }
+      if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Run token required.' }); return true; }
+      try {
+        const input = await bodyJSON(request);
+        if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['customerId', 'productId', 'fields', 'catalogRevision', 'previewSeed'].includes(key))) throw new Error('Unsupported preview request.');
+        if (typeof input.previewSeed !== 'string' || !/^[a-f0-9]{48}$/i.test(input.previewSeed)) throw new Error('Use a valid preview seed.');
+        if (input.fields && Object.hasOwn(input.fields, 'client')) throw new Error('Client is determined by the saved customer.');
+        const fields = validateFields(input.fields), catalog = await customers.scan(input.customerId);
+        if (catalog.customer.catalogRevision && input.catalogRevision !== catalog.customer.catalogRevision) throw Object.assign(new Error('Catalog changed. Reload products before generating a report.'), { status: 409 });
+        const selected = catalog.products.find(product => product.id === input.productId && (!product.status || product.status === 'ready'));
+        if (!selected) throw new Error('Select a catalog product.');
+        const components = validateComponents(undefined, selected.components);
+        const product = { ...selected, components, unit: new Set(components.map(row => row.unit)).size === 1 ? components[0].unit : 'mixed' };
+        if (Date.now() >= previewDeadline - 1000) throw new Error('Report renderer timed out.');
+        send(response, 200, await reports.preview(product, { ...fields, client: catalog.customer.name }, { seed: input.previewSeed, deadline: previewDeadline }));
+      } catch (error) { send(response, error.status || 400, { error: error.code ? 'Report operation failed; previous reports are preserved.' : error.message }); }
       return true;
     }
     if (request.method === 'POST' && pathname === '/admin/api/generate') {

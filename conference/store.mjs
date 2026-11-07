@@ -120,6 +120,36 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
       return { ...bundle, published:publish, previewURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.svg', pdfURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.pdf' };
     } finally { busy = false; if (job) await rm(job,{recursive:true,force:true}); }
   }
+  async function preview(product, fields, { seed, deadline = Date.now() + 60000 } = {}) {
+    if (typeof seed !== 'string' || !/^[a-f0-9]{48}$/i.test(seed)) throw fail(400, 'Use a valid preview seed.');
+    if (busy) throw fail(409, 'Another report is being generated. Wait for it to finish.');
+    busy = true;
+    let job;
+    try {
+      const stagingRoot = await realpath(staging);
+      if ((await lstat(staging)).isSymbolicLink() || stagingRoot !== path.join(await realpath(root), 'staging')) throw fail(409, 'Report staging is unavailable.');
+      job = await mkdtemp(path.join(staging, 'preview-'));
+      const code = 'AN-PREV-IEW0', requestPath = path.join(job, 'request.json'), output = path.join(job, 'output');
+      await mkdir(output);
+      await writeFile(requestPath, JSON.stringify({ lookupCode: code, seed: seed.toLowerCase(), product, fields }), { flag: 'wx' });
+      const timeout = Math.min(45000, deadline - Date.now() - 1000);
+      if (!Number.isFinite(timeout) || timeout <= 0) throw new Error('Report renderer timed out.');
+      await render(requestPath, output, { timeout });
+      if (Date.now() >= deadline) throw new Error('Report renderer timed out.');
+      const [raw, pdf, svg] = await Promise.all(['bundle.json', 'report.pdf', 'report.svg'].map(name => readFile(path.join(output, name))));
+      if (pdf.subarray(0, 5).toString() !== '%PDF-' || !svg.toString().includes('<svg')) throw new Error('Incomplete renderer output.');
+      const bundle = publicBundle(JSON.parse(raw), code);
+      return { label: bundle.label, svg: svg.toString() };
+    } finally {
+      try {
+        if (job) {
+          const stagingRoot = await realpath(staging), owned = await realpath(job), relative = path.relative(stagingRoot, owned);
+          if ((await lstat(staging)).isSymbolicLink() || stagingRoot !== path.join(await realpath(root), 'staging') || (await lstat(job)).isSymbolicLink() || !relative || relative.startsWith('..') || path.isAbsolute(relative) || path.dirname(owned) !== stagingRoot) throw fail(409, 'Report staging is unavailable.');
+          await rm(owned, { recursive: true, force: true });
+        }
+      } finally { busy = false; }
+    }
+  }
   async function history(state = 'published') {
     if (!['published', 'removed'].includes(state)) throw fail(400, 'Choose Published or Removed reports.');
     const rows = [];
@@ -128,5 +158,5 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
     }
     return rows.sort((a,b) => b.reported.localeCompare(a.reported)).slice(0,100);
   }
-  return { generate, history, remove: code => changeState(code, 'removed'), restore: code => changeState(code, 'published'), get busy(){return busy;}, root };
+  return { generate, preview, history, remove: code => changeState(code, 'removed'), restore: code => changeState(code, 'published'), get busy(){return busy;}, root };
 }

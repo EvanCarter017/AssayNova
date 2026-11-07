@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createServer } from 'node:net';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createAdmin } from '../conference/admin.mjs';
 import { createStudio } from '../conference/studio.mjs';
+import { legacyRecords, writeCatalogRecords } from '../conference/catalog-records.mjs';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 async function fixture(t) {
@@ -149,4 +150,31 @@ test('compatibility studio redirects its root and uses the same canonical /admin
   const securedFetch=await fixtureFetch(studio.origin);
   const redirect = await fetch(studio.origin + '/', { redirect: 'manual' }); assert.equal(redirect.status, 302); assert.equal(redirect.headers.get('location'), '/admin');
   assert.equal((await securedFetch(studio.origin + '/admin')).status, 200); const session = await (await securedFetch(studio.origin + '/admin/api/session')).json(); assert.match(session.products[0].imageURL, /^\/admin\/images\//); assert.equal(studio.server.requestTimeout, 10000); assert.equal(studio.server.headersTimeout, 10000); assert.equal((await fetch(studio.origin + '/api/session')).status, 404);
+});
+
+test('authenticated live preview is exact, bounded, uses catalog defaults and never creates public or private snapshots',async t=>{
+  const files=await fixture(t),requests=[];let allocations=0;
+  const studio=await createStudio({...files,port:0,codeFactory:()=>{allocations++;return 'AN-QA98-0001';},render:async(filename,output,options)=>{
+    const request=JSON.parse(await readFile(filename));requests.push({...request,options});
+    await Promise.all([writeFile(path.join(output,'bundle.json'),JSON.stringify({label:request.product.name,report:{lookupCode:request.lookupCode,publication:'published',issued:'2026-11-07'},record:{client:request.fields.client,purity:[],composition:request.product.components,screenings:[],spectra:[],chromatogram:[]}})),writeFile(path.join(output,'report.pdf'),'%PDF-synthetic'),writeFile(path.join(output,'report.svg'),'<svg xmlns="http://www.w3.org/2000/svg"/>')]);
+  }});t.after(()=>{studio.server.closeAllConnections();return new Promise(resolve=>studio.server.close(resolve));});
+  const origin=studio.origin,secured=await fixtureFetch(origin),session=await(await secured(origin+'/admin/api/session')).json();
+  const input={customerId:session.defaultCustomerId,productId:session.products[0].id,fields:{lot:'LIVE-QA',purity1:99.43},previewSeed:'a'.repeat(48)};
+  const headers={Origin:origin,'Content-Type':'application/json','X-Studio-Token':session.token};
+  const post=(body=input,changes={},route='/admin/api/preview')=>secured(origin+route,{method:'POST',headers:{...headers,...changes},body:JSON.stringify(body)});
+  const response=await post();assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('access-control-allow-origin'),null);assert.deepEqual(Object.keys(await response.json()).sort(),['label','svg']);
+  await post({...input,fields:{lot:'CHANGED'},previewSeed:'A'.repeat(48)});assert.equal(requests[0].seed,requests[1].seed);assert.equal(requests[0].fields.client,'Research Client');assert.deepEqual(requests[0].product.components,session.products[0].components);assert.ok(requests[0].options.timeout>0&&requests[0].options.timeout<=45000);assert.equal(allocations,0);
+  for(const change of [{previewSeed:''},{previewSeed:'a'.repeat(47)},{previewSeed:'g'.repeat(48)},{publish:true},{client:'Override'},{components:[]},{fields:{client:'Override'}},{fields:{purity1:99.501}},{fields:{received:'2026-11-08',reported:'2026-11-07'}},{productId:'blocked'}])assert.equal((await post({...input,...change})).status,400);
+  for(const change of [{'X-Studio-Token':''},{Origin:''},{Origin:'http://evil.invalid'}])assert.equal((await post(input,change)).status,403);
+  assert.equal((await post(input,{'Content-Type':'text/plain'})).status,415);assert.equal((await post({...input,fields:{lot:'x'.repeat(9000)}})).status,413);
+  for(const method of ['GET','HEAD','PUT','DELETE'])assert.equal((await secured(origin+'/admin/api/preview',{method})).status,405);
+  assert.equal((await post(input,{},'/admin/api/preview?x=1')).status,400);assert.equal((await raw(origin,'/admin/api/%70review',{method:'POST',headers:{...headers,Host:new URL(origin).host,Cookie:secured.cookie},body:JSON.stringify(input)})).status,400);
+  assert.equal((await fetch(origin+'/admin/api/preview',{method:'POST',headers,body:JSON.stringify(input)})).status,401);
+  assert.equal((await fetch(origin+'/api/preview',{method:'POST'})).status,404);assert.equal((await fetch(origin+'/__reports/AN-PREV-IEW0')).status,404);assert.equal((await secured(origin+'/admin/bundles/previews/AN-PREV-IEW0/report.svg')).status,404);
+  for(const directory of ['published','previews','removed','staging'])assert.deepEqual(await readdir(path.join(files.store,directory)),[]);assert.equal(requests.length,2);
+  const revision='b'.repeat(32),ledger=await legacyRecords({products:[requests[0].product]},{importId:'c'.repeat(32),previewId:'d'.repeat(32),customerId:session.defaultCustomerId});
+  ledger.records.entries.push({...ledger.records.entries[0],id:'e'.repeat(20),hold:true});
+  const catalog=await writeCatalogRecords(files.store,revision,ledger.records,ledger.sources);
+  await writeFile(path.join(files.store,'customers','profiles.json'),JSON.stringify({version:1,customers:[{id:session.defaultCustomerId,name:'Synthetic',directory:files.images,catalogRevision:revision}]}));
+  const ready={...input,productId:catalog.products[0].id};assert.equal((await post(ready)).status,409);assert.equal((await post({...ready,catalogRevision:'a'.repeat(32)})).status,409);assert.equal((await post({...ready,catalogRevision:revision})).status,200);assert.equal((await post({...ready,productId:'e'.repeat(20),catalogRevision:revision})).status,400);
 });

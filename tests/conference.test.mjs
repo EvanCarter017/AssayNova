@@ -78,6 +78,36 @@ test('store snapshots are immutable, collision-safe, single-flight, persistent, 
   const preview=await createStore(root,{render:mockRenderer,codeFactory:()=> 'AN-CCCC-3333'});await preview.generate(product,{},false);assert.equal(await readPublished(root,'AN-CCCC-3333'),null);
 });
 
+test('live preview uses only owned staging, stable seed and no code allocation or persistent snapshots',async t=>{
+  const root=await temporary(t),requests=[];let allocations=0,release,entered,hold=false,fail=false;
+  const store=await createStore(root,{codeFactory:()=>{allocations++;return 'AN-QA98-'+String(allocations).padStart(4,'0');},render:async(request,output,options)=>{requests.push({...JSON.parse(await readFile(request)),options});if(hold){entered();await new Promise(resolve=>release=resolve);}if(fail)throw new Error('Synthetic failure');await mockRenderer(request,output);}});
+  const published=await store.generate(product,{},true),removed=await store.generate(product,{},true);await store.remove(removed.report.lookupCode);const saved=await store.generate(product,{},false);
+  const paths=[['published',published],['removed',removed],['previews',saved]].map(([state,row])=>path.join(root,state,row.report.lookupCode,'bundle.json'));
+  const bytes=await Promise.all(paths.map(filename=>readFile(filename))),before=allocations,seed='a'.repeat(48);
+  const first=await store.preview(product,{lot:'PREVIEW'},{seed}),second=await store.preview(product,{lot:'EDITED'},{seed});assert.deepEqual(Object.keys(first).sort(),['label','svg']);assert.deepEqual(first,second);assert.match(first.svg,/AN-PREV-IEW0/);assert.equal(allocations,before);
+  for(const request of requests.slice(-2)){assert.equal(request.seed,seed);assert.equal(request.lookupCode,'AN-PREV-IEW0');assert.ok(request.options.timeout>0&&request.options.timeout<=45000);}
+  assert.deepEqual(await readdir(path.join(root,'staging')),[]);assert.equal(await readPublished(root,'AN-PREV-IEW0'),null);
+  hold=true;const running=new Promise(resolve=>entered=resolve),flight=store.preview(product,{},{seed});await running;await assert.rejects(store.preview(product,{},{seed}),/Another report/);await assert.rejects(store.generate(product,{},true),/Another report/);await assert.rejects(store.restore(removed.report.lookupCode),/Another report/);release();await flight;hold=false;
+  fail=true;await assert.rejects(store.preview(product,{},{seed}),/Synthetic failure/);assert.equal(store.busy,false);assert.deepEqual(await readdir(path.join(root,'staging')),[]);
+  fail=false;await store.preview(product,{},{seed});await assert.rejects(store.preview(product,{},{seed:'invalid'}),/seed/);const renders=requests.length;await assert.rejects(store.preview(product,{},{seed,deadline:Date.now()-1}),/timed out/);assert.equal(requests.length,renders);assert.equal(store.busy,false);
+  assert.deepEqual(await Promise.all(paths.map(filename=>readFile(filename))),bytes);assert.equal(allocations,before);assert.deepEqual(await readdir(path.join(root,'staging')),[]);
+});
+
+test('actual Python live preview renders current master from synthetic asset without a public result',async t=>{
+  const root=await temporary(t),store=await createStore(root,{codeFactory:()=>{throw new Error('Preview must not allocate a code');}});
+  const synthetic={...product,imagePath:path.join(project,'templates/coa/assets/sample-vial-product.png')};
+  const value=await store.preview(synthetic,{client:'Synthetic fixture',lot:'LIVE-QA',received:'2026-11-07',reported:'2026-11-07'},{seed:'d'.repeat(48)});
+  assert.equal(value.label,product.name);assert.match(value.svg,/<svg/);assert.doesNotMatch(value.svg,/<text\b|(?:href|src)="(?:https?:|file:)/i);assert.deepEqual(await readdir(path.join(root,'staging')),[]);
+  for(const directory of ['published','previews','removed'])assert.deepEqual(await readdir(path.join(root,directory)),[]);assert.equal(await readPublished(root,'AN-PREV-IEW0'),null);
+});
+
+test('live preview rejects incomplete renderer output and always releases its staging and shared lock',async t=>{
+  for(const kind of ['pdf','svg','bundle']){
+    const root=await temporary(t),store=await createStore(root,{render:async(request,output)=>{await mockRenderer(request,output);await writeFile(path.join(output,kind==='bundle'?'bundle.json':'report.'+kind),kind==='bundle'?'{}':'invalid');}});
+    await assert.rejects(store.preview(product,{},{seed:'f'.repeat(48)}),/Incomplete renderer output|Invalid published bundle/);assert.equal(store.busy,false);assert.deepEqual(await readdir(path.join(root,'staging')),[]);assert.deepEqual(await readdir(path.join(root,'previews')),[]);
+  }
+});
+
 test('loopback studio enforces exact Host/Origin, run token, JSON/body bounds and opaque routes',async t=>{
   const root=await temporary(t), images=path.join(root,'images');await mkdir(images);await writeFile(path.join(images,'BPC-157 10mg.png'),png);
   const studio=await createStudio({images,store:path.join(root,'store'),authStore:path.join(root,'auth'),port:0,render:mockRenderer});t.after(()=>{studio.server.closeAllConnections();return new Promise(resolve=>studio.server.close(resolve));});

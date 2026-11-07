@@ -233,6 +233,20 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
   assert.deepEqual((await raw(reader.origin, '/coa/' + code + '/report.pdf')).bytes, await readFile(path.join(files.store, 'published', code, 'report.pdf')));
 });
 
+test('unchanged bridge forwards authenticated live preview response and preserves exact mutation boundaries',async t=>{
+  const files=await fixture(t);let release,enter;const entered=new Promise(resolve=>enter=resolve);
+  const studio=await primary(t,files,async(...args)=>{enter();await new Promise(resolve=>release=resolve);await renderer(...args);});
+  const localCookie=cookie(await unlock(studio.origin,true)),proxy=await bridge(t,studio),bridgeCookie=cookie(await unlock(proxy.origin));
+  const session=JSON.parse((await raw(proxy.origin,'/admin/api/session',{headers:{Cookie:bridgeCookie}})).text),input={customerId:session.defaultCustomerId,productId:session.products[0].id,fields:{},previewSeed:'f'.repeat(48)};
+  const post=(changes={},route='/admin/api/preview')=>raw(proxy.origin,route,{method:'POST',headers:{Cookie:bridgeCookie,Origin:proxy.origin,'Content-Type':'application/json','X-Studio-Token':session.token,...changes},body:JSON.stringify(input)});
+  assert.equal((await post({Cookie:''})).status,401);assert.equal((await post({Origin:''})).status,403);assert.equal((await post({'X-Studio-Token':''})).status,403);assert.equal((await post({},'/admin/api/preview?unexpected=1')).status,400);
+  assert.equal((await raw(proxy.origin,'/admin/api/preview',{headers:{Cookie:bridgeCookie}})).status,405);
+  const running=post();await entered;
+  assert.equal((await raw(studio.origin,'/admin/api/generate',{method:'POST',headers:{Cookie:localCookie,Origin:studio.origin,'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify({customerId:input.customerId,productId:input.productId,fields:{},publish:true})})).status,409);release();
+  const response=await running;assert.equal(response.status,200);assert.equal(response.headers['cache-control'],'no-store');assert.deepEqual(Object.keys(JSON.parse(response.text)).sort(),['label','svg']);assert.match(JSON.parse(response.text).svg,/AN-PREV-IEW0/);assert.doesNotMatch(response.text,/seed|imagePath|privatePath|pdfURL/);
+  assert.deepEqual(JSON.parse((await raw(proxy.origin,'/admin/api/history',{headers:{Cookie:bridgeCookie}})).text),[]);assert.equal((await raw(proxy.origin,'/admin/bundles/previews/AN-PREV-IEW0/report.svg',{headers:{Cookie:bridgeCookie}})).status,404);
+});
+
 async function launch(t, files, args, { production = false, reject = false } = {}) {
   const port = await freePort(), origin = 'http://127.0.0.1:' + port;
   const preload = path.join(files.root, 'timeouts.mjs');

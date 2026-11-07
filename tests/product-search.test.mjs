@@ -95,28 +95,32 @@ function selectionUI() {
   function node(id) {
     if (nodes.has(id)) return nodes.get(id);
     const value = { id, value: '', hidden: false, textContent: '', html: '', events: new Map(), classList: { toggle() {} },
-      addEventListener(type, fn) { this.events.set(type, fn); }, removeAttribute(key) { delete this[key]; }, replaceWith(next) { nodes.set(this.id, next); },
+      addEventListener(type, fn) { this.events.set(type, fn); }, setAttribute(key, value) { this[key] = String(value); }, removeAttribute(key) { delete this[key]; }, replaceWith(next) { nodes.set(this.id, next); },
       get innerHTML() { return this.html; }, set innerHTML(text) { this.html = text; }, get options() { return [...this.html.matchAll(/<option\b/g)]; },
       elements: { namedItem(name) { return node(name); } } };
     nodes.set(id, value); return value;
   }
   const document = { getElementById: node, createElement: () => ({ ...node('new-image-' + nodes.size), events: new Map() }), querySelectorAll: () => buttons };
   const prefix = operatorSource.slice(operatorSource.indexOf('const $='), operatorSource.indexOf('function showResult'));
-  const context = { document, filterProducts, createAdminI18n, catalogPickerState, catalogIssueText, navigator: { language: 'en' }, Date };
+  // This chooser-only fixture never runs background work; live scheduling is exercised by admin-i18n's fake clock.
+  const context = { document, filterProducts, createAdminI18n, catalogPickerState, catalogIssueText, navigator: { language: 'en' }, Date, setTimeout: () => 1, clearTimeout() {}, crypto: { getRandomValues: values => values.fill(7) } };
   // Capture actual UI functions in a persistent object shared with the VM.
   const holder = { ...context, catalog: products }; runInNewContext(prefix + '\nsession={products:catalog};currentCustomerId="fixture";globalThis.ui={filter,selectProduct,selected:()=>selected,setBusy:value=>{busy=value}};', holder);
   return { nodes, node, buttons, ui: holder.ui };
 }
-test('actual selection handlers preserve canonical defaults, no-results/busy guards and the last report', () => {
+test('actual selection handlers preserve canonical defaults and busy guards, retaining paper only for the same selection', () => {
   const app = selectionUI(), search = value => { app.node('search').value = value; app.ui.filter(); };
   app.node('paper').src = '/admin/bundles/published/AN-OLD0-0001/report.svg';
   search('TR10'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg'); assert.equal(app.node('selected-name').textContent, 'Tirzepatide 10mg'); assert.deepEqual(app.ui.selected().components, [{name:'Tirzepatide',nominal:10,unit:'mg'}]); assert.ok(app.buttons.every(button => !button.disabled));
+  assert.equal(app.node('paper').hidden, true); assert.equal(app.node('paper').src, undefined);
+  app.node('paper').src = '/admin/bundles/published/AN-SAME-0001/report.svg'; app.node('paper').hidden = false;
   search('TR'); assert.equal(app.ui.selected().name, 'Tirzepatide 10mg');
+  assert.equal(app.node('paper').src, '/admin/bundles/published/AN-SAME-0001/report.svg'); assert.equal(app.node('paper').hidden, false);
   search('SM'); assert.equal(app.ui.selected(), undefined); assert.ok(app.buttons.every(button => button.disabled));
   app.node('product').value = products.find(row => row.name === 'Semaglutide 10mg').id; app.ui.selectProduct(); assert.deepEqual(app.ui.selected().components, [{name:'Semaglutide',nominal:10,unit:'mg'}]);
   app.ui.setBusy(true); app.ui.selectProduct(); assert.ok(app.buttons.every(button => button.disabled)); app.ui.setBusy(false); app.ui.selectProduct(); assert.ok(app.buttons.every(button => !button.disabled));
   search('SM2'); assert.equal(app.ui.selected(), undefined); assert.match(app.node('status').textContent, /No matching product or dose/); assert.ok(app.buttons.every(button => button.disabled));
-  assert.equal(app.node('paper').src, '/admin/bundles/published/AN-OLD0-0001/report.svg'); assert.equal(app.nodes.has('photo'), false);
+  assert.equal(app.node('paper').hidden, true); assert.equal(app.node('paper').src, undefined); assert.equal(app.nodes.has('photo'), false);
   search(''); assert.equal(app.ui.selected(), undefined); assert.match(app.node('product').innerHTML, /Choose a matching product/);
 });
 
