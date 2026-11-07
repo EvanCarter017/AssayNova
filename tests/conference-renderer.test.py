@@ -182,7 +182,7 @@ class ReportRendererTests(unittest.TestCase):
 
     def test_actual_pdf_svg_determinism_a4_embedded_photo_and_clean_public_dto(self):
         first, second = self.root / "first", self.root / "second"
-        renderer.build(self.request, first)
+        bundle = renderer.build(self.request, first)
         renderer.build(self.request, second)
         for name in ("report.pdf", "report.svg", "bundle.json"):
             self.assertEqual((first / name).read_bytes(), (second / name).read_bytes(), name)
@@ -196,6 +196,11 @@ class ReportRendererTests(unittest.TestCase):
         for value in ("Two determinations of the same sample", "Replicate 1:", "Replicate 2:", "Mean", "Measured content", "mg/vial", "reports@assaynovalabs.com", "+1-681-334-3721"):
             self.assertIn(value, text)
         self.assertNotIn("Contact the laboratory", text)
+        for label in ("Microbial Screening (PCR)", "Fentanyl Screening"):
+            self.assertIn(label, text)
+        self.assertNotIn("No microbial DNA detected", text)
+        self.assertEqual([row["result"] for row in bundle["record"]["screenings"][3:]], ["Not assessed", "Not assessed"])
+        self.assertEqual([row["details"] for row in bundle["record"]["screenings"][3:]], ["No result supplied", "No result supplied"])
         self.assertNotRegex(text, r"Sample [12]|Reported summary|Coming soon")
         self.assertNotRegex(text.lower(), r"fictional|demo|conference|sample report|meeting")
         self.assertNotRegex((first / "report.svg").read_text(), r"<(?:script|text)\b|href=\"https?://")

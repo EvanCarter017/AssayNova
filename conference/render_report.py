@@ -449,10 +449,7 @@ def make_drawing(code, record, product_image, contact_config=None):
     master.title(d, "Screening outcomes", ledger_x, 480 + master.LOWER_ANALYSIS_SHIFT, PAGE_W - MARGIN - ledger_x)
     for index, screening in enumerate(record["screenings"]):
         y = 453 + master.LOWER_ANALYSIS_SHIFT - index * 62
-        master.text(d, screening["test"], ledger_x, y, 9, True, NAVY)
-        master.text(d, screening["result"], ledger_x, y - 18, 9, True)
-        master.text(d, screening["details"], ledger_x, y - 34, 8.5)
-        master.rule(d, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
+        master.draw_screening_outcome(d, screening, ledger_x, y, PAGE_W - MARGIN - ledger_x)
     method_width = master.REPORT_QR_FRAME_BOUNDS[0] - 15 - ledger_x
     master.title(d, "Method", ledger_x, 141 + master.LOWER_ANALYSIS_SHIFT, method_width)
     wrapped(d, record["method"], ledger_x, 123 + master.LOWER_ANALYSIS_SHIFT, method_width, 8.5, color=MUTED, leading=10, max_lines=2)

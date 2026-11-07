@@ -163,6 +163,23 @@ table identifies each analyte's unit. mg, IU and ml are never added together.
 This presentation changes no stored measurements or chemistry data. The legacy
 `build_coa.py` and `build_coa_alt.py` schemas and behavior above remain separate.
 
+### Screening presentation
+
+PDF/SVG rendering and the website's Report fields transcript share equivalent
+presentation rules for two screening rows. Legacy `Microbial analysis (PCR)`
+displays as `Microbial Screening (PCR)`; only an existing `Not detected` outcome
+displays as `No microbial DNA detected`. `Fentanyl` displays as `Fentanyl
+Screening`, with its outcome unchanged. These are display copies: stored data,
+test keys and source records remain unchanged.
+
+For those two rows, the matching generic negative detail is omitted only when
+the recorded outcome is `Not detected`; `No result supplied` is omitted only
+for `Not assessed`. Empty details add no blank text or transcript separator.
+Positive, `Pass`, unknown, method/limit and conflicting details are retained.
+Generated reports without screening results continue to say `Not assessed`;
+purity or identity never supplies a microbial or fentanyl outcome. All other
+screenings, geometry, fonts and rules are preserved.
+
 ### Laboratory contact configuration
 
 `lab-contact.json` is read fresh for each build or generated report. Its only

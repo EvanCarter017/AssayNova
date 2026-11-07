@@ -1121,6 +1121,55 @@ test('opt-in lookup works without reload, preserves generated title/units/action
   const refreshed=bootApp('/coa/an-abcd-1234',[],{publishedReader:true,remoteFetch});await flushLookup();assert.equal(refreshed.location.pathname,'/coa/AN-ABCD-1234');assert.match(refreshed.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);
   app.click('report',{lookupCode:DEMO_REPORT.lookupCode});assert.match(app.nodes.get('#coa-view').innerHTML,/Sample report/);
 });
+test('actual static screening transcripts clarify only the PCR and fentanyl rows without changing records', () => {
+  const before = JSON.stringify(SAMPLE_REPORT_DATA);
+  for (const code of Object.keys(SAMPLE_REPORT_DATA)) {
+    const app = bootApp('/coa/' + code);
+    const html = app.nodes.get('#coa-view').innerHTML;
+    const screening = html.match(/<h2>Screening outcomes<\/h2><dl[^>]*>([\s\S]*?)<\/dl>/)[1];
+    assert.ok(screening.includes('<dt>Microbial Screening (PCR)</dt><dd>No microbial DNA detected</dd>'));
+    assert.ok(screening.includes('<dt>Fentanyl Screening</dt><dd>Not detected</dd>'));
+    assert.doesNotMatch(screening, /Microbial analysis \(PCR\)|Target microbial DNA not detected\.|Target signal not detected in the screen\.| · <\/dd>/);
+    for (const row of SAMPLE_REPORT_DATA[code].screenings.slice(0, 3)) {
+      assert.ok(screening.includes(`<dt>${row.test}</dt><dd>${row.result} · ${row.details}</dd>`));
+    }
+  }
+  assert.equal(JSON.stringify(SAMPLE_REPORT_DATA), before);
+});
+
+test('actual generated screening transcripts preserve unassessed, positive, conflicting and escaped unknown states', async () => {
+  const pcr = 'Microbial Screening (PCR)', fentanyl = 'Fentanyl Screening';
+  const cases = [
+    { rows: [{ test: 'Microbial analysis (PCR)', result: 'Not detected', details: 'Target microbial DNA not detected.' }, { test: 'Fentanyl', result: 'Not detected', details: 'Target signal not detected in the screen.' }], expected: [[pcr, 'No microbial DNA detected', ''], [fentanyl, 'Not detected', '']] },
+    { rows: [{ test: pcr, result: 'No microbial DNA detected', details: '' }, { test: fentanyl, result: 'Not detected', details: '' }], expected: [[pcr, 'No microbial DNA detected', ''], [fentanyl, 'Not detected', '']] },
+    { rows: [{ test: 'Microbial analysis (PCR)', result: 'Not assessed', details: 'No result supplied' }, { test: 'Fentanyl', result: 'Not assessed', details: 'No result supplied' }], expected: [[pcr, 'Not assessed', ''], [fentanyl, 'Not assessed', '']] },
+    { rows: [{ test: 'Microbial analysis (PCR)', result: 'Detected', details: 'Target microbial DNA not detected.' }, { test: 'Fentanyl', result: 'Detected', details: 'Confirmatory analysis required' }], expected: [[pcr, 'Detected', 'Target microbial DNA not detected.'], [fentanyl, 'Detected', 'Confirmatory analysis required']] },
+    { rows: [{ test: 'Microbial analysis (PCR)', result: 'Pass', details: 'No result supplied' }, { test: fentanyl, result: 'Pending', details: 'Review in progress' }], expected: [[pcr, 'Pass', 'No result supplied'], [fentanyl, 'Pending', 'Review in progress']] },
+    { rows: [{ test: 'Microbial analysis (PCR)', result: 'Not detected', details: 'Positive signal requires review' }, { test: 'Fentanyl', result: 'Not detected', details: 'LOD 0.5 ng/mL; method LC-MS' }], expected: [[pcr, 'No microbial DNA detected', 'Positive signal requires review'], [fentanyl, 'Not detected', 'LOD 0.5 ng/mL; method LC-MS']] },
+    { rows: [{ test: pcr, result: 'No microbial DNA detected', details: 'Target microbial DNA not detected.' }, { test: 'Fentanyl', result: 'not detected', details: 'Target signal not detected in the screen.' }], expected: [[pcr, 'No microbial DNA detected', 'Target microbial DNA not detected.'], [fentanyl, 'not detected', 'Target signal not detected in the screen.']] },
+    { rows: [{ test: '<img src=x onerror="alert(1)">', result: '<b>Pending</b>', details: '<script>unsafe & "quoted"</script>' }, { test: 'Other screening', result: 'Not detected', details: 'Target signal not detected in the screen.' }], expected: [['<img src=x onerror="alert(1)">', '<b>Pending</b>', '<script>unsafe & "quoted"</script>'], ['Other screening', 'Not detected', 'Target signal not detected in the screen.']] }
+  ];
+  const escaped = value => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+  let initialNegative;
+  for (const [index, entry] of cases.entries()) {
+    const bundle = generatedFixture();
+    bundle.record = Object.freeze({ ...bundle.record, screenings: Object.freeze([...bundle.record.screenings.slice(0, 3).map(row => Object.freeze({ ...row })), ...entry.rows.map(row => Object.freeze({ ...row }))]) });
+    const before = JSON.stringify(bundle);
+    const app = bootApp('/coa/AN-ABCD-1234', [], { publishedReader: true, remoteFetch: async () => ({ ok: true, json: async () => bundle }) });
+    await flushLookup();
+    const html = app.nodes.get('#coa-view').innerHTML;
+    const screening = html.match(/<h2>Screening outcomes<\/h2><dl[^>]*>([\s\S]*?)<\/dl>/)[1];
+    for (const [label, result, details] of entry.expected) {
+      assert.ok(screening.includes(`<dt>${escaped(label)}</dt><dd>${escaped(result)}${details ? ' · ' + escaped(details) : ''}</dd>`), JSON.stringify(entry));
+    }
+    assert.doesNotMatch(screening, /<(?:img|script|b)\b| · <\/dd>/);
+    assert.equal(JSON.stringify(bundle), before);
+    if (index === 0) initialNegative = screening;
+    if (index === 1) assert.equal(screening, initialNegative, 'Canonical fields must render idempotently');
+    if (index === 2) assert.doesNotMatch(screening, /No microbial DNA detected/);
+  }
+});
+
 test('real COA transcript identifies same-sample replicates, means and mixed row units accessibly', async () => {
   const bundle = generatedFixture();
   bundle.record.contentUnit = 'mixed';

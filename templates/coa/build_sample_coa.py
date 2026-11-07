@@ -150,6 +150,34 @@ def draw_reported_results(drawing, record, x, top, width):
     return unit
 
 
+def screening_presentation(row):
+    """Clarify two screening labels without changing recorded outcomes."""
+    presented = dict(row)
+    if row["test"] in ("Microbial analysis (PCR)", "Microbial Screening (PCR)"):
+        presented["test"] = "Microbial Screening (PCR)"
+        if row["result"] == "Not detected":
+            presented["result"] = "No microbial DNA detected"
+        redundant = "Target microbial DNA not detected."
+    elif row["test"] in ("Fentanyl", "Fentanyl Screening"):
+        presented["test"] = "Fentanyl Screening"
+        redundant = "Target signal not detected in the screen."
+    else:
+        return presented
+    if (row["result"] == "Not detected" and row["details"] == redundant
+            or row["result"] == "Not assessed" and row["details"] == "No result supplied"):
+        presented["details"] = ""
+    return presented
+
+
+def draw_screening_outcome(drawing, row, x, y, width):
+    presented = screening_presentation(row)
+    text(drawing, presented["test"], x, y, 9, True, NAVY)
+    text(drawing, presented["result"], x, y - 18, 9, True)
+    if presented["details"]:
+        text(drawing, presented["details"], x, y - 34, 8.5)
+    rule(drawing, x, y - 46, width)
+
+
 def load_contact(config=None):
     """Read fresh configuration and validate every line before any output writes."""
     if config is None:
@@ -573,13 +601,9 @@ def make_drawing(code, record, product_image=None, contact_config=None):
         text(drawing, record["spectra"][index]["analyte"] + (" / GHK ligand" if index == 0 else ""), px, label_y, 8.5, True, NAVY)
         spectrum_plot(drawing, record["spectra"][index], px, label_y - 92, pw)
     title(drawing, "Screening outcomes", ledger_x, 480 + LOWER_ANALYSIS_SHIFT, PAGE_W - MARGIN - ledger_x)
-    screenings = ("Identity (LC-MS)", "Elemental impurities (ICP-MS)", "Endotoxin (LAL)", "Microbial analysis (PCR)", "Fentanyl")
-    for index, label in enumerate(screenings):
+    for index, screening in enumerate(record["screenings"]):
         y = 453 + LOWER_ANALYSIS_SHIFT - index * 62
-        text(drawing, label, ledger_x, y, 9, True, NAVY)
-        text(drawing, record["screenings"][index]["result"], ledger_x, y - 18, 9, True)
-        text(drawing, record["screenings"][index]["details"], ledger_x, y - 34, 8.5)
-        rule(drawing, ledger_x, y - 46, PAGE_W - MARGIN - ledger_x)
+        draw_screening_outcome(drawing, screening, ledger_x, y, PAGE_W - MARGIN - ledger_x)
     method_width = REPORT_QR_FRAME_BOUNDS[0] - 15 - ledger_x
     title(drawing, "Method", ledger_x, 141 + LOWER_ANALYSIS_SHIFT, method_width)
     draw_method_lines(drawing, record["method"], ledger_x, 123 + LOWER_ANALYSIS_SHIFT, method_width)

@@ -312,11 +312,12 @@ class ReportLayoutTests(unittest.TestCase):
             self.assertEqual(embedded, [expected])
 
     def test_lower_analytical_shapes_only_translate_eighteen_points(self):
-        # Golden node hashes come from pre-task 81871fb9 source, including every
-        # chart point, annotation, font, style and screening field before Method.
-        expected = {(False, 4): (365, "BAA00144EF127F87177462834F1E0D9F292F12739BBBE06262BF904E85CEC3CA"),
-                    (True, 1): (110, "241A1E70C6F571F111455306CC2C5A326AEF0C895E6D43DFD7F8EC39CFCADB04"),
-                    (True, 4): (253, "07FFB008302D20759856B579322F6553AAF065B03D7C1CD562363A7758D5AA5E")}
+        # Pinned 713e4f57 drawings first match the original 81871fb9 golden after
+        # subtracting 18 pt. Only the six authorized PCR/fentanyl String slots
+        # are then excluded; every rule, chart point and other screening remains.
+        expected = {(False, 4): (359, "6694AC668D731233BAA073789961134C8EC41050C68B4016ED0E7B6616D615D3"),
+                    (True, 1): (104, "7CD236746436DA9FC96E294FD8C37A4F35F401DB950D26BF26308A5515994B55"),
+                    (True, 4): (247, "BC52EB879B2C1B695847B2D883AED4929AC7E3F1F8040C9663D1E803CD3C9C7B")}
         def canonical(node, offset):
             props = node.getProperties().copy()
             if isinstance(node, Group):
@@ -345,8 +346,16 @@ class ReportLayoutTests(unittest.TestCase):
             start = next(i for i, node in enumerate(drawing.contents) if isinstance(node, String) and node.text == "HPLC-UV chromatogram")
             end = next(i for i, node in enumerate(drawing.contents) if isinstance(node, String) and node.text == "Method")
             nodes = drawing.contents[start:end]
-            content = json.dumps([canonical(node, 18) for node in nodes], sort_keys=True, separators=(",", ":"))
-            self.assertEqual((len(nodes), hashlib.sha256(content.encode()).hexdigest().upper()), fingerprint)
+            changed = [node for node in nodes if isinstance(node, String) and node.x == 315 and node.y in (285, 267, 251, 223, 205, 189)]
+            self.assertEqual([(node.text, node.y, node.fontSize) for node in changed], [
+                ("Microbial Screening (PCR)", 285, 9), ("No microbial DNA detected", 267, 9),
+                ("Fentanyl Screening", 223, 9), ("Not detected", 205, 9)])
+            self.assertTrue(all(node.fontName == "SampleVeraBold" for node in changed))
+            for node in changed:
+                self.assertLessEqual(self.bounds(node)[2], master.PAGE_W - 36)
+            filtered = [node for node in nodes if node not in changed]
+            content = json.dumps([canonical(node, 18) for node in filtered], sort_keys=True, separators=(",", ":"))
+            self.assertEqual((len(filtered), hashlib.sha256(content.encode()).hexdigest().upper()), fingerprint)
             self.assertEqual(drawing.contents[start].y, 498)
             self.assertLess(self.bounds(drawing.contents[start])[3], 508)
             frames = [node for node in nodes if isinstance(node, Rect)]
@@ -356,6 +365,49 @@ class ReportLayoutTests(unittest.TestCase):
                 self.assertTrue(any(node.width == 265 and node.height == 160 and node.y == 158 for node in frames))
             else:
                 self.assertEqual(sorted(node.y for node in frames if node.width == 126.5 and node.height == 76), [121, 121, 239, 239])
+
+    def test_screening_presentation_is_status_aware_pure_and_idempotent(self):
+        cases = [
+            ({"test": "Microbial analysis (PCR)", "result": "Not detected", "details": "Target microbial DNA not detected."}, {"test": "Microbial Screening (PCR)", "result": "No microbial DNA detected", "details": ""}),
+            ({"test": "Microbial Screening (PCR)", "result": "Not assessed", "details": "No result supplied"}, {"test": "Microbial Screening (PCR)", "result": "Not assessed", "details": ""}),
+            ({"test": "Fentanyl", "result": "Not detected", "details": "Target signal not detected in the screen."}, {"test": "Fentanyl Screening", "result": "Not detected", "details": ""}),
+            ({"test": "Fentanyl Screening", "result": "Not assessed", "details": "No result supplied"}, {"test": "Fentanyl Screening", "result": "Not assessed", "details": ""}),
+        ]
+        for label, canonical in (("Microbial analysis (PCR)", "Microbial Screening (PCR)"), ("Fentanyl", "Fentanyl Screening")):
+            for result, details in (("Detected", "Detected target; confirm identity"), ("Pass", "No result supplied"), ("Pending", "Method review is pending"), ("Not detected", "LOD 0.5 ng/mL; method LC-MS"), ("Not detected", "Positive signal requires review"), ("Detected", "Target microbial DNA not detected."), ("No microbial DNA detected", "Target microbial DNA not detected."), ("Not detected", "")):
+                raw = {"test": label, "result": result, "details": details}
+                expected = dict(raw, test=canonical, result="No microbial DNA detected" if label == "Microbial analysis (PCR)" and result == "Not detected" else result)
+                cases.append((raw, expected))
+        unknown = {"test": "Other screening", "result": "Not detected", "details": "Target signal not detected in the screen."}
+        cases.append((unknown, unknown.copy()))
+        for row, expected in cases:
+            with self.subTest(row=row):
+                before = copy.deepcopy(row)
+                presented = master.screening_presentation(row)
+                self.assertIsNot(presented, row)
+                self.assertEqual(presented, expected)
+                self.assertEqual(row, before)
+                self.assertEqual(master.screening_presentation(presented), presented)
+                drawing = Drawing(master.PAGE_W, master.PAGE_H)
+                master.draw_screening_outcome(drawing, row, 315, 285, master.PAGE_W - 36 - 315)
+                strings = self.strings(drawing)
+                self.assertEqual([node.text for node in strings], [expected["test"], expected["result"]] + ([expected["details"]] if expected["details"] else []))
+                self.assertEqual([node.y for node in strings], [285, 267] + ([251] if expected["details"] else []))
+
+    def test_actual_static_screening_exports_use_clear_labels_without_redundant_notes(self):
+        from io import BytesIO
+        for code in master.STEMS:
+            record = self.records[code]
+            before = copy.deepcopy(record)
+            drawing = self.drawing(False, record)
+            pdf, svg = master.render(drawing, code)
+            text = PdfReader(BytesIO(pdf)).pages[0].extract_text()
+            for expected in ("Microbial Screening (PCR)", "No microbial DNA detected", "Fentanyl Screening"):
+                self.assertIn(expected, text)
+            for old in ("Microbial analysis (PCR)", "Target microbial DNA not detected.", "Target signal not detected in the screen."):
+                self.assertNotIn(old, text)
+                self.assertNotIn(old, svg.decode())
+            self.assertEqual(record, before)
 
     def test_invalid_contact_preserves_outputs_for_both_builders(self):
         request = {"lookupCode": "AN-TEST-0001", "seed": "contact-fixture", "product": {"id": "bpc", "name": "BPC-157 10mg", "imagePath": str(self.photo), "components": [{"name": "BPC-157", "nominal": 10, "unit": "mg"}], "unit": "mg"}, "fields": {"client": "Fixture", "received": "2026-11-01", "reported": "2026-11-05"}}
