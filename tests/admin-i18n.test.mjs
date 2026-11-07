@@ -14,6 +14,7 @@ import { catalogDTO, parseProduct } from '../conference/catalog.mjs';
 import { createStudio } from '../conference/studio.mjs';
 import { createImportUI } from '../conference/import-ui.mjs';
 import { createCatalogCorrectionUI, catalogPickerState, catalogIssueText } from '../conference/catalog-correction-ui.mjs';
+import { createReportRemovalUI } from '../conference/report-removal-ui.mjs';
 
 const operatorHTML = await readFile(new URL('../conference/operator.html', import.meta.url), 'utf8');
 const loginHTML = await readFile(new URL('../conference/login.html', import.meta.url), 'utf8');
@@ -74,6 +75,7 @@ function documentFixture(html) {
   function disconnect(node){node.isConnected=false;for(const child of node.children)disconnect(child);}
   function within(node,parent){for(let current=node.parent;current;current=current.parent)if(current===parent)return true;return false;}
   function matches(node,selector){
+    if (/^[a-z]+$/.test(selector)) return node.tagName === selector.toUpperCase();
     if(selector.includes(','))return selector.split(',').some(item=>matches(node,item.trim()));
     const descendant=/^main (input|select|button)$/.exec(selector);if(descendant)return node.tagName===descendant[1].toUpperCase()&&all.some(parent=>parent.tagName==='MAIN'&&within(node,parent));
     if(selector==='#generate button')return node.tagName==='BUTTON'&&within(node,ids.get('generate'));
@@ -93,9 +95,9 @@ function documentFixture(html) {
   return {document,node:id=>ids.get(id)};
 }
 function storageFixture(saved) {const writes=[],values=new Map(saved?[[LOCALE_KEY,saved]]:[]);return {writes,values,getItem:key=>values.get(key)??null,setItem(key,value){writes.push([key,value]);values.set(key,value);}};}
-async function boot(source,html,{storage=storageFixture(),fetch,language='en',extra=''}={}) {
+async function boot(source,html,{storage=storageFixture(),fetch,language='en',extra='',reportTimeout}={}) {
   const dom=documentFixture(html),navigation=[],window={addEventListener(){}},location={replace:value=>navigation.push(value),reload:()=>navigation.push('reload')};
-  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,createImportUI,createCatalogCorrectionUI,catalogPickerState,catalogIssueText,filterProducts};
+  const context={document:dom.document,window,location,localStorage:storage,navigator:{language,clipboard:{writeText:async()=>{}}},fetch,createAdminI18n,createImportUI,createCatalogCorrectionUI,createReportRemovalUI:options=>createReportRemovalUI({...options,...(reportTimeout?{timeout:reportTimeout}:{})}),catalogPickerState,catalogIssueText,filterProducts,AbortController,setTimeout,clearTimeout};
   await runInNewContext('(async()=>{'+source.replace(/^import .*;\s*$/gm,'')+'\n'+extra+'})()',context);
   return {...dom,context,storage,navigation};
 }
@@ -273,5 +275,103 @@ test('only the exact static locale module is public before login; default/produc
     let stopped;const stop=()=>stopped??=child.exitCode!==null||child.signalCode!==null?Promise.resolve():new Promise(resolve=>{child.once('exit',resolve);child.kill();});t.after(stop);
     const origin='http://127.0.0.1:'+port;let ready=false;for(let attempt=0;attempt<100;attempt++){try{if((await fetch(origin+'/')).ok){ready=true;break;}}catch{}await delay(25);}assert.equal(ready,true);
     for(const method of ['GET','HEAD','POST'])assert.equal((await fetch(origin+'/admin/admin-i18n.mjs',{method})).status,404);await stop();
+  }
+});
+
+test('actual report library confirms exact identity, cancels safely, restores focus, localizes and preserves unrelated catalog state', async () => {
+  const row={lookupCode:'AN-QA92-0001',label:'Synthetic <report> & 10mg',reported:'2026-11-07'}, other={lookupCode:'AN-QA92-0002',label:'Other report',reported:'2026-11-07'};
+  const product=catalogDTO({id:'selected',name:'BPC-157 10mg',...parseProduct('BPC-157 10mg')}), calls=[];let state='published', release;
+  const ok=value=>({status:200,ok:true,json:async()=>value});
+  const app=await boot(operatorJS,operatorHTML,{fetch:async(url,options={})=>{
+    calls.push([url,options]);if(url.endsWith('/session'))return ok({products:[product],customers:[{id:'fixture',name:'Customer'}],defaultCustomerId:'fixture',token:'synthetic-092',publicOrigin:'https://fixture.invalid'});
+    if(url==='/admin/api/imports')return ok({imports:[]});
+    if(url.startsWith('/admin/api/history'))return ok(url.endsWith('state=removed')?(state==='removed'?[row]:[]):state==='published'?[row,other]:[other]);
+    return new Promise(resolve=>release=()=>{state=url.endsWith('/remove')?'removed':'published';resolve(ok({lookupCode:row.lookupCode,state,label:row.label}));});
+  },extra:'globalThis.ui={language,showResult,reportLibrary,selected:()=>selected};'});
+  const {ui}=app.context, trigger=()=>app.node('history').querySelectorAll('[data-report-action]')[0], click=button=>app.node('history').events.get('click')({target:{closest:()=>button}});
+  assert.match(app.node('history').innerHTML,/Synthetic &lt;report&gt; &amp;/);for(const button of app.node('history').querySelectorAll('button'))for(let parent=button.parent;parent;parent=parent.parent)assert.notEqual(parent.tagName,'BUTTON');
+  app.node('search').value='BC10';const selectedBefore=ui.selected().id;
+  let first=trigger();click(first);assert.equal(app.node('report-dialog').open,true);assert.equal(app.document.activeElement,app.node('report-cancel'));assert.equal(app.node('report-dialog-identity').textContent,row.label+' · '+row.lookupCode);assert.match(app.node('report-dialog-description').textContent,/PDF.*QR/);
+  app.node('report-dialog').events.get('cancel')({preventDefault(){}});assert.equal(app.node('report-dialog').open,false);assert.equal(app.document.activeElement,first);assert.equal(calls.filter(([url])=>url.includes('/reports/')).length,0);
+  click(first);app.node('report-cancel').events.get('click')();assert.equal(calls.filter(([url])=>url.includes('/reports/')).length,0);
+  click(first);const focus=app.document.activeElement,before=calls.length;ui.language.setLocale('zh-CN');assert.equal(calls.length,before);assert.equal(app.document.activeElement,focus);assert.match(app.node('report-dialog-title').textContent,/移除/);assert.match(app.node('report-dialog-description').textContent,/二维码/);ui.language.setLocale('en');
+  const openButton=app.node('history').querySelectorAll('[data-code]').find(button=>!button.dataset.reportAction);click(openButton);assert.equal(app.node('code').textContent,row.lookupCode);
+  const change=app.node('report-confirm').events.get('click')();assert.equal(app.node('report-confirm').disabled,true);assert.equal(app.node('generate').elements.namedItem('lot').disabled,true);assert.equal(app.node('report-state').disabled,true);
+  await app.node('generate').events.get('submit')({preventDefault(){},submitter:{value:'publish'}});await app.node('report-confirm').events.get('click')();app.node('report-dialog').events.get('cancel')({preventDefault(){}});assert.equal(app.node('report-dialog').open,true);assert.equal(calls.filter(([url])=>url.includes('/reports/')).length,1);assert.equal(calls.some(([url])=>url.endsWith('/generate')),false);
+  release();await change;assert.equal(app.node('report-dialog').open,false);assert.equal(app.document.activeElement,app.node('report-state'));assert.match(app.node('result-state').textContent,/Removed snapshot/);assert.equal(app.node('public-link').hidden,true);assert.equal(app.node('public-link').getAttribute('href'),null);assert.equal(app.node('copy-code').hidden,true);assert.match(app.node('paper').src,/bundles\/removed/);assert.equal(app.node('search').value,'BC10');assert.equal(ui.selected().id,selectedBefore);
+  app.node('report-state').value='removed';await app.node('report-state').events.get('change')();assert.match(app.node('history').innerHTML,/data-report-action="restore"/);first=trigger();click(first);assert.match(app.node('report-dialog-title').textContent,/Restore/);assert.equal(app.document.activeElement,app.node('report-cancel'));
+  const restore=app.node('report-confirm').events.get('click')();release();await restore;assert.equal(app.node('copy-code').hidden,false);assert.equal(app.node('public-link').hidden,false);assert.match(app.node('paper').src,/bundles\/published/);assert.match(app.node('report-message').textContent,/restored/);
+  assert.ok(calls.filter(([url])=>url.includes('/reports/')).every(([,options])=>options.method==='POST'&&options.body==='{}'&&options.headers['X-Studio-Token']==='synthetic-092'));
+  ui.showResult({published:false,label:'Private',report:{lookupCode:'AN-QA92-0099'},previewURL:'/admin/bundles/previews/AN-QA92-0099/report.svg',pdfURL:'/admin/bundles/previews/AN-QA92-0099/report.pdf'});
+  app.node('report-state').value='published';await app.node('report-state').events.get('change')();click(trigger());const removeAgain=app.node('report-confirm').events.get('click')();release();await removeAgain;assert.equal(app.node('code').textContent,'AN-QA92-0099');assert.match(app.node('paper').src,/previews/);
+  assert.ok(operatorHTML.indexOf('<dialog id="report-dialog"')>operatorHTML.indexOf('</main>'));assert.match(operatorHTML,/aria-describedby="report-dialog-identity report-dialog-description"/);
+});
+
+test('actual library lost-response retry repeats one action, releases pending after timeout and keeps safe recovery controls', async () => {
+  const row={lookupCode:'AN-QA92-0001',label:'Synthetic retry',reported:'2026-11-07'}, calls=[];let removed=false, mutations=0, listFails=false;
+  const ok=value=>({status:200,ok:true,json:async()=>value});
+  const app=await boot(operatorJS,operatorHTML,{reportTimeout:5,fetch:async(url,options={})=>{
+    calls.push([url,options]);if(url.endsWith('/session'))return ok({products:[],customers:[],defaultCustomerId:'',token:'synthetic',publicOrigin:'https://fixture.invalid'});
+    if(url==='/admin/api/imports')return ok({imports:[]});if(url.startsWith('/admin/api/history')){if(listFails)throw new Error('private C:/never-display');return ok(removed?[]:[row]);}
+    mutations++;removed=true;if(mutations===1)return new Promise(()=>{});return ok({lookupCode:row.lookupCode,state:'removed',label:row.label});
+  }});
+  const button=app.node('history').querySelectorAll('[data-report-action]')[0];app.node('history').events.get('click')({target:{closest:()=>button}});
+  await app.node('report-confirm').events.get('click')();assert.equal(app.node('report-confirm').disabled,false);assert.equal(app.node('report-cancel').disabled,false);assert.equal(app.node('report-dialog').open,true);assert.match(app.node('report-dialog-status').textContent,/Retry the same action/);assert.equal(app.node('report-dialog').getAttribute('aria-busy'),'false');
+  await app.node('report-confirm').events.get('click')();assert.equal(app.node('report-dialog').open,false);assert.equal(mutations,2);
+  const requests=calls.filter(([url])=>url.includes('/reports/'));assert.equal(requests[0][0],requests[1][0]);assert.equal(requests[0][1].body,requests[1][1].body);
+  listFails=true;await app.node('report-refresh').events.get('click')();assert.match(app.node('report-message').textContent,/Use Refresh/);assert.doesNotMatch(app.node('report-message').textContent,/never-display/);assert.equal(app.node('report-refresh').disabled,false);
+});
+
+test('actual operator clears matching previews after lost remove/restore acknowledgements through Cancel and Refresh, preserving unrelated previews', async () => {
+  const row={lookupCode:'AN-QA92-0001',label:'Synthetic uncertain report',reported:'2026-11-07'}, product=catalogDTO({id:'selected',name:'BPC-157 10mg',...parseProduct('BPC-157 10mg')});
+  const ok=value=>({status:200,ok:true,json:async()=>value});
+  for(const action of ['remove','restore'])for(const preview of ['matching','otherPublished','otherPrivate']){
+    let savedState=action==='remove'?'published':'removed',mutations=0;const calls=[];
+    const app=await boot(operatorJS,operatorHTML,{reportTimeout:5,fetch:async(url,options={})=>{
+      calls.push([url,options]);if(url.endsWith('/session'))return ok({products:[product],customers:[{id:'fixture',name:'Customer'}],defaultCustomerId:'fixture',token:'synthetic',publicOrigin:'https://fixture.invalid'});
+      if(url==='/admin/api/imports')return ok({imports:[]});
+      if(url.startsWith('/admin/api/history'))return ok((url.endsWith('state=removed')?'removed':'published')===savedState?[row]:[]);
+      assert.ok(url.endsWith('/'+action));mutations++;savedState=action==='remove'?'removed':'published';
+      if(action==='remove')throw new Error('Failed to fetch');return new Promise(()=>{});
+    },extra:'globalThis.ui={language,showResult,result:()=>result,selected:()=>selected};'});
+    if(action==='restore'){app.node('report-state').value='removed';await app.node('report-state').events.get('change')();}
+    const click=button=>app.node('history').events.get('click')({target:{closest:()=>button}}),buttons=app.node('history').querySelectorAll('[data-code]');
+    click(buttons.find(button=>!button.dataset.reportAction));
+    if(preview!=='matching')app.context.ui.showResult({published:preview==='otherPublished',label:'Unrelated',report:{lookupCode:'AN-QA92-0099'},previewURL:'/admin/bundles/'+(preview==='otherPublished'?'published':'previews')+'/AN-QA92-0099/report.svg',pdfURL:'/admin/bundles/'+(preview==='otherPublished'?'published':'previews')+'/AN-QA92-0099/report.pdf',publicURL:'https://fixture.invalid/coa/AN-QA92-0099'});
+    const before={result:app.context.ui.result(),code:app.node('code').textContent,paper:app.node('paper').src,pdf:app.node('pdf').href,publicHidden:app.node('public-link').hidden,copyHidden:app.node('copy-code').hidden},selection=app.context.ui.selected().id;
+    app.node('manual-copy').value=before.code;app.node('manual-label').hidden=false;
+    click(buttons.find(button=>button.dataset.reportAction));await app.node('report-confirm').events.get('click')();assert.equal(mutations,1);assert.equal(app.node('report-dialog').open,true);assert.match(app.node('report-dialog-status').textContent,/could not be confirmed/);
+    if(preview==='matching'){
+      assert.equal(app.context.ui.result(),null);assert.equal(app.node('result').hidden,true);assert.equal(app.node('empty').hidden,false);assert.equal(app.node('paper').hidden,true);assert.equal(app.node('paper').getAttribute('src'),null);assert.equal(app.node('pdf').getAttribute('href'),null);assert.equal(app.node('public-link').getAttribute('href'),null);assert.equal(app.node('public-link').hidden,true);assert.equal(app.node('copy-code').hidden,true);assert.equal(app.node('manual-label').hidden,true);assert.equal(app.node('manual-copy').value,'');for(const id of ['code','result-name','result-state'])assert.equal(app.node(id).textContent,'');
+    }else{
+      assert.equal(app.context.ui.result(),before.result);assert.equal(app.node('code').textContent,before.code);assert.equal(app.node('paper').src,before.paper);assert.equal(app.node('pdf').href,before.pdf);assert.equal(app.node('public-link').hidden,before.publicHidden);assert.equal(app.node('copy-code').hidden,before.copyHidden);assert.equal(app.node('manual-copy').value,before.code);assert.equal(app.node('manual-label').hidden,false);
+    }
+    app.node('report-cancel').events.get('click')();click(buttons.find(button=>!button.dataset.reportAction));
+    if(preview==='matching')assert.equal(app.context.ui.result(),null);else assert.equal(app.context.ui.result(),before.result);
+    await app.node('report-refresh').events.get('click')();assert.equal(app.node('report-dialog').open,false);assert.equal(app.node('history').querySelectorAll('[data-code]').length,0);assert.equal(app.context.ui.selected().id,selection);assert.equal(app.node('report-refresh').disabled,false);
+    if(preview==='matching'){
+      app.context.ui.language.setLocale('zh-CN');assert.equal(app.context.ui.result(),null);assert.equal(app.node('result').hidden,true);assert.equal(app.node('code').textContent,'');assert.equal(app.node('copy-code').hidden,true);
+      app.node('report-state').value=savedState;await app.node('report-state').events.get('change')();click(app.node('history').querySelectorAll('[data-code]').find(button=>!button.dataset.reportAction));assert.equal(app.node('code').textContent,row.lookupCode);assert.equal(app.node('public-link').hidden,action==='remove');
+    }else assert.equal(app.context.ui.result(),before.result);
+    assert.equal(calls.filter(([url])=>url.includes('/reports/')).length,1);
+  }
+});
+
+test('actual operator retains acknowledged remove/restore plus library read error until a successful Refresh', async () => {
+  const row={lookupCode:'AN-QA92-0001',label:'Synthetic read failure',reported:'2026-11-07'},ok=value=>({status:200,ok:true,json:async()=>value});
+  for(const action of ['remove','restore']){
+    let state=action==='remove'?'published':'removed',failHistory=false,mutations=0;
+    const app=await boot(operatorJS,operatorHTML,{fetch:async(url)=>{
+      if(url.endsWith('/session'))return ok({products:[],customers:[],defaultCustomerId:'',token:'synthetic',publicOrigin:'https://fixture.invalid'});
+      if(url==='/admin/api/imports')return ok({imports:[]});
+      if(url.startsWith('/admin/api/history')){if(failHistory)throw new Error('C:/private synthetic diagnostic');return ok((url.endsWith('state=removed')?'removed':'published')===state?[row]:[]);}
+      mutations++;state=action==='remove'?'removed':'published';failHistory=true;return ok({lookupCode:row.lookupCode,state,label:row.label});
+    },extra:'globalThis.ui={language};'});
+    if(action==='restore'){app.node('report-state').value='removed';await app.node('report-state').events.get('change')();}
+    const buttons=app.node('history').querySelectorAll('[data-code]'),click=button=>app.node('history').events.get('click')({target:{closest:()=>button}});click(buttons.find(button=>!button.dataset.reportAction));click(buttons.find(button=>button.dataset.reportAction));
+    await app.node('report-confirm').events.get('click')();assert.equal(app.node('report-dialog').open,false);assert.equal(app.node('report-refresh').disabled,false);assert.match(app.node('report-message').textContent,action==='remove'?/Report removed\./:/Report restored\./);assert.match(app.node('report-message').textContent,/library could not be loaded.*Refresh/);assert.doesNotMatch(app.node('report-message').textContent,/private synthetic diagnostic/);assert.equal(app.node('public-link').hidden,action==='remove');assert.match(app.node('paper').src,action==='remove'?/bundles\/removed\//:/bundles\/published\//);
+    app.context.ui.language.setLocale('zh-CN');assert.match(app.node('report-message').textContent,/无法加载报告列表.*刷新/);app.context.ui.language.setLocale('en');
+    failHistory=false;await app.node('report-refresh').events.get('click')();assert.equal(app.node('report-message').textContent,'');assert.equal(mutations,1);assert.equal(app.node('report-refresh').disabled,false);
+    app.node('report-state').value=state;await app.node('report-state').events.get('change')();assert.match(app.node('history').innerHTML,/AN-QA92-0001/);
   }
 });

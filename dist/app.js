@@ -273,15 +273,16 @@ function routeLocation(address) {
   const page = resolvePageRoute(url.pathname);
   if (page) url.pathname = page.path;
   const coa = resolveCOARoute(url.pathname);
-  if (coa && !coa.report && publishedReports.has(coa.code)) { coa.report = publishedReports.get(coa.code).report; coa.canonicalPath = lookupResultPath(coa.code); }
   if (coa?.report) { url.pathname = coa.canonicalPath; url.search = ''; }
   return { url, page, coa, invalidLegacy };
 }
 
-function renderCurrentRoute(focus = false, legacyError = false) {
+function renderCurrentRoute(focus = false, legacyError = false, checked = null) {
   cancelPublishedLookup();
   historyFocusRevision++;
   const current = routeLocation(location.href);
+  const checkedCurrent = !!current.coa?.code && checked?.code === current.coa.code;
+  if (checkedCurrent && checked.bundle) { current.coa.report = checked.bundle.report; current.coa.canonicalPath = lookupResultPath(current.coa.code); current.url.pathname = current.coa.canonicalPath; current.url.search = ''; }
   accountLoadRevision++; accountLoadController?.abort(); accountLoadController = null;
   if (renderedURL && new URL(renderedURL, location.href).pathname === '/submit-sample' && current.url.pathname !== '/submit-sample') requestPage.suspend();
   accountPage?.leave();
@@ -308,13 +309,14 @@ function renderCurrentRoute(focus = false, legacyError = false) {
     } else {
       renderReportNotFound();
       document.title = 'COA not found · AssayNova';
-      if (publishedReaderEnabled && current.coa.code) {
+      if (publishedReaderEnabled && current.coa.code && !checkedCurrent) {
         const revision = lookupRevision, expectedURL = location.href;
         coaView.innerHTML = '<div class="coa-card"><h1 id="report-title" tabindex="-1">Finding your report…</h1><p role="status">Checking this Lookup Code.</p></div>';
         fetchPublishedReport(current.coa.code).then(bundle => {
           if (revision !== lookupRevision || location.href !== expectedURL) return;
-          if (bundle) { publishedReports.set(current.coa.code, bundle); renderCurrentRoute(focus); }
-          else { renderReportNotFound(); if (focus) document.getElementById('report-title')?.focus({preventScroll:true}); }
+          if (bundle) publishedReports.set(current.coa.code, bundle);
+          else publishedReports.delete(current.coa.code);
+          renderCurrentRoute(focus, false, { code: current.coa.code, bundle });
         });
       }
     }
@@ -343,7 +345,7 @@ function scrollToCurrentHash() {
   if (target && !target.closest('[hidden]')) target.scrollIntoView();
 }
 
-function navigateToURL(address, { replace = false } = {}) {
+function navigateToURL(address, { replace = false, checked = null } = {}) {
   cancelPublishedLookup();
   historyFocusRevision++;
   const current = routeLocation(address);
@@ -354,12 +356,12 @@ function navigateToURL(address, { replace = false } = {}) {
     scrollToCurrentHash();
     return;
   }
-  renderCurrentRoute(true, current.invalidLegacy);
+  renderCurrentRoute(true, current.invalidLegacy, checked);
   if (current.url.hash) scrollToCurrentHash();
   else window.scrollTo(0, 0);
 }
 
-function navigateToReport(code) { navigateToURL(lookupResultPath(code)); }
+function navigateToReport(code, checked = null) { navigateToURL(lookupResultPath(code), { checked }); }
 
 function renderPortal() {
   const requests = readRequests();
@@ -461,9 +463,12 @@ document.addEventListener('submit', (event) => {
     input.removeAttribute('aria-invalid');
     fetchPublishedReport(code).then(bundle => {
       if (revision !== lookupRevision || location.href !== expectedURL || input.value !== submittedValue) return;
-      if (bundle) { publishedReports.set(code, bundle); navigateToReport(code); }
-      else if (event.target.id === 'coa-lookup-form') navigateToReport(code);
-      else { input.setAttribute('aria-invalid','true'); error.textContent = 'No COA found. Use a Lookup Code, not a report or submission number.'; input.focus(); }
+      if (bundle) { publishedReports.set(code, bundle); navigateToReport(code, { code, bundle }); }
+      else {
+        publishedReports.delete(code);
+        if (event.target.id === 'coa-lookup-form') navigateToReport(code, { code, bundle: null });
+        else { input.setAttribute('aria-invalid','true'); error.textContent = 'No COA found. Use a Lookup Code, not a report or submission number.'; input.focus(); }
+      }
     });
     return;
   }

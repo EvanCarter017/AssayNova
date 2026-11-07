@@ -1117,7 +1117,7 @@ test('opt-in lookup works without reload, preserves generated title/units/action
   app.submitLookup(' an-abcd-1234 ',false);await flushLookup();assert.equal(app.location.pathname,'/coa/AN-ABCD-1234');assert.match(app.document.title,/COA report/);assert.doesNotMatch(app.document.title,/Sample/);
   const html=app.nodes.get('#coa-view').innerHTML;assert.match(html,/HCG 5000IU/);assert.match(html,/Measured content · IU\/vial/);assert.match(html,/__reports\/AN-ABCD-1234\/report.pdf/);assert.doesNotMatch(html,/Sample report|Fictional data|Not a valid certificate|Illustrative certificate/);
   app.click('copy-code');await flushLookup();assert.equal(app.copied.at(-1),'AN-ABCD-1234');app.click('copy-link');await flushLookup();assert.equal(app.copied.at(-1),'http://127.0.0.1:4999/coa/AN-ABCD-1234');
-  app.clickLink('/about');app.travel(-1);assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);app.travel(1);assert.equal(app.location.pathname,'/about');
+  app.clickLink('/about');app.travel(-1);await flushLookup();assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);app.travel(1);assert.equal(app.location.pathname,'/about');
   const refreshed=bootApp('/coa/an-abcd-1234',[],{publishedReader:true,remoteFetch});await flushLookup();assert.equal(refreshed.location.pathname,'/coa/AN-ABCD-1234');assert.match(refreshed.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);
   app.click('report',{lookupCode:DEMO_REPORT.lookupCode});assert.match(app.nodes.get('#coa-view').innerHTML,/Sample report/);
 });
@@ -1160,4 +1160,18 @@ test('opt-in reader timeout returns a recoverable not-found state and accepts a 
   const app=bootApp('/coa/AN-ABCD-1234',[],{publishedReader:true,lookupTimeouts:timeouts,remoteFetch:(_url,{signal})=>failed?new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new Error('timed out')))):Promise.resolve({ok:true,json:async()=>generatedFixture()})});
   assert.match(app.nodes.get('#coa-view').innerHTML,/Finding your report/);timeouts[0]();await flushLookup();assert.match(app.nodes.get('#coa-view').innerHTML,/No COA found/);
   failed=false;app.submitLookup('AN-ABCD-1234');await flushLookup();assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);
+});
+
+test('generated cached reports revalidate on fresh lookup and back navigation, clear all fields/actions after withdrawal and reject late success', async () => {
+  let published=true;const calls=[];
+  const app=bootApp('/verify',[],{publishedReader:true,remoteFetch:async(url,options)=>{calls.push([url,options]);return published?{ok:true,json:async()=>generatedFixture()}:{ok:false};}});
+  app.submitLookup('AN-ABCD-1234',false);await flushLookup();assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);assert.equal(calls.length,1);
+  app.clickLink('/about');published=false;app.travel(-1);assert.match(app.nodes.get('#coa-view').innerHTML,/Finding your report/);assert.doesNotMatch(app.nodes.get('#coa-view').innerHTML,/HCG|Download PDF|copy-code/);await flushLookup();
+  assert.equal(calls.length,2);assert.match(app.document.title,/not found/);assert.match(app.nodes.get('#coa-view').innerHTML,/No COA found/);assert.doesNotMatch(app.nodes.get('#coa-view').innerHTML,/HCG|__reports|Download PDF|data-action="copy-/);
+  const copies=app.copied.length;app.click('copy-code');await flushLookup();assert.equal(app.copied.length,copies);
+  app.clickLink('/verify');app.submitLookup('AN-ABCD-1234',false);await flushLookup();assert.equal(calls.length,3);assert.equal(app.location.pathname,'/verify');assert.match(app.nodes.get('#verify-error').textContent,/No COA found/);
+  app.clickLink('/coa/AN-ABCD-1234');await flushLookup();assert.equal(calls.length,4);assert.doesNotMatch(app.nodes.get('#coa-view').innerHTML,/HCG|Download PDF/);assert.ok(calls.every(([,options])=>options.cache==='no-store'));
+  const pending=[];const late=bootApp('/coa/AN-ABCD-1234',[],{publishedReader:true,remoteFetch:(url,options)=>new Promise(resolve=>pending.push({url,options,resolve}))});
+  late.clickLink('/about');late.clickLink('/coa/AN-ABCD-1234');pending[1].resolve({ok:false});await flushLookup();pending[0].resolve({ok:true,json:async()=>generatedFixture()});await flushLookup();assert.match(late.nodes.get('#coa-view').innerHTML,/No COA found/);assert.doesNotMatch(late.nodes.get('#coa-view').innerHTML,/HCG|Download PDF/);
+  late.clickLink('/about');late.travel(-1);assert.equal(pending.length,3);pending[2].resolve({ok:false});await flushLookup();assert.match(late.nodes.get('#coa-view').innerHTML,/No COA found/);
 });

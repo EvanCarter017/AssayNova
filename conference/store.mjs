@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile, readFile, rename, rm, readdir, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile, rename, rm, readdir, lstat, realpath } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -48,9 +48,48 @@ export async function runRenderer(requestPath, output, { python = PYTHON, render
 
 export async function createStore(root, { render = runRenderer, codeFactory = () => { const value = randomBytes(4).toString('hex').toUpperCase(); return 'AN-' + value.slice(0,4) + '-' + value.slice(4); } } = {}) {
   root = path.resolve(root);
-  const published = path.join(root, 'published'), previews = path.join(root, 'previews'), staging = path.join(root, 'staging');
-  await Promise.all([published, previews, staging].map(directory => mkdir(directory,{recursive:true})));
+  const published = path.join(root, 'published'), previews = path.join(root, 'previews'), staging = path.join(root, 'staging'), removed = path.join(root, 'removed');
+  await Promise.all([published, previews, staging, removed].map(directory => mkdir(directory,{recursive:true})));
   let busy = false;
+  const fail = (status, message) => Object.assign(new Error(message), { status });
+  async function exists(filename) {
+    try { await lstat(filename); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+  }
+  async function snapshot(directory, code) {
+    const base = path.join(root, directory), folder = path.join(base, code);
+    const rootPath = await realpath(root);
+    const baseEntry = await lstat(base);
+    if (!baseEntry.isDirectory() || baseEntry.isSymbolicLink() || await realpath(base) !== path.join(rootPath, directory)) throw fail(409, 'Report snapshot is unavailable.');
+    async function check(filename) {
+      const entry = await lstat(filename);
+      if (entry.isSymbolicLink() || (!entry.isDirectory() && !entry.isFile())) throw fail(409, 'Report snapshot is unavailable.');
+      if (entry.isDirectory()) for (const name of await readdir(filename)) await check(path.join(filename, name));
+    }
+    await check(folder);
+    if (!(await lstat(folder)).isDirectory() || await realpath(folder) !== path.join(rootPath, directory, code)) throw fail(409, 'Report snapshot is unavailable.');
+    for (const name of ['bundle.json', 'report.pdf', 'report.svg']) if (!(await lstat(path.join(folder, name))).isFile()) throw fail(409, 'Report snapshot is unavailable.');
+    try { return publicBundle(JSON.parse(await readFile(path.join(folder, 'bundle.json'), 'utf8')), code); }
+    catch { throw fail(409, 'Report snapshot is unavailable.'); }
+  }
+  async function changeState(code, state) {
+    if (!validCode(code) || ['AN-7K9Q-2M4X','AN-8P6R-3N5Y'].includes(code)) throw fail(400, 'Choose a generated report Lookup Code.');
+    if (busy) throw fail(409, 'Another report is being generated. Wait for it to finish.');
+    busy = true;
+    try {
+      const from = state === 'removed' ? 'published' : 'removed', to = state;
+      const source = path.join(root, from, code), destination = path.join(root, to, code);
+      const [hasSource, hasDestination] = await Promise.all([exists(source), exists(destination)]);
+      if (hasSource && hasDestination) throw fail(409, 'Report exists in both states. Ask the local owner to check it.');
+      if (!hasSource && !hasDestination) throw fail(404, 'Generated report was not found.');
+      const bundle = await snapshot(hasSource ? from : to, code);
+      // Validate the destination parent too, including idempotent retries. Never overwrite a snapshot.
+      const targetBase = path.join(root, to);
+      const targetEntry = await lstat(targetBase);
+      if (!targetEntry.isDirectory() || targetEntry.isSymbolicLink() || await realpath(targetBase) !== path.join(await realpath(root), to)) throw fail(409, 'Report snapshot is unavailable.');
+      if (hasSource) await rename(source, destination);
+      return { lookupCode: code, state, label: bundle.label };
+    } finally { busy = false; }
+  }
   async function generate(product, fields, publish) {
     if (busy) { const error = new Error('Another report is being generated. Wait for it to finish.'); error.status = 409; throw error; }
     busy = true;
@@ -60,8 +99,8 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
       for (let attempt=0;attempt<10;attempt++) {
         const candidate = codeFactory();
         if (!validCode(candidate) || ['AN-7K9Q-2M4X','AN-8P6R-3N5Y'].includes(candidate)) continue;
-        const exists = await Promise.all([published,previews].map(dir => stat(path.join(dir,candidate)).then(()=>true,()=>false)));
-        if (!exists.some(Boolean)) { code = candidate; break; }
+        const reserved = await Promise.all([published,previews,removed].map(dir => exists(path.join(dir,candidate))));
+        if (!reserved.some(Boolean)) { code = candidate; break; }
       }
       if (!code) throw new Error('Could not allocate a unique Lookup Code.');
       job = await mkdtemp(path.join(staging,'job-'));
@@ -81,12 +120,13 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
       return { ...bundle, published:publish, previewURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.svg', pdfURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.pdf' };
     } finally { busy = false; if (job) await rm(job,{recursive:true,force:true}); }
   }
-  async function history() {
+  async function history(state = 'published') {
+    if (!['published', 'removed'].includes(state)) throw fail(400, 'Choose Published or Removed reports.');
     const rows = [];
-    for (const code of await readdir(published)) if (validCode(code)) {
-      try { const bundle = publicBundle(JSON.parse(await readFile(path.join(published,code,'bundle.json'),'utf8')),code); rows.push({lookupCode:code,label:bundle.label,reported:bundle.report.issued}); } catch {}
+    for (const code of await readdir(path.join(root, state))) if (validCode(code)) {
+      try { const bundle = await snapshot(state, code); rows.push({lookupCode:code,label:bundle.label,reported:bundle.report.issued}); } catch {}
     }
     return rows.sort((a,b) => b.reported.localeCompare(a.reported)).slice(0,100);
   }
-  return { generate, history, get busy(){return busy;}, root };
+  return { generate, history, remove: code => changeState(code, 'removed'), restore: code => changeState(code, 'published'), get busy(){return busy;}, root };
 }

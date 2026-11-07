@@ -15,7 +15,7 @@ const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 };
-const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs'], ['/admin/catalog-correction-ui.mjs', 'catalog-correction-ui.mjs']]);
+const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs'], ['/admin/catalog-correction-ui.mjs', 'catalog-correction-ui.mjs'], ['/admin/report-removal-ui.mjs', 'report-removal-ui.mjs']]);
 const inNamespace = pathname => pathname === '/admin' || pathname.startsWith('/admin/');
 export const isLoopbackPeer = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
 
@@ -179,6 +179,18 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       } catch (error) { send(response, error.status || 400, { error: error.code ? 'Report operation failed; previous reports are preserved.' : error.message }); }
       return true;
     }
+    if (pathname === '/admin/api/reports' || pathname.startsWith('/admin/api/reports/')) {
+      const route = /^\/admin\/api\/reports\/(AN-[A-Z0-9]{4}-[A-Z0-9]{4})\/(remove|restore)$/.exec(pathname);
+      if (!route || request.url !== pathname) { send(response, 400, { error: 'Use an exact report operation route.' }, undefined, head); return true; }
+      if (request.method !== 'POST') { response.setHeader('Allow', 'POST'); send(response, 405, { error: 'Method not allowed.' }, undefined, head); return true; }
+      if (request.headers.origin !== currentOrigin || !validRunToken(request.headers['x-studio-token'])) { send(response, 403, { error: 'Run token required.' }); return true; }
+      try {
+        const input = await bodyJSON(request);
+        if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) { send(response, 400, { error: 'Supply an empty JSON object.' }); return true; }
+        send(response, 200, await reports[route[2]](route[1]));
+      } catch (error) { send(response, error.status || 400, { error: error.status ? error.message : 'Report state could not be changed. Refresh the library and retry.' }); }
+      return true;
+    }
     if (!['GET', 'HEAD'].includes(request.method)) {
       response.setHeader('Allow', 'GET, HEAD'); send(response, 405, { error: 'Method not allowed.' }); return true;
     }
@@ -197,7 +209,10 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
         if ([...query.keys()].length !== 1 || query.getAll('customerId').length !== 1) { send(response, 400, { error: 'Choose a saved customer.' }, undefined, head); return true; }
         send(response, 200, catalogResponse(await customers.scan(query.get('customerId'))), undefined, head); return true;
       }
-      if (pathname === '/admin/api/history') { send(response, 200, await reports.history(), undefined, head); return true; }
+      if (pathname === '/admin/api/history') {
+        if (!['/admin/api/history', '/admin/api/history?state=removed'].includes(request.url)) { send(response, 400, { error: 'Choose Published or Removed reports.' }, undefined, head); return true; }
+        send(response, 200, await reports.history(request.url.endsWith('?state=removed') ? 'removed' : 'published'), undefined, head); return true;
+      }
       if (files.has(pathname)) {
         const file = files.get(pathname), type = file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8';
         send(response, 200, await readFile(new URL(file, import.meta.url)), type, head); return true;
@@ -213,7 +228,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
         const catalog = await customers.scan(asset[1]), image = catalog.sources?.find(image => image.id === asset[2]);
         if (image) { send(response, 200, await readFile(image.path), 'image/png', head); return true; }
       }
-      const bundle = /^\/admin\/bundles\/(published|previews)\/(AN-[A-Z0-9]{4}-[A-Z0-9]{4})\/(report\.svg|report\.pdf)$/.exec(pathname);
+      const bundle = /^\/admin\/bundles\/(published|previews|removed)\/(AN-[A-Z0-9]{4}-[A-Z0-9]{4})\/(report\.svg|report\.pdf)$/.exec(pathname);
       if (bundle && validCode(bundle[2])) {
         const base = await realpath(path.join(reports.root, bundle[1]));
         const file = await realpath(path.join(base, bundle[2], bundle[3]));

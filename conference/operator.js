@@ -1,12 +1,13 @@
 import { createAdminI18n } from './admin-i18n.mjs';
 import { createImportUI } from './import-ui.mjs';
 import { createCatalogCorrectionUI, catalogPickerState } from './catalog-correction-ui.mjs';
+import { createReportRemovalUI } from './report-removal-ui.mjs';
 const $=id=>document.getElementById(id);
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const language=createAdminI18n({storage:()=>localStorage,browserLanguage:navigator.language});
 const t=(key,values)=>language.t(key,values);
-let session,selected,result,busy=false,historyRows=[],currentCustomerId='',catalogLoading=false,catalogEpoch=0;
-let importer,correction,importing=false;
+let session,selected,result,busy=false,currentCustomerId='',catalogLoading=false,catalogEpoch=0;
+let importer,correction,reportLibrary,importing=false;
 let statusState={key:'loading',error:false};
 const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 for(const name of ['received','reported']) $('generate').elements.namedItem(name).value=today;
@@ -19,18 +20,12 @@ function statusError(message,fallback){statusState={message,fallback,error:true}
 function renderSelectionLanguage(){
   $('selected-name').textContent=selected?selected.name:t(session&&!currentCustomerId?'noCustomers':$('product').options.length===0?'noProduct':'chooseProduct');
 }
-function renderResultLanguage(){if(result)$('result-state').textContent=t(result.published?'publishedSnapshot':'privateSnapshot');}
-function renderHistoryLanguage(){
-  for(const button of $('history').querySelectorAll('[data-code]')){
-    const row=historyRows.find(item=>item.lookupCode===button.dataset.code);
-    if(row)button.setAttribute('aria-label',t('openHistory',{name:row.label,code:row.lookupCode}));
-  }
-}
+function renderResultLanguage(){if(result)$('result-state').textContent=t(result.removed?'removedSnapshot':result.published?'publishedSnapshot':'privateSnapshot');}
 function applyLanguage(){
   language.apply(document,'reportsTitle');
   document.querySelector('.brand span').textContent=t('admin');
   $('admin-language').value=language.locale;
-  renderSelectionLanguage();renderResultLanguage();renderHistoryLanguage();renderStatus();
+  renderSelectionLanguage();renderResultLanguage();reportLibrary?.applyLanguage();renderStatus();
   if(session&&currentCustomerId){const value=$('product').value,state=catalogPickerState(session.products,session.entries,$('search').value,value);renderProductOptions({...state,chosen:state.ready.some(product=>product.id===value)?value:''});}
   importer?.applyLanguage();correction?.applyLanguage();renderCatalogAction();
 }
@@ -39,7 +34,7 @@ function updateControls(){
   $('customer').disabled=busy||importing||!session||!currentCustomerId;
   for(const id of ['reload-products','catalog-manage','search','product'])$(id).disabled=busy||catalogLoading||importing||!session||!currentCustomerId;
   for(const button of document.querySelectorAll('#generate button'))button.disabled=busy||catalogLoading||importing||!selected||!currentCustomerId;
-  importer?.refresh();correction?.refresh();renderCatalogAction();
+  importer?.refresh();correction?.refresh();reportLibrary?.refresh();renderCatalogAction();
 }
 function selectProduct(){
   selected=session.products.find(product=>product.id===$('product').value&&(!product.status||product.status==='ready'));
@@ -92,27 +87,29 @@ function showResult(value){
   result=value;$('empty').hidden=true;$('result').hidden=false;
   $('code').textContent=value.report.lookupCode;$('result-name').textContent=value.label;renderResultLanguage();
   $('paper').src=value.previewURL;$('paper').hidden=false;$('pdf').href=value.pdfURL;
-  $('public-link').href=value.publicURL;$('public-link').hidden=!value.published;$('copy-code').hidden=!value.published;
+  if(value.published)$('public-link').href=value.publicURL;else $('public-link').removeAttribute('href');
+  $('public-link').hidden=!value.published;$('copy-code').hidden=!value.published;
   $('manual-label').hidden=true;$('code').focus();
 }
 async function history(){
-  const response=await adminFetch('/admin/api/history',{cache:'no-store'});
-  if(!response.ok)throw new Error('');
-  historyRows=await response.json();
-  $('history').innerHTML=historyRows.map(row=>`<button data-code="${escape(row.lookupCode)}">${escape(row.label)}<br><strong>${escape(row.lookupCode)}</strong> · ${escape(row.reported)}</button>`).join('')||'<p class="hint" data-i18n="historyEmpty">'+escape(t('historyEmpty'))+'</p>';
-  renderHistoryLanguage();
+  await reportLibrary.load();
 }
-$('history').addEventListener('click',event=>{
-  const button=event.target.closest('[data-code]');if(!button)return;
-  const code=button.dataset.code,row=historyRows.find(item=>item.lookupCode===code);if(!row)return;
-  showResult({published:true,report:{lookupCode:code},label:row.label,previewURL:'/admin/bundles/published/'+code+'/report.svg',pdfURL:'/admin/bundles/published/'+code+'/report.pdf',publicURL:session.publicOrigin+'/coa/'+code});
-});
+function showSavedReport(row,state){const code=row.lookupCode;showResult({published:state==='published',removed:state==='removed',report:{lookupCode:code},label:row.label,previewURL:'/admin/bundles/'+state+'/'+code+'/report.svg',pdfURL:'/admin/bundles/'+state+'/'+code+'/report.pdf',publicURL:session.publicOrigin+'/coa/'+code});}
+function clearUncertainReport({lookupCode}){
+  if(result?.report.lookupCode!==lookupCode)return;
+  result=null;$('result').hidden=true;$('empty').hidden=false;
+  $('paper').hidden=true;$('paper').removeAttribute('src');
+  for(const id of ['code','result-name','result-state'])$(id).textContent='';
+  $('pdf').removeAttribute('href');$('public-link').removeAttribute('href');$('public-link').hidden=true;$('copy-code').hidden=true;
+  $('manual-label').hidden=true;$('manual-copy').value='';
+}
 $('search').addEventListener('input',filter);$('product').addEventListener('change',selectProduct);
 $('customer').addEventListener('change',()=>loadCustomer($('customer').value));
 $('reload-products').addEventListener('click',()=>loadCustomer(currentCustomerId,true));
 $('admin-language').addEventListener('change',event=>language.setLocale(event.target.value));
 importer=createImportUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&session?{customerId:currentCustomerId,token:session.token}:null,setPending:value=>{importing=value;updateControls();},onConfirmed:value=>{session.customers=value.customers;acceptCatalog(value);currentCustomerId=value.customer.id;renderCustomers();$('search').value='';$('product').value='';filter();}});
 correction=createCatalogCorrectionUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&!importing&&session?{customerId:currentCustomerId,customerName:session.customers.find(customer=>customer.id===currentCustomerId)?.name||currentCustomerId,token:session.token,entries:session.entries||[],catalogRevision:session.catalogRevision}:null,onSaved:value=>{const previous=selected?.id;acceptCatalog(value);if(value.customers)session.customers=value.customers;renderCustomers();filter(previous);}});
+reportLibrary=createReportRemovalUI({document,request:adminFetch,language,context:()=>!busy&&!catalogLoading&&!importing&&session?{token:session.token}:null,setPending:value=>{busy=value;updateControls();},onPreview:showSavedReport,onChanged:value=>{if(result?.report.lookupCode===value.lookupCode)showSavedReport(value,value.state);},onUncertain:clearUncertainReport});
 $('catalog-manage').addEventListener('click',event=>correction.open(undefined,event.currentTarget));
 language.subscribe(applyLanguage);applyLanguage();updateControls();
 $('generate').addEventListener('submit',async event=>{

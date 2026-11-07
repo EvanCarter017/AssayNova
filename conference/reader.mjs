@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseReportPDFRoute, sendReportPDF } from '../report-pdf.mjs';
 
 export const DEFAULT_STORE = fileURLToPath(new URL('../work/report-studio', import.meta.url));
-export const validCode = value => typeof value === 'string' && /^AN-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(value);
+export const validCode = value => typeof value === 'string' && value.length === 12 && /^AN-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(value);
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
 const scalar = value => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
 const clean = value => {

@@ -218,6 +218,19 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
   const dto = JSON.parse((await raw(reader.origin, '/__reports/' + code)).text); assert.equal(dto.report.lookupCode, code); assert.equal(dto.record.client, 'Research Client');
   for (const ext of ['pdf', 'svg']) assert.deepEqual((await raw(reader.origin, '/__reports/' + code + '/report.' + ext)).bytes, (await raw(proxy.origin, '/admin/bundles/published/' + code + '/report.' + ext, { headers: { Cookie: bridgeCookie } })).bytes);
   assert.equal((await raw(reader.origin, '/__reports/' + preview.report.lookupCode)).status, 404);
+  const stateChange = (action, extra = {}) => raw(proxy.origin, '/admin/api/reports/' + code + '/' + action, { method: 'POST', headers: { Origin: proxy.origin, Cookie: bridgeCookie, 'Content-Type': 'application/json', 'X-Studio-Token': session.token, ...extra }, body: '{}' });
+  assert.equal((await stateChange('remove', { 'X-Studio-Token': '' })).status, 403);
+  assert.equal((await stateChange('remove')).status, 200);
+  assert.deepEqual(JSON.parse((await raw(studio.origin, '/admin/api/history', { headers: { Cookie: localCookie } })).text), []);
+  assert.equal(JSON.parse((await raw(proxy.origin, '/admin/api/history?state=removed', { headers: { Cookie: bridgeCookie } })).text)[0].lookupCode, code);
+  for (const route of ['/__reports/' + code, '/__reports/' + code + '/report.pdf', '/__reports/' + code + '/report.svg', '/coa/' + code + '/report.pdf']) for (const method of ['GET', 'HEAD']) assert.equal((await raw(reader.origin, route, { method })).status, 404, method + ' ' + route);
+  for (const ext of ['pdf', 'svg']) {
+    const route = '/admin/bundles/removed/' + code + '/report.' + ext;
+    assert.equal((await raw(proxy.origin, route)).status, 401);
+    assert.deepEqual((await raw(proxy.origin, route, { headers: { Cookie: bridgeCookie } })).bytes, await readFile(path.join(files.store, 'removed', code, 'report.' + ext)));
+  }
+  assert.equal((await stateChange('restore')).status, 200);
+  assert.deepEqual((await raw(reader.origin, '/coa/' + code + '/report.pdf')).bytes, await readFile(path.join(files.store, 'published', code, 'report.pdf')));
 });
 
 async function launch(t, files, args, { production = false, reject = false } = {}) {
