@@ -398,7 +398,12 @@ test('public lookup has no sample shortcuts while sample reports and drafts pres
   assert.match(homeHTML, /id="report-id"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
   const sample = bootApp('/coa/AN-7K9Q-2M4X');
   assert.match(sample.nodes.get('#coa-view').innerHTML, /id="coa-lookup-code"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
-  assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Sample report/);
+  const reportHtml = sample.nodes.get('#coa-view').innerHTML;
+  const header = reportHtml.match(/<header class="coa-master-heading">([\s\S]*?)<\/header>/)[1];
+  assert.match(header, /id="report-title" tabindex="-1" class="sr-only">Reference sample A<\/h1>/);
+  assert.match(header, /Lookup Code <strong>AN-7K9Q-2M4X<\/strong>/);
+  assert.doesNotMatch(header, /Sample report|report-demo-label/);
+  assert.match(text(reportHtml), /Sample report/);
   assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Not a valid certificate of analysis/);
   const app = bootApp('/submit-sample');
   assert.match(app.nodes.get('#request-flow').innerHTML, /Submissions are unavailable/);

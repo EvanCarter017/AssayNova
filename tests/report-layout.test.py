@@ -269,9 +269,12 @@ class ReportLayoutTests(unittest.TestCase):
             self.assertGreater(min(self.bounds(node)[1] for node in footer), 55.5)
             self.assert_disjoint(paragraph + footer)
             signature = next(node for node in drawing.contents if isinstance(node, DrawingImage) and "signature" in str(node.path))
-            with Image.open(master.ROOT / "assets" / "dylan-greene-signature.png") as source:
-                self.assertEqual((source.mode, source.size), ("RGBA", (2164, 727)))
-                self.assertEqual(source.getextrema()[-1], (0, 254))
+            asset_name = "dylan-greene-signature.png" if dynamic else "sample-signature.png"
+            expected_size = (2164, 727) if dynamic else (2166, 726)
+            expected_alpha = (0, 254) if dynamic else (0, 255)
+            with Image.open(master.ROOT / "assets" / asset_name) as source:
+                self.assertEqual((source.mode, source.size), ("RGBA", expected_size))
+                self.assertEqual(source.getextrema()[-1], expected_alpha)
                 scale = min(150 / source.width, 44 / source.height)
                 self.assertAlmostEqual(signature.width, source.width * scale)
                 self.assertAlmostEqual(signature.height, source.height * scale)
@@ -293,12 +296,16 @@ class ReportLayoutTests(unittest.TestCase):
     def test_new_signature_asset_and_actual_svg_embedding_preserve_pixels(self):
         import base64
         from io import BytesIO
-        signature = master.ROOT / "assets" / "dylan-greene-signature.png"
-        expected_sha = "A06D10367C433B6EA951F6DBCB1E1AA16A20B0681F5B5D16CC4E8A99FA7A8158"
-        self.assertEqual(hashlib.sha256(signature.read_bytes()).hexdigest().upper(), expected_sha)
-        with Image.open(signature) as source:
-            expected = source.tobytes()
-        for dynamic in (False, True):
+        assets = (
+            (False, "sample-signature.png", "FCE35C06765CCC174835105CE0D127D6B9B460A0E51CA0D4F12725144B507323"),
+            (True, "dylan-greene-signature.png", "A06D10367C433B6EA951F6DBCB1E1AA16A20B0681F5B5D16CC4E8A99FA7A8158"),
+        )
+        for dynamic, filename, expected_sha in assets:
+            signature = master.ROOT / "assets" / filename
+            self.assertEqual(hashlib.sha256(signature.read_bytes()).hexdigest().upper(), expected_sha)
+            with Image.open(signature) as source:
+                expected = source.tobytes()
+                expected_size = source.size
             drawing = self.drawing(dynamic)
             _, svg = renderer.render(drawing, "AN-TEST-0001", "Signature fixture") if dynamic else master.render(drawing, "AN-TEST-0001")
             root = ET.fromstring(svg)
@@ -307,7 +314,7 @@ class ReportLayoutTests(unittest.TestCase):
                 data = node.attrib.get("href", node.attrib.get("{http://www.w3.org/1999/xlink}href"))
                 self.assertTrue(data.startswith("data:image/png;base64,"))
                 with Image.open(BytesIO(base64.b64decode(data.split(",", 1)[1]))) as image:
-                    if image.size == (2164, 727):
+                    if image.size == expected_size:
                         embedded.append(image.tobytes())
             self.assertEqual(embedded, [expected])
 

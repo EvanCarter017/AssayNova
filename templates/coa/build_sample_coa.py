@@ -609,7 +609,7 @@ def make_drawing(code, record, product_image=None, contact_config=None):
     draw_method_lines(drawing, record["method"], ledger_x, 123 + LOWER_ANALYSIS_SHIFT, method_width)
     draw_contact(drawing, contact)
     draw_report_qr(drawing, code)
-    signature = ROOT / "assets" / "dylan-greene-signature.png"
+    signature = ROOT / "assets" / "sample-signature.png"
     with PILImage.open(signature) as image:
         scale = min(150 / image.width, 44 / image.height)
         signature_width, signature_height = image.width * scale, image.height * scale

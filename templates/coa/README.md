@@ -138,9 +138,10 @@ source hash, edit hashes and final active selection without asserting copyright
 ownership or untouched photographic pixels. Prior Thirdman/Pexels JPEGs and
 source/license records remain archived unchanged. Optional --product-image
 PNG/JPEG replacement remains available.
-Images, logo and the original authorized Dylan Greene signature design are
-embedded for offline use. No private source report/client data or scientific
-trace pixels are read by this public builder; no digital issuance is performed.
+The images, logo and sample-only handwritten name graphic are embedded for
+offline use. The public builder uses assets/sample-signature.png, a synthetic
+Dylan Greene design for the two fictional specimens. No private source report
+or client data are read by this builder, and no digital issuance is performed.
 
 ## Current specimen and generated-report result presentation
 
