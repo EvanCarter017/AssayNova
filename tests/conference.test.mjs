@@ -12,7 +12,7 @@ import { parseProduct, loadCatalog, catalogDTO, DEFAULT_IMAGES } from '../confer
 import { createStudio } from '../conference/studio.mjs';
 import { createStore, validateFields, validateComponents, runRenderer, PYTHON } from '../conference/store.mjs';
 import { readPublished } from '../conference/reader.mjs';
-import { SAMPLE_REPORT_DATA } from '../dist/reports/sample-data.js';
+import { SAMPLE_REPORT_DATA } from '../conference/sample-reports/sample-data.js';
 
 const project=fileURLToPath(new URL('../',import.meta.url));
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6V4AAAAAASUVORK5CYII=','base64');
@@ -70,9 +70,9 @@ test('store snapshots are immutable, collision-safe, single-flight, persistent, 
   const store=await createStore(root,{codeFactory:()=> 'AN-AAAA-1111',render:async(...args)=>{running=true;await new Promise(resolve=>release=resolve);await mockRenderer(...args);}});
   const first=store.generate(product,{},true);while(!running)await delay(1);
   await assert.rejects(store.generate(product,{},true),/Another report/);assert.equal(await readPublished(root,'AN-AAAA-1111'),null);release();const result=await first;
-  assert.equal(result.report.lookupCode,'AN-AAAA-1111');assert.equal((await readPublished(root,'AN-AAAA-1111')).label,product.name);
+  assert.equal(result.report.lookupCode,'AN-AAAA-1111');assert.equal(result.adminOnly,true);assert.equal(await readPublished(root,'AN-AAAA-1111'),null);
   const bytes=await readFile(path.join(root,'published','AN-AAAA-1111','bundle.json'));const restarted=await createStore(root,{render:mockRenderer,codeFactory:()=> 'AN-AAAA-1111'});
-  assert.equal((await restarted.history()).length,1);await assert.rejects(restarted.generate(product,{},true),/unique Lookup Code/);assert.deepEqual(await readFile(path.join(root,'published','AN-AAAA-1111','bundle.json')),bytes);
+  assert.equal((await restarted.history())[0].adminOnly,true);await assert.rejects(restarted.generate(product,{},true),/unique Lookup Code/);assert.deepEqual(await readFile(path.join(root,'published','AN-AAAA-1111','bundle.json')),bytes);
   const failed=await createStore(root,{codeFactory:()=> 'AN-BBBB-2222',render:async(_request,output)=>{await writeFile(path.join(output,'report.pdf'),'%PDF-partial');throw new Error('fixture failure');}});
   await assert.rejects(failed.generate(product,{},true),/fixture failure/);assert.equal(await readPublished(root,'AN-BBBB-2222'),null);assert.equal((await failed.history()).length,1);assert.equal((await readdir(path.join(root,'staging'))).length,0);
   const preview=await createStore(root,{render:mockRenderer,codeFactory:()=> 'AN-CCCC-3333'});await preview.generate(product,{},false);assert.equal(await readPublished(root,'AN-CCCC-3333'),null);
@@ -122,10 +122,33 @@ test('loopback studio enforces exact Host/Origin, run token, JSON/body bounds an
   const response=await post();assert.equal(response.status,201);const bundle=await response.json();assert.equal(bundle.published,true);assert.equal((await securedFetch(origin+bundle.previewURL)).status,200);assert.equal((await (await securedFetch(origin+'/admin/api/history')).json()).length,1);
   assert.equal((await securedFetch(origin+'/admin/api/generate')).status,404);assert.equal((await securedFetch(origin+'/admin/images/'+encodeURIComponent('../secret'))).status,400);assert.equal((await securedFetch(origin+'/admin/bundles/published/'+bundle.report.lookupCode+'/private.json')).status,404);
   assert.equal((await securedFetch(origin+'/admin/api/session')).headers.get('access-control-allow-origin'),null);
+  for (const file of ['sample-a.pdf', 'sample-a.svg', 'sample-c.pdf', 'sample-c.svg']) {
+    const route = origin + '/admin/sample-reports/' + file;
+    for (const method of ['GET', 'HEAD']) {
+      assert.equal((await fetch(route, { method })).status, 401);
+      const response = await securedFetch(route, { method });
+      assert.equal(response.status, 200, route);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('content-type'), file.endsWith('.pdf') ? 'application/pdf' : 'image/svg+xml');
+      if (file.endsWith('.svg')) assert.equal(response.headers.get('content-security-policy'), "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (method === 'HEAD') assert.equal(bytes.length, 0);
+      else assert.deepEqual(bytes, await readFile(path.join(project, 'conference/sample-reports', file)));
+    }
+  }
+  for (const file of ['sample-data.js', 'sample-a.pdf?x=1']) {
+    assert.equal((await securedFetch(origin + '/admin/sample-reports/' + file)).status, 404);
+  }
 });
 
 test('public reader opt-in serves only exact immutable DTO/PDF/SVG and default/production expose no studio',async t=>{
-  const root=await temporary(t);const store=await createStore(root,{render:mockRenderer,codeFactory:()=> 'AN-DDDD-4444'});await store.generate(product,{},true);
+  const root = await temporary(t);
+  const code = 'AN-DDDD-4444', folder = path.join(root, 'published', code);
+  await mkdir(folder, { recursive: true });
+  const record = SAMPLE_REPORT_DATA['AN-7K9Q-2M4X'];
+  await writeFile(path.join(folder, 'bundle.json'), JSON.stringify({ report: { lookupCode: code, publication: 'published' }, record, label: 'Externally supplied fixture' }));
+  await writeFile(path.join(folder, 'report.svg'), '<svg/>');
+  await writeFile(path.join(folder, 'report.pdf'), '%PDF-test fixture');
   const origin=await publicServer(t,root);const response=await fetch(origin+'/__reports/an-dddd-4444');assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('x-content-type-options'),'nosniff');
   const dto=await response.json();assert.equal(dto.report.lookupCode,'AN-DDDD-4444');assert.ok(!JSON.stringify(dto).match(/private-fixture|never-public|synthetic-private|seed|provenance|imagePath/));
   for(const asset of ['report.svg','report.pdf']){const response=await fetch(origin+'/__reports/AN-DDDD-4444/'+asset);assert.equal(response.status,200);assert.ok(response.headers.get('content-security-policy'));assert.equal((await fetch(origin+'/__reports/AN-DDDD-4444/'+asset,{method:'HEAD'})).status,200);}
@@ -144,7 +167,7 @@ test('renderer child timeout is bounded and leaves no published partial snapshot
   const start=Date.now();await assert.rejects(store.generate(product,{},true),/timed out/);assert.ok(Date.now()-start<3000);assert.equal(await readPublished(root,'AN-EEEE-5555'),null);assert.equal((await store.history()).length,0);
 });
 
-test('real Python closed loop publishes distinct products and repeated runs, preserves IU/ml and PDF/SVG/JSON snapshots',async t=>{
+test('real Python closed loop saves distinct products and repeated runs, preserves IU/ml and PDF/SVG/JSON snapshots',async t=>{
   const root=await temporary(t),images=path.join(root,'images'),store=path.join(root,'store');await mkdir(images);
   const photo=await readFile(path.join(project,'templates','coa','assets','sample-vial-product.png'));
   await Promise.all(['BPC-157 10mg','HCG 5000IU','0.9% Benzyl Alcohol 10ml','Tesamorelin 10mg + Ipamorelin 5mg'].map(name=>writeFile(path.join(images,name+'.png'),photo)));
@@ -154,15 +177,16 @@ test('real Python closed loop publishes distinct products and repeated runs, pre
   for(const name of ['BPC-157 10mg','HCG 5000IU','0.9% Benzyl Alcohol 10ml','Tesamorelin 10mg + Ipamorelin 5mg','BPC-157 10mg']){
     const selected=session.products.find(row=>row.name===name),fields={lot:'QA-ONLY',received:'2026-11-05',reported:'2026-11-05',...(snapshots.length===4?{purity1:99.41,purity2:99.43}:{})};
     const response=await securedFetch(studio.origin+'/admin/api/generate',{method:'POST',headers:{Origin:studio.origin,'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify({customerId:session.defaultCustomerId,productId:selected.id,fields,publish:true})});const generated=await response.json();assert.equal(response.status,201,generated.error);
-    const dto=await (await fetch(origin+'/__reports/'+generated.report.lookupCode)).json();assert.equal(dto.label,name);assert.equal(dto.record.client,'Research Client');assert.equal(dto.record.contentUnit,selected.unit);assert.equal(dto.record.composition.length,selected.components.length);
+    assert.equal(generated.adminOnly,true);assert.equal(generated.publicURL,null);
+    const dto=generated;assert.equal(dto.label,name);assert.equal(dto.record.client,'Research Client');assert.equal(dto.record.contentUnit,selected.unit);assert.equal(dto.record.composition.length,selected.components.length);
     assert.equal((Math.round((Math.round(Number(dto.record.purity[0])*100)+Math.round(Number(dto.record.purity[1])*100))/2)/100).toFixed(2),dto.record.purity[2]);assert.ok(Math.abs(dto.record.chromatogram.reduce((sum,row)=>sum+row.area,0)-100)<1e-5);assert.ok(Math.abs(dto.record.chromatogram.filter(row=>row.kind==='target').reduce((sum,row)=>sum+row.area,0)-Number(dto.record.purity[2]))<1e-5);
-    const pdf=Buffer.from(await (await fetch(origin+dto.assets.pdf)).arrayBuffer()),svg=await (await fetch(origin+dto.assets.svg)).text();assert.equal(pdf.subarray(0,5).toString(),'%PDF-');assert.match(svg,/<svg/);assert.doesNotMatch(svg,/<text\b|(?:href|src)="(?:https?:|file:)/i);assert.equal((await fetch(origin+'/coa/'+dto.report.lookupCode)).status,200);
+    const pdf=Buffer.from(await (await securedFetch(studio.origin+dto.pdfURL)).arrayBuffer()),svg=await (await securedFetch(studio.origin+dto.previewURL)).text();assert.equal(pdf.subarray(0,5).toString(),'%PDF-');assert.match(svg,/<svg/);assert.doesNotMatch(svg,/<text\b|(?:href|src)="(?:https?:|file:)/i);assert.equal((await fetch(origin+'/coa/'+dto.report.lookupCode)).status,404);
     const pdfPath=path.join(root,dto.report.lookupCode+'.pdf');await writeFile(pdfPath,pdf);snapshots.push({dto,pdf,svg,pdfPath});
   }
   assert.equal(new Set(snapshots.map(row=>row.dto.report.lookupCode)).size,5);assert.notDeepEqual(snapshots[0].dto.record.chromatogram,snapshots[1].dto.record.chromatogram);assert.notDeepEqual(snapshots[0].dto.record.chromatogram,snapshots[4].dto.record.chromatogram);assert.equal(snapshots[4].dto.record.purity[2],'99.42');
   const inspect=JSON.parse(execFileSync(PYTHON,['-B','-c','import json,sys; from pypdf import PdfReader; print(json.dumps([{ "pages":len((r:=PdfReader(p)).pages),"width":float(r.pages[0].mediabox.width),"height":float(r.pages[0].mediabox.height),"text":r.pages[0].extract_text()} for p in sys.argv[1:]]))',...snapshots.map(row=>row.pdfPath)],{encoding:'utf8',windowsHide:true}));
   for(const [index,proof] of inspect.entries()){assert.equal(proof.pages,1);assert.ok(Math.abs(proof.width-595.2756)<.1);assert.ok(Math.abs(proof.height-841.8898)<.1);assert.ok(proof.text.includes(snapshots[index].dto.report.lookupCode));assert.ok(proof.text.includes(snapshots[index].dto.record.purity[2]));assert.doesNotMatch(proof.text,/Sample report|demo report|conference|meeting example/i);}
-  const restarted=await createStore(store);assert.equal((await restarted.history()).length,5);for(const snapshot of snapshots){assert.deepEqual((await readPublished(store,snapshot.dto.report.lookupCode)).record,snapshot.dto.record);assert.deepEqual(await readPublished(store,snapshot.dto.report.lookupCode,'report.pdf'),snapshot.pdf);}
+  const restarted=await createStore(store);assert.equal((await restarted.history()).length,5);for(const snapshot of snapshots){assert.equal(await readPublished(store,snapshot.dto.report.lookupCode),null);assert.deepEqual(Buffer.from(await (await securedFetch(studio.origin+snapshot.dto.pdfURL)).arrayBuffer()),snapshot.pdf);}
 });
 
 test('default renderer honors the explicit Python interpreter and retains bounded CLI arguments',async t=>{

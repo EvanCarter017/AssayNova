@@ -1,12 +1,11 @@
 import { captureMailAction } from './account-mail.js';
-import { DEMO_REPORT, SERVICE_NAMES, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission, normalizeLookupCode } from './data.js';
+import { SERVICE_NAMES, lookupResultPath, resolveCOARoute, validateSubmission, normalizeLookupCode } from './data.js';
 import { PAGE_ROUTES, resolvePageRoute } from './routes.js';
 import { createRequestPage } from './request-page.js';
 import { createCustomerAccountClient } from './customer-account.js';
 import { createContactForm } from './contact-form.js';
 import { requestKind } from './account-requests.js';
 import { createAccountPage } from './account-page.js';
-import { SAMPLE_REPORT_DATA } from './reports/sample-data.js';
 
 let pendingMailAction = null;
 function captureActionFragment() {
@@ -37,7 +36,6 @@ const accountsEnabled = document.querySelector('meta[name="assaynova-accounts"]'
 const accountClient = accountsEnabled ? createCustomerAccountClient() : null;
 let accountLoadRevision = 0, accountLoadController = null;
 for (const entry of document.querySelectorAll('[data-account-entry]')) entry.hidden = !accountsEnabled;
-const publishedReports = new Map();
 let lookupRevision = 0;
 let lookupController;
 function cancelPublishedLookup() { lookupRevision++; lookupController?.abort(); lookupController = null; }
@@ -145,16 +143,11 @@ function renderRecovery(documentToEdit = null, ownerId = null) {
     recoveryForm.setAccountSession(user); recoveryForm.activate(); dialogContent.querySelector('#dialog-title')?.focus({ preventScroll: true }); return;
   }
   clearRecoveryReturn();
-  openDialog('<div class="nova-support-dialog" data-request-private><p class="dialog-eyebrow">NOVA SUPPORT</p><h2 class="dialog-title" id="dialog-title">Recover your report.</h2><p class="dialog-description">Submit a recovery request with the email used for testing and your company or project name. Manual identity verification is required before a report can be shared.</p><form id="recovery-form" class="recovery-form" novalidate><div class="form-grid" data-inquiry-fields><div class="form-field full"><label for="support-email">Testing email</label><input id="support-email" type="email" required maxlength="160" autocomplete="email" aria-describedby="support-error-email"><span class="field-error" id="support-error-email"></span></div><div class="form-field full"><label for="support-reference">Company or project name</label><input id="support-reference" required maxlength="160" aria-describedby="support-error-reference"><span class="field-error" id="support-error-reference"></span></div><div class="form-field full"><label for="support-notes">Additional context <span>Optional</span></label><textarea id="support-notes" maxlength="1200" aria-describedby="support-error-notes"></textarea><span class="field-error" id="support-error-notes"></span></div></div><p class="demo-notice" data-inquiry-gate></p><p id="support-error" class="inline-error" role="alert"></p><p id="support-status" role="status" data-request-private></p><div class="form-footer support-footer"><button class="button button-teal" type="submit" disabled>Submit recovery request</button><button class="text-button" type="button" data-inquiry-action="sign-in" hidden>Sign in to continue</button><button class="text-button" type="button" data-inquiry-action="view" hidden>View in My requests</button><button class="text-button" type="button" data-inquiry-action="new">New request</button></div></form></div>');
+  openDialog('<div class="nova-support-dialog" data-request-private><p class="dialog-eyebrow">NOVA SUPPORT</p><h2 class="dialog-title" id="dialog-title">Recover your report.</h2><p class="dialog-description">Submit a recovery request with the email used for testing and your company or project name. Manual identity verification is required before a report can be shared.</p><form id="recovery-form" class="recovery-form" novalidate><div class="form-grid" data-inquiry-fields><div class="form-field full"><label for="support-email">Testing email</label><input id="support-email" type="email" required maxlength="160" autocomplete="email" aria-describedby="support-error-email"><span class="field-error" id="support-error-email"></span></div><div class="form-field full"><label for="support-reference">Company or project name</label><input id="support-reference" required maxlength="160" aria-describedby="support-error-reference"><span class="field-error" id="support-error-reference"></span></div><div class="form-field full"><label for="support-notes">Additional context <span>Optional</span></label><textarea id="support-notes" maxlength="1200" aria-describedby="support-error-notes"></textarea><span class="field-error" id="support-error-notes"></span></div></div><p class="inquiry-notice" data-inquiry-gate></p><p id="support-error" class="inline-error" role="alert"></p><p id="support-status" role="status" data-request-private></p><div class="form-footer support-footer"><button class="button button-teal" type="submit" disabled>Submit recovery request</button><button class="text-button" type="button" data-inquiry-action="sign-in" hidden>Sign in to continue</button><button class="text-button" type="button" data-inquiry-action="view" hidden>View in My requests</button><button class="text-button" type="button" data-inquiry-action="new">New request</button></div></form></div>');
   recoveryForm = createContactForm(dialogContent.querySelector('#recovery-form'), { client: accountClient, accountEnabled: true, kind: 'report-recovery', makeId: makeSampleId, isVisible: () => dialog.open && location.pathname === '/contact', onSignIn: signInForRecovery, onView: () => navigateToURL('/account') });
   recoveryForm.setAccountSession(user); recoveryForm.activate();
   if (documentToEdit) recoveryForm.resume(documentToEdit, ownerId);
 }
-
-const SAMPLE_REPORT_ASSETS = Object.freeze({
-  'AN-7K9Q-2M4X': Object.freeze({ label: 'Reference sample A', svg: '/reports/sample-a.svg', pdf: '/reports/sample-a.pdf' }),
-  'AN-8P6R-3N5Y': Object.freeze({ label: 'Reference sample C', svg: '/reports/sample-c.svg', pdf: '/reports/sample-c.pdf' })
-});
 
 function lookupForm() {
   return `<form id="coa-lookup-form" class="coa-search" novalidate><label for="coa-lookup-code">Find another COA · Lookup Code</label><div class="coa-search-controls"><input id="coa-lookup-code" name="lookupCode" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="e.g. AN-XXXX-XXXX" aria-describedby="coa-lookup-error" required><button class="button button-dark" type="submit">Find report</button></div><p id="coa-lookup-error" class="inline-error" role="status"></p><p class="coa-help">Use a Lookup Code, not a report or submission number.</p></form>`;
@@ -176,17 +169,11 @@ function screeningPresentation(row) {
   return presented;
 }
 
-function renderReport(report) {
-  const generated = publishedReports.get(report.lookupCode);
-  const sample = generated ? { label: generated.label, ...generated.assets } : Object.hasOwn(SAMPLE_REPORT_ASSETS, report.lookupCode) ? SAMPLE_REPORT_ASSETS[report.lookupCode] : null;
-  const record = generated?.record ?? (Object.hasOwn(SAMPLE_REPORT_DATA, report.lookupCode) ? SAMPLE_REPORT_DATA[report.lookupCode] : null);
-  if (!sample || !record) { renderReportNotFound(); return; }
+function renderReport({ report, record, label, assets }) {
   const fields = [['Product name', record.product], ['Appearance', record.appearance], ['Client', record.client], ['Report no.', record.reportId], ['Lot', record.lot], ['Accession no.', record.accession], ['Lookup Code', report.lookupCode], ['Received', record.received], ['Reported', record.reported]];
-  const heading = `<h1 id="report-title" tabindex="-1"${generated ? '' : ' class="sr-only"'}>${escape(sample.label)}</h1>`;
-  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading">${generated ? `<div>${heading}</div>` : heading}<p class="coa-code">Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
-    <figure class="coa-master-paper"><img src="${sample.svg}" width="595" height="842" alt="${generated ? 'Certificate' : 'Illustrative certificate'} of analysis for ${escape(sample.label)}. Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
-    ${generated ? '' : `<p class="report-disclaimer coa-master-disclosure"><strong>Sample report.</strong> ${escape(report.disclaimer)}</p>`}
-    <div class="report-actions coa-master-tools"><a class="button button-dark" href="${sample.pdf}" download>Download PDF</a><a class="button button-outline" href="${sample.svg}" target="_blank" rel="noopener">View full size</a><button class="button button-outline" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
+  coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading"><div><h1 id="report-title" tabindex="-1">${escape(label)}</h1></div><p class="coa-code">Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
+    <figure class="coa-master-paper"><img src="${assets.svg}" width="595" height="842" alt="Certificate of analysis for ${escape(label)}. Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
+    <div class="report-actions coa-master-tools"><a class="button button-dark" href="${assets.pdf}" download>Download PDF</a><a class="button button-outline" href="${assets.svg}" target="_blank" rel="noopener">View full size</a><button class="button button-outline" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
     <details class="coa-master-transcript"><summary>Report fields</summary><div class="coa-master-transcript-body"><section><h2>Sample information</h2><dl class="coa-master-field-list">${fields.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl></section><section><h2>Analytical results</h2><p>Two determinations of the same sample.</p><p>Purity (HPLC-UV area%)</p><dl class="coa-master-field-list">${['Replicate 1', 'Replicate 2', 'Mean'].map((label, index) => `<div><dt>${escape(label)}</dt><dd>${escape(record.purity[index])}%</dd></div>`).join('')}</dl><table><caption>Measured content · ${record.contentUnit === 'mixed' ? 'Per-analyte results' : escape(record.contentUnit || 'mg') + '/vial'}</caption><thead><tr><th scope="col">Analyte</th><th scope="col">Replicate 1</th><th scope="col">Replicate 2</th><th scope="col">Mean</th></tr></thead><tbody>${record.composition.map(row => `<tr><th scope="row">${escape(row.analyte)}${row.unit ? ' (' + escape(row.unit) + '/vial)' : ''}</th><td>${escape(row.sample1)}</td><td>${escape(row.sample2)}</td><td>${escape(row.summary)}</td></tr>`).join('')}</tbody></table></section><section><h2>Analytical figures</h2><p>HPLC-UV chromatogram. Principal retention time: ${escape(record.retentionTime)} min. Relative UV response, 0-100%. Fitted target areas total ${escape(record.purity[2])}%.</p><ul>${record.chromatogram.map(peak => `<li>${escape(peak.analyte)}: ${escape(peak.time)} min; fitted area ${escape(peak.area)}%; relative peak response ${escape(peak.response)}.</li>`).join('')}</ul><ul>${record.spectra.map(spectrum => `<li>${escape(spectrum.analyte)} / ${escape(spectrum.species)}: ${escape(spectrum.status)}. Scan ${spectrum.scan.map(escape).join('-')} m/z. ${spectrum.ions.map(ion => `${escape(ion.label)}: ${escape(ion.mz)} m/z; relative intensity ${escape(ion.intensity)}; isotope peaks ${ion.isotopes.map(peak => escape(peak.mz)).join(', ')} m/z`).join('; ')}.</li>`).join('')}</ul></section><section><h2>Screening outcomes</h2><dl class="coa-master-field-list">${record.screenings.map(screeningPresentation).map(row => `<div><dt>${escape(row.test)}</dt><dd>${escape(row.result)}${row.details ? ' · ' + escape(row.details) : ''}</dd></div>`).join('')}</dl><h2>Method</h2><p>${escape(record.method)}</p></section><section><h2>Signoff</h2><p>Dylan Greene</p><p>${escape(record.signoffTitle)}</p></section></div></details>
     <div id="report-copy-fallback" class="copy-fallback" role="region" aria-label="Manual copy" hidden><p>Automatic copy was unavailable. Select and copy the complete value below.</p><label for="report-copy-value">Value to copy</label><textarea id="report-copy-value" readonly></textarea><div class="dialog-buttons"><button class="text-button" data-action="copy-select">Select all</button><button class="text-button" data-action="copy-retry">Try copying again</button></div></div>
     </article>${lookupForm()}`;
@@ -200,10 +187,9 @@ function routeLocation(address) {
   const url = new URL(address, location.href);
   let invalidLegacy = false;
   if (url.pathname === '/' && url.searchParams.has('coa')) {
-    const report = findLegacyReport(url.searchParams.get('coa'));
-    url.pathname = report ? reportPath(report.lookupCode) : '/verify';
+    url.pathname = '/verify';
     url.search = ''; url.hash = '';
-    invalidLegacy = !report;
+    invalidLegacy = true;
   } else if (url.pathname === '/' && ['#testing', '#verify'].includes(url.hash)) {
     url.pathname = url.hash === '#testing' ? '/testing-methods' : '/verify';
     url.hash = '';
@@ -211,7 +197,6 @@ function routeLocation(address) {
   const page = resolvePageRoute(url.pathname);
   if (page) url.pathname = page.path;
   const coa = resolveCOARoute(url.pathname);
-  if (coa?.report) { url.pathname = coa.canonicalPath; url.search = ''; }
   return { url, page, coa, invalidLegacy };
 }
 
@@ -222,7 +207,8 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
   historyFocusRevision++;
   const current = routeLocation(location.href);
   const checkedCurrent = !!current.coa?.code && checked?.code === current.coa.code;
-  if (checkedCurrent && checked.bundle) { current.coa.report = checked.bundle.report; current.coa.canonicalPath = lookupResultPath(current.coa.code); current.url.pathname = current.coa.canonicalPath; current.url.search = ''; }
+  const bundle = checkedCurrent ? checked.bundle : null;
+  if (bundle) { current.url.pathname = lookupResultPath(current.coa.code); current.url.search = ''; }
   accountLoadRevision++; accountLoadController?.abort(); accountLoadController = null;
   if (renderedURL && new URL(renderedURL, location.href).pathname === '/submit-sample' && current.url.pathname !== '/submit-sample') requestPage.suspend();
   accountPage?.leave();
@@ -246,10 +232,10 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
   error.textContent = legacyError || current.invalidLegacy ? 'No report matches that link. Enter a Lookup Code below.' : '';
   document.querySelector('#report-id').removeAttribute('aria-invalid');
   if (current.coa) {
-    activeReport = current.coa.report;
+    activeReport = bundle?.report ?? null;
     if (activeReport) {
-      renderReport(activeReport);
-      document.title = `${publishedReports.has(activeReport.lookupCode) ? 'COA report' : 'Sample report'} · ${activeReport.lookupCode} · AssayNova`;
+      renderReport(bundle);
+      document.title = `COA report · ${activeReport.lookupCode} · AssayNova`;
     } else {
       renderReportNotFound();
       document.title = 'COA not found · AssayNova';
@@ -258,8 +244,6 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
         coaView.innerHTML = '<div class="coa-card"><h1 id="report-title" tabindex="-1">Finding your report…</h1><p role="status">Checking this Lookup Code.</p></div>';
         fetchPublishedReport(current.coa.code).then(bundle => {
           if (revision !== lookupRevision || location.href !== expectedURL) return;
-          if (bundle) publishedReports.set(current.coa.code, bundle);
-          else publishedReports.delete(current.coa.code);
           renderCurrentRoute(focus, false, { code: current.coa.code, bundle });
         });
       }
@@ -390,28 +374,25 @@ document.addEventListener('submit', (event) => {
   if (!event.target.matches('#verify-form,#coa-lookup-form')) return;
   event.preventDefault();
   const input = event.target.querySelector('input[name="lookupCode"]');
-  const report = findReportByLookupCode(input.value);
   const error = event.target.id === 'verify-form' ? document.querySelector('#verify-error') : document.querySelector('#coa-lookup-error');
   cancelPublishedLookup();
   const code = normalizeLookupCode(input.value);
-  if (!report && publishedReaderEnabled && code) {
+  if (publishedReaderEnabled && code) {
     const revision = lookupRevision, expectedURL = location.href, submittedValue = input.value;
     error.textContent = 'Finding your report…';
     input.removeAttribute('aria-invalid');
     fetchPublishedReport(code).then(bundle => {
       if (revision !== lookupRevision || location.href !== expectedURL || input.value !== submittedValue) return;
-      if (bundle) { publishedReports.set(code, bundle); navigateToReport(code, { code, bundle }); }
+      if (bundle) navigateToReport(code, { code, bundle });
       else {
-        publishedReports.delete(code);
         if (event.target.id === 'coa-lookup-form') navigateToReport(code, { code, bundle: null });
         else { input.setAttribute('aria-invalid','true'); error.textContent = 'No COA found. Use a Lookup Code, not a report or submission number.'; input.focus(); }
       }
     });
     return;
   }
-  input.setAttribute('aria-invalid', String(!report));
-  if (report) { error.textContent = ''; navigateToReport(report.lookupCode); }
-  else if (event.target.id === 'coa-lookup-form') { navigateToReport(input.value); }
+  input.setAttribute('aria-invalid', 'true');
+  if (event.target.id === 'coa-lookup-form') { navigateToReport(input.value); }
   else { error.textContent = 'No COA found. Use a Lookup Code, not a report or submission number.'; input.focus(); }
 });
 document.addEventListener('input', (event) => {

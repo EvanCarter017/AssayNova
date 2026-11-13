@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCOARoute } from './dist/data.js';
 import { resolvePageRoute } from './dist/routes.js';
-import { parseReportPDFRoute, builtinReportPDF, sendReportPDF } from './report-pdf.mjs';
+import { parseReportPDFRoute } from './report-pdf.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
 const conferenceEnabled = process.argv.includes('--conference-reports');
@@ -118,14 +118,16 @@ const server = http.createServer(async (request, response) => {
     response.end('Method not allowed');
     return;
   }
-  const reportPDFCode = parseReportPDFRoute(request.url);
-  const builtinPDF = reportPDFCode && builtinReportPDF(reportPDFCode);
-  if (builtinPDF) {
-    let bytes;
-    try { bytes = await readFile(path.join(root, 'reports', builtinPDF)); } catch {}
-    sendReportPDF(request, response, reportPDFCode, bytes); return;
+  // Retired specimen files must stay unavailable even if left in an old dist tree.
+  if (/^\/reports\/(?:sample-[ac]\.(?:pdf|svg)|sample-data\.js|bitstream-vera-license\.txt|\.gitattributes)$/i.test(pathname)) {
+    response.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end(request.method === 'HEAD' ? undefined : 'Not found'); return;
   }
   if (conference && await conference.handlePublicReport(request, response, pathname, conferenceStore)) return;
+  if (parseReportPDFRoute(request.url) || pathname === '/__reports' || pathname.startsWith('/__reports/')) {
+    response.writeHead(404, { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' });
+    response.end(request.method === 'HEAD' ? undefined : 'Not found'); return;
+  }
   if (pathname === '/privacy/signals') {
     response.writeHead(200, {
       'Content-Type': mime['.json'], 'Cache-Control': 'no-store', 'Vary': 'Sec-GPC',
@@ -175,7 +177,7 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   const coaRoute = resolveCOARoute(encodedPathname);
-  const generatedReport = conference && coaRoute?.code && !coaRoute.report ? await conference.readPublished(conferenceStore, coaRoute.code) : null;
+  const generatedReport = conference && coaRoute?.code ? await conference.readPublished(conferenceStore, coaRoute.code) : null;
   const pageRoute = resolvePageRoute(encodedPathname);
   const filename = path.resolve(root, '.' + (pageRoute || coaRoute ? '/index.html' : pathname));
   if (!filename.startsWith(root + path.sep)) {
@@ -197,7 +199,7 @@ const server = http.createServer(async (request, response) => {
       if (conferenceEnabled) contents = Buffer.from(contents.toString('utf8').replace(/<\/head>/i, '<meta name="assaynova-report-reader" content="enabled"></head>'));
       if (accountOptions.mode !== 'disabled') contents = Buffer.from(contents.toString('utf8').replace(/<\/head>/i, '<meta name="assaynova-accounts" content="enabled"></head>'));
     }
-    response.writeHead(coaRoute && !coaRoute.report && !generatedReport ? 404 : 200, {
+    response.writeHead(coaRoute && !generatedReport ? 404 : 200, {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',

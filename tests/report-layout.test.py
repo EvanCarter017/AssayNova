@@ -461,11 +461,11 @@ class ReportLayoutTests(unittest.TestCase):
     def test_actual_static_mother_assets_and_cli_equivalent_exports(self):
         for code, stem, amount in (("AN-7K9Q-2M4X", "sample-a", "80.91"), ("AN-8P6R-3N5Y", "sample-c", "78.35")):
             expected = [amount, "Measured content", "Two determinations of the same sample", "reports@assaynovalabs.com", "+1-681-334-3721", "Chief Chemist"]
-            self.assert_actual_exports(ROOT / "dist" / "reports" / (stem + ".pdf"), ROOT / "dist" / "reports" / (stem + ".svg"), expected)
+            self.assert_actual_exports(ROOT / "conference" / "sample-reports" / (stem + ".pdf"), ROOT / "conference" / "sample-reports" / (stem + ".svg"), expected)
             pdf, svg = master.build(code, self.directory / stem)
             self.assert_actual_exports(pdf, svg, expected)
-            self.assertEqual(pdf.read_bytes(), (ROOT / "dist" / "reports" / (stem + ".pdf")).read_bytes())
-            self.assertEqual(svg.read_text(encoding="utf-8"), (ROOT / "dist" / "reports" / (stem + ".svg")).read_text(encoding="utf-8"))
+            self.assertEqual(pdf.read_bytes(), (ROOT / "conference" / "sample-reports" / (stem + ".pdf")).read_bytes())
+            self.assertEqual(svg.read_text(encoding="utf-8"), (ROOT / "conference" / "sample-reports" / (stem + ".svg")).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

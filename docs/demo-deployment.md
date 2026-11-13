@@ -10,7 +10,7 @@ The service runs as `assaynova-demo`, with a locked system account and private u
 
 Private directories under `/var/lib/assaynova-demo` are `accounts`, `reports`, `admin-auth`, `seed-images` and `backups`. Directories are 0700 and data files 0600. The service can write only its data root and its private temporary directory. The root-owned Node/venv files are readable and executable by the service user. Node binds `127.0.0.1:4330`; Nginx supplies the canonical public Host and preserves the caller's Origin. The application still checks loopback peer, exact Host/Origin, Fetch Metadata, CSRF and ownership. The app-specific Nginx access format excludes query strings, cookies, credentials, request bodies and referrers. Request-context error logging is disabled for this site; use sanitized service status and acceptance checks for diagnostics. HTTPS admin/account cookies are Secure.
 
-Accounts and generated reports start empty. Fixed fictional public sample reports ship as existing source assets. No historical generated report, customer account, session, pending import job or receipt is migrated.
+Accounts and generated reports start empty. Fixed fictional reference reports ship as assets served only in authenticated administration. No historical generated report, customer account, session, pending import job or receipt is migrated.
 
 ## Catalog-only export
 

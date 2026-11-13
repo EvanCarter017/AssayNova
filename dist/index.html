@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/account.css">
   <script type="module" src="/app.js"></script>
-  <script type="module" src="/method-charts-entry.js"></script>
 </head>
 <body>
   <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -99,12 +98,14 @@
             <p class="methods-lead">A clearer view starts with the right analysis. Explore how we examine purity, support identity confirmation and bring the two together.</p>
             <div class="methods-hero-action"><button type="button" class="button methods-primary" data-action="submit" data-service="comprehensive">Get Started <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></button><span class="methods-turnaround"><svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg> ~1 Week Turnaround</span></div>
           </div>
-          <figure class="methods-hero-visual">
-            <div class="methods-visual-heading"><span>COMPLEMENTARY VIEWS</span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-layers"/></svg></div>
-            <div class="methods-hero-trace"><p><strong>HPLC</strong><span>Separation</span></p><svg viewBox="0 0 460 90" aria-hidden="true" focusable="false"><path class="methods-hero-gridline" d="M0 22H460M0 48H460M0 76H460M64 0V90M144 0V90M224 0V90M304 0V90M384 0V90"/><path class="methods-hero-signal" d="M0 76H64C75 76 76 47 84 47S93 76 104 76H163C177 76 178 12 190 12S203 76 218 76H286C295 76 299 36 308 36S319 76 330 76H460"/></svg></div>
-            <div class="methods-hero-trace"><p><strong>LC–MS</strong><span>Mass information</span></p><svg viewBox="0 0 460 90" aria-hidden="true" focusable="false"><path class="methods-hero-gridline" d="M0 22H460M0 48H460M0 76H460M64 0V90M144 0V90M224 0V90M304 0V90M384 0V90"/><path class="methods-hero-baseline" d="M0 76H460"/><path class="methods-hero-signal" d="M35 76V65M62 76V54M98 76V69M142 76V39M165 76V58M205 76V12M220 76V34M268 76V58M310 76V44M337 76V64M384 76V53M415 76V67"/></svg></div>
-            <figcaption>Method illustrations · HPLC + LC–MS</figcaption>
-          </figure>
+          <section class="methods-hero-visual" aria-labelledby="methods-workflow-title">
+            <h2 class="methods-visual-heading" id="methods-workflow-title">From sample to report</h2>
+            <dl class="methods-workflow">
+              <div><dt>Choose the analysis</dt><dd>Select purity, identity or a combined panel for your sample.</dd></div>
+              <div><dt>Confirm the requirements</dt><dd>Check the sample quantity and shipping details with the laboratory.</dd></div>
+              <div><dt>Review your results</dt><dd>Use the Lookup Code on your certificate to find the published report.</dd></div>
+            </dl>
+          </section>
         </div>
       </header>
       <nav class="container methods-nav" aria-label="Explore our testing"><a href="/testing-methods#method-purity"><span>01</span>Purity analysis <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a><a href="/testing-methods#method-identity"><span>02</span>Identity confirmation <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a><a href="/testing-methods#method-comprehensive"><span>03</span>Comprehensive panel <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a></nav>
@@ -112,11 +113,19 @@
         <div class="methods-section-heading"><p class="methods-kicker">A METHOD FOR YOUR QUESTION</p><h2 id="testing-title">Two perspectives.<br>One clearer picture.</h2></div>
         <article id="method-purity" tabindex="-1" class="methods-article" aria-labelledby="method-purity-title">
           <div class="methods-copy"><p class="methods-method-label">01 / HPLC</p><h3 id="method-purity-title">Purity analysis</h3><p>High-performance liquid chromatography separates detectable components in a sample. The resulting profile supports a closer look at relative purity under the selected method.</p><dl class="methods-questions"><div><dt>Report includes</dt><dd>A chromatogram and relative peak-area results.</dd></div><div><dt>Typical turnaround</dt><dd>~1 week</dd></div><div><dt>Before shipping</dt><dd>Confirm sample quantity and packaging with the laboratory.</dd></div></dl><button type="button" class="button methods-outline" data-action="submit" data-service="purity">Choose purity analysis <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></button></div>
-          <figure class="methods-figure" data-method-chart="hplc" role="group" aria-roledescription="carousel" aria-label="HPLC chromatographic profile"><div class="methods-chart-frame" role="group" aria-roledescription="slide" aria-live="off"><div class="methods-chart"><div class="methods-chart-layer is-active" aria-hidden="false"><span class="methods-axis-y">Detector response</span><svg viewBox="0 0 520 235" aria-hidden="true" focusable="false"><path class="methods-chart-grid" d="M10 45H510M10 95H510M10 145H510M10 195H510M85 15V215M175 15V215M265 15V215M355 15V215M445 15V215"/><path class="methods-chart-axis" d="M10 15V215H510"/><path class="methods-chart-fill" d="M10 211H72C87 211 86 158 98 158S110 211 125 211H201C222 211 218 39 241 39S260 211 283 211H361C374 211 374 122 388 122S400 211 417 211H510V215H10Z"/><path class="methods-chart-line" d="M10 211H72C87 211 86 158 98 158S110 211 125 211H201C222 211 218 39 241 39S260 211 283 211H361C374 211 374 122 388 122S400 211 417 211H510"/></svg><span class="methods-axis-x">Retention time</span></div><div class="methods-chart-layer" aria-hidden="true"></div></div></div><figcaption class="sr-only">Chromatographic profile · Illustrative data</figcaption></figure>
+          <section class="methods-figure" aria-labelledby="purity-results-title">
+            <h4 id="purity-results-title">Reading the purity result</h4>
+            <p>The chromatogram shows where detectable components separated. Relative peak areas summarize the signal measured under the selected method.</p>
+            <p>Peak-area purity describes the analytical response. Measured content answers how much material was found.</p>
+          </section>
         </article>
         <article id="method-identity" tabindex="-1" class="methods-article methods-identity" aria-labelledby="method-identity-title">
           <div class="methods-copy"><p class="methods-method-label">02 / LC–MS</p><h3 id="method-identity-title">Identity confirmation</h3><p>Liquid chromatography–mass spectrometry combines separation with mass information to help assess whether the observed signals are consistent with the expected analyte.</p><dl class="methods-questions"><div><dt>Report includes</dt><dd>Mass information assessed alongside the expected analyte.</dd></div><div><dt>Typical turnaround</dt><dd>~1 week</dd></div><div><dt>Before shipping</dt><dd>Confirm sample quantity and packaging with the laboratory.</dd></div></dl><button type="button" class="button methods-outline" data-action="submit" data-service="identity">Choose identity confirmation <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></button></div>
-          <figure class="methods-figure" data-method-chart="mass" role="group" aria-roledescription="carousel" aria-label="LC-MS selected-ion spectrum"><div class="methods-chart-frame" role="group" aria-roledescription="slide" aria-live="off"><div class="methods-chart"><div class="methods-chart-layer is-active" aria-hidden="false"><span class="methods-axis-y">Relative response</span><svg viewBox="0 0 520 235" aria-hidden="true" focusable="false"><path class="methods-chart-grid" d="M10 45H510M10 95H510M10 145H510M10 195H510M85 15V215M175 15V215M265 15V215M355 15V215M445 15V215"/><path class="methods-chart-axis" d="M10 15V215H510"/><path class="methods-spectrum-muted" d="M38 215V194M70 215V175M112 215V198M150 215V161M185 215V187M280 215V168M331 215V192M383 215V164M424 215V195M477 215V188"/><path class="methods-spectrum" d="M96 215V136M166 215V98M220 215V32M230 215V109M245 215V158M312 215V77M356 215V121M411 215V151M455 215V171"/></svg><span class="methods-axis-x">Mass-to-charge ratio</span></div><div class="methods-chart-layer" aria-hidden="true"></div></div></div><figcaption class="sr-only">Selected-ion spectrum · Illustrative data</figcaption></figure>
+          <section class="methods-figure" aria-labelledby="identity-results-title">
+            <h4 id="identity-results-title">Reading the identity result</h4>
+            <p>The report compares observed mass information with the expected analyte and records whether the signals are consistent.</p>
+            <p>Where a signal remains unresolved, the report distinguishes that finding from a confirmed match.</p>
+          </section>
         </article>
         <article id="method-comprehensive" tabindex="-1" class="methods-comprehensive" aria-labelledby="method-comprehensive-title"><div><p class="methods-method-label">03 / HPLC + LC–MS</p><h3 id="method-comprehensive-title">Comprehensive panel</h3><p>Bring purity analysis and identity confirmation together for a more complete analytical view.</p><ul class="methods-panel-inclusions"><li><svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-check"/></svg>Purity analysis · HPLC</li><li><svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-check"/></svg>Identity confirmation · LC–MS</li></ul></div><div class="methods-panel-action"><button type="button" class="button methods-panel-button" data-action="submit" data-service="comprehensive">Build your panel <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></button><p class="methods-panel-timing"><svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-clock"/></svg>~1 Week Turnaround</p></div></article>
       </section>

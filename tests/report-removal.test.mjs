@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createStore } from '../conference/store.mjs';
 import { createAdmin } from '../conference/admin.mjs';
 import { readPublished, handlePublicReport, validCode } from '../conference/reader.mjs';
-import { SAMPLE_REPORT_DATA } from '../dist/reports/sample-data.js';
+import { SAMPLE_REPORT_DATA } from '../conference/sample-reports/sample-data.js';
 
 const code = 'AN-QA92-0001', product = { id: 'synthetic', name: 'Synthetic removal fixture', unit: 'mg' };
 async function render(requestPath, output) {
@@ -39,8 +39,8 @@ const hasStatus = status => error => error.status === status;
 
 test('remove/restart/restore retains every synthetic byte and code, filters history and reserves removed codes', async t => {
   const { storeRoot, store } = await fixture(t), before = await bytes(path.join(storeRoot, 'published', code));
-  assert.deepEqual(await store.history(), [{ lookupCode: code, label: product.name, reported: '2026-11-07' }]);
-  assert.deepEqual(await store.remove(code), { lookupCode: code, state: 'removed', label: product.name });
+  assert.deepEqual(await store.history(), [{ lookupCode: code, label: product.name, reported: '2026-11-07', adminOnly: true }]);
+  assert.deepEqual(await store.remove(code), { lookupCode: code, state: 'removed', label: product.name, adminOnly: true });
   assert.equal(await readPublished(storeRoot, code), null); assert.deepEqual(await store.history(), []);
   assert.deepEqual(await bytes(path.join(storeRoot, 'removed', code)), before);
   const restarted = await createStore(storeRoot, { render, codeFactory: () => code });
@@ -51,7 +51,7 @@ test('remove/restart/restore retains every synthetic byte and code, filters hist
   assert.equal((await restarted.restore(code)).state, 'published');
   assert.equal((await restarted.restore(code)).state, 'published');
   assert.deepEqual(await bytes(path.join(storeRoot, 'published', code)), before);
-  assert.deepEqual(await restarted.history('removed'), []); assert.equal((await readPublished(storeRoot, code)).label, product.name);
+  assert.deepEqual(await restarted.history('removed'), []); assert.equal(await readPublished(storeRoot, code),null);
 });
 
 test('invalid/reserved/missing/conflicting/symlink snapshots fail closed and release the single writer', async t => {
@@ -80,7 +80,7 @@ test('filesystem failure leaves visibility and bytes intact, and generation bloc
   const { storeRoot, store } = await fixture(t), before = await bytes(path.join(storeRoot, 'published', code));
   await rmdir(path.join(storeRoot, 'removed')); await writeFile(path.join(storeRoot, 'removed'), 'synthetic filesystem failure');
   await assert.rejects(store.remove(code)); assert.equal(store.busy, false);
-  assert.deepEqual(await bytes(path.join(storeRoot, 'published', code)), before); assert.ok(await readPublished(storeRoot, code));
+  assert.deepEqual(await bytes(path.join(storeRoot, 'published', code)), before); assert.equal(await readPublished(storeRoot, code),null);
   await rm(path.join(storeRoot, 'removed')); await mkdir(path.join(storeRoot, 'removed'));
   let release, entered; const started = new Promise(resolve => entered = resolve);
   const held = await createStore(storeRoot, { codeFactory: () => 'AN-QA92-0002', render: async (...args) => { entered(); await new Promise(resolve => release = resolve); await render(...args); } });
@@ -124,7 +124,7 @@ test('HTTP routes enforce auth/token/origin/method/exact JSON paths and deny eve
   assert.equal((await app.post(route)).status, 200); assert.equal((await app.post(route)).status, 200);
   assert.deepEqual(JSON.parse((await app.get('/admin/api/history')).bytes), []);
   assert.equal(JSON.parse((await app.get('/admin/api/history?state=removed')).bytes)[0].lookupCode, code);
-  const aliases = ['/__reports/' + code, '/__reports/' + code + '/report.pdf', '/__reports/' + code + '/report.svg', '/coa/' + code + '/report.pdf', '/__reports/' + code.toLowerCase() + '/report.pdf', '/bundles/removed/' + code + '/report.pdf', '/removed/' + code + '/report.pdf'];
+  const aliases = ['/coa/' + code, '/__reports/' + code, '/__reports/' + code + '/report.pdf', '/__reports/' + code + '/report.svg', '/coa/' + code + '/report.pdf', '/__reports/' + code.toLowerCase() + '/report.pdf', '/bundles/removed/' + code + '/report.pdf', '/removed/' + code + '/report.pdf'];
   async function denied() { for (const alias of aliases) for (const method of ['GET', 'HEAD']) assert.equal((await raw(app.origin, alias, { method })).status, 404, method + ' ' + alias); }
   await denied();
   for (const asset of ['report.pdf', 'report.svg']) {
@@ -133,8 +133,8 @@ test('HTTP routes enforce auth/token/origin/method/exact JSON paths and deny eve
   }
   assert.equal((await app.get('/admin/bundles/removed/' + code + '/private.json')).status, 404);
   await app.stop(); app = await server(t, files); await denied();
-  const restored = await app.post('/admin/api/reports/' + code + '/restore'); assert.equal(restored.status, 200); assert.deepEqual(Object.keys(JSON.parse(restored.bytes)).sort(), ['label', 'lookupCode', 'state']);
-  for (const asset of ['report.pdf', 'report.svg']) assert.equal((await raw(app.origin, '/__reports/' + code + '/' + asset)).bytes.toString('base64'), before[asset]);
-  assert.equal((await raw(app.origin, '/coa/' + code + '/report.pdf')).bytes.toString('base64'), before['report.pdf']);
+  const restored = await app.post('/admin/api/reports/' + code + '/restore'); assert.equal(restored.status, 200); assert.deepEqual(Object.keys(JSON.parse(restored.bytes)).sort(), ['adminOnly', 'label', 'lookupCode', 'state']);
+  await denied();
+  for (const asset of ['report.pdf', 'report.svg']) assert.equal((await app.get('/admin/bundles/published/' + code + '/' + asset)).bytes.toString('base64'), before[asset]);
   assert.deepEqual(await bytes(path.join(files.storeRoot, 'published', code)), before);
 });

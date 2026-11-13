@@ -195,7 +195,7 @@ test('real primary authentication stays private behind bridge, and bridge cookie
   assert.equal((await raw(studio.origin, '/admin/api/session', { headers: { Cookie: localCookie } })).status, 200, 'distinct primary browser session survives bridge logout');
 });
 
-test('bridge and primary generate through one writer/busy lock, with unchanged private/public snapshot bytes', async t => {
+test('bridge and primary generate through one writer/busy lock, with unchanged private snapshot bytes', async t => {
   const files = await fixture(t); let enter, release;
   const entered = new Promise(resolve => enter = resolve), held = new Promise(resolve => release = resolve);
   let hold = true;
@@ -215,8 +215,15 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
   assert.deepEqual(JSON.parse((await raw(studio.origin, '/admin/api/history', { headers: { Cookie: localCookie } })).text).map(row => row.lookupCode), [code]);
   const reader = await launch(t, files, ['--conference-reports', '--conference-store=' + files.store]);
   assert.equal((await raw(reader.origin, '/verify')).status, 200);
-  const dto = JSON.parse((await raw(reader.origin, '/__reports/' + code)).text); assert.equal(dto.report.lookupCode, code); assert.equal(dto.record.client, 'Research Client');
-  for (const ext of ['pdf', 'svg']) assert.deepEqual((await raw(reader.origin, '/__reports/' + code + '/report.' + ext)).bytes, (await raw(proxy.origin, '/admin/bundles/published/' + code + '/report.' + ext, { headers: { Cookie: bridgeCookie } })).bytes);
+  assert.equal(published.adminOnly, true); assert.equal(published.publicURL, null);
+  assert.equal(published.record.client, 'Research Client');
+  for (const route of ['/coa/' + code, '/__reports/' + code, '/__reports/' + code + '/report.pdf', '/__reports/' + code + '/report.svg', '/coa/' + code + '/report.pdf']) {
+    for (const method of ['GET', 'HEAD']) assert.equal((await raw(reader.origin, route, { method })).status, 404);
+  }
+  for (const ext of ['pdf', 'svg']) {
+    const adminAsset = '/admin/bundles/published/' + code + '/report.' + ext;
+    assert.deepEqual((await raw(proxy.origin, adminAsset, { headers: { Cookie: bridgeCookie } })).bytes, await readFile(path.join(files.store, 'published', code, 'report.' + ext)));
+  }
   assert.equal((await raw(reader.origin, '/__reports/' + preview.report.lookupCode)).status, 404);
   const stateChange = (action, extra = {}) => raw(proxy.origin, '/admin/api/reports/' + code + '/' + action, { method: 'POST', headers: { Origin: proxy.origin, Cookie: bridgeCookie, 'Content-Type': 'application/json', 'X-Studio-Token': session.token, ...extra }, body: '{}' });
   assert.equal((await stateChange('remove', { 'X-Studio-Token': '' })).status, 403);
@@ -230,7 +237,8 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
     assert.deepEqual((await raw(proxy.origin, route, { headers: { Cookie: bridgeCookie } })).bytes, await readFile(path.join(files.store, 'removed', code, 'report.' + ext)));
   }
   assert.equal((await stateChange('restore')).status, 200);
-  assert.deepEqual((await raw(reader.origin, '/coa/' + code + '/report.pdf')).bytes, await readFile(path.join(files.store, 'published', code, 'report.pdf')));
+  assert.equal((await raw(reader.origin, '/coa/' + code + '/report.pdf')).status, 404);
+  assert.deepEqual((await raw(proxy.origin, published.pdfURL, { headers: { Cookie: bridgeCookie } })).bytes, await readFile(path.join(files.store, 'published', code, 'report.pdf')));
 });
 
 test('unchanged bridge forwards authenticated live preview response and preserves exact mutation boundaries',async t=>{

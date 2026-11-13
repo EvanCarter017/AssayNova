@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build the two fixed fictional public sample COAs; never reads private report data.
+"""Build the two fixed fictional administrator sample COAs; never reads private report data.
 
-Usage: python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../dist/reports
+Usage: python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../conference/sample-reports
 Optional --product-image accepts a PNG/JPEG to replace the per-sample illustrative vial.
 """
 from __future__ import annotations

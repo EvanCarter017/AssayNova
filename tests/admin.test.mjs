@@ -124,7 +124,7 @@ test('mounted admin serves its shell/assets and enforces peer/Host/Origin/token/
   assert.equal(await admin.handle({ url: '/admin/api/session', method: 'GET', headers: { host: new URL(origin).host }, socket: { remoteAddress: '192.168.0.99' } }, { writeHead(status) { peerStatus = status; }, end() {} }), true); assert.equal(peerStatus, 403);
 });
 
-test('real integrated generation keeps preview private, publishes once, preserves namespaces and snapshots after restart', async t => {
+test('real integrated generation keeps preview private, saves once, preserves namespaces and snapshots after restart', async t => {
   const files = await fixture(t); let server = await launch(t, files), origin = server.origin; let securedFetch=await fixtureFetch(origin);
   const session = await (await securedFetch(origin + '/admin/api/session')).json();
   const input = { customerId: session.defaultCustomerId, productId: session.products[0].id, fields: { lot: 'QA-071', received: '2026-11-05', reported: '2026-11-05', purity1: 99.41, purity2: 99.43 }, publish: false };
@@ -134,12 +134,22 @@ test('real integrated generation keeps preview private, publishes once, preserve
   const concurrent = await Promise.all([post({ ...input, publish: true }), post({ ...input, publish: true })]); assert.deepEqual(concurrent.map(response => response.status).sort(), [201, 409]);
   const published = await concurrent.find(response => response.status === 201).json(), code = published.report.lookupCode;
   assert.match(published.previewURL, /^\/admin\/bundles\/published\//); assert.notEqual(code, preview.report.lookupCode); assert.equal(published.record.purity[2], '99.42');
-  const dtoResponse = await fetch(origin + '/__reports/' + code); assert.equal(dtoResponse.status, 200); const dto = await dtoResponse.json(); assert.equal(dto.record.client, 'Research Client'); assert.equal(dto.assets.pdf, '/__reports/' + code + '/report.pdf'); assert.doesNotMatch(JSON.stringify(dto), /imagePath|seed|provenance|token/);
-  const pdf = Buffer.from(await (await fetch(origin + dto.assets.pdf)).arrayBuffer()), svg = Buffer.from(await (await fetch(origin + dto.assets.svg)).arrayBuffer()); assert.equal(pdf.subarray(0, 5).toString(), '%PDF-'); assert.match(svg.toString(), /<svg/); assert.equal((await fetch(origin + '/coa/' + code)).status, 200); assert.equal((await fetch(origin + '/verify')).status, 200);
-  assert.equal((await post({ ...input, fields: { purity1: 98 }, publish: true })).status, 400); const history = await (await securedFetch(origin + '/admin/api/history')).json(); assert.deepEqual(history.map(row => row.lookupCode), [code]);
+  assert.equal(published.adminOnly, true); assert.equal(published.publicURL, null);
+  const aliases = ['/coa/' + code, '/coa/' + code + '/report.pdf', '/__reports/' + code, '/__reports/' + code + '/report.pdf', '/__reports/' + code + '/report.svg'];
+  for (const route of aliases) for (const method of ['GET', 'HEAD']) {
+    const response = await fetch(origin + route, { method });
+    assert.equal(response.status, 404, method + ' ' + route);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+  const pdf = Buffer.from(await (await securedFetch(origin + published.pdfURL)).arrayBuffer());
+  const svg = Buffer.from(await (await securedFetch(origin + published.previewURL)).arrayBuffer());
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  assert.match(svg.toString(), /<svg/);
+  assert.equal((await fetch(origin + '/verify')).status, 200);
+  assert.equal((await post({ ...input, fields: { purity1: 98 }, publish: true })).status, 400); const history = await (await securedFetch(origin + '/admin/api/history')).json(); assert.deepEqual(history.map(row => [row.lookupCode, row.adminOnly]), [[code, true]]);
   const storedBefore = await readFile(path.join(files.store, 'published', code, 'bundle.json'));
   await server.stop(); server = await launch(t, files); origin = server.origin; securedFetch=await fixtureFetch(origin);
-  assert.equal((await (await securedFetch(origin + '/admin/api/history')).json())[0].lookupCode, code); assert.deepEqual(await readFile(path.join(files.store, 'published', code, 'bundle.json')), storedBefore); assert.deepEqual(Buffer.from(await (await fetch(origin + '/__reports/' + code + '/report.pdf')).arrayBuffer()), pdf); assert.deepEqual(Buffer.from(await (await fetch(origin + '/__reports/' + code + '/report.svg')).arrayBuffer()), svg);
+  assert.equal((await (await securedFetch(origin + '/admin/api/history')).json())[0].lookupCode, code); assert.deepEqual(await readFile(path.join(files.store, 'published', code, 'bundle.json')), storedBefore); assert.deepEqual(Buffer.from(await (await securedFetch(origin + published.pdfURL)).arrayBuffer()), pdf); assert.deepEqual(Buffer.from(await (await securedFetch(origin + published.previewURL)).arrayBuffer()), svg);
   for (const pathname of ['/admin/bundles/published/' + code + '/private.json', '/__reports/' + code + '/private.json']) assert.equal((await securedFetch(origin + pathname)).status, 404);
   const newSession = await (await securedFetch(origin + '/admin/api/session')).json(); assert.notEqual(newSession.token, session.token);
 });

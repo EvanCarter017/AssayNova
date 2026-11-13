@@ -1,8 +1,7 @@
 import { lstat, realpath, open } from 'node:fs/promises';
 import path from 'node:path';
 import { constants } from 'node:fs';
-import { publicBundle, validCode } from './reader.mjs';
-import { SAMPLE_REPORT_DATA } from '../dist/reports/sample-data.js';
+import { isAdminOnlyReport, isReservedSampleCode, publicBundle, validCode } from './reader.mjs';
 import { validMailbox } from '../accounts/mail-config.mjs';
 
 const failure = (status = 404) => Object.assign(new Error('Publication notice is unavailable for this report.'), { status });
@@ -17,9 +16,10 @@ async function exactPath(filename, directory = false) {
 // Only the selected code and its three public files are touched. There is no
 // report discovery, recipient inference, private snapshot read or rendering.
 export async function reportMailEligible(store, code) {
-  if (!path.isAbsolute(store) || !validCode(code) || Object.hasOwn(SAMPLE_REPORT_DATA, code)) return false;
+  if (!path.isAbsolute(store) || !validCode(code) || isReservedSampleCode(code)) return false;
   try {
     const folder = path.join(store, 'published', code); await exactPath(folder, true);
+    if (await isAdminOnlyReport(folder)) return false;
     for (const state of ['removed', 'previews']) { try { await lstat(path.join(store, state, code)); return false; } catch (error) { if (error.code !== 'ENOENT') throw error; } }
     for (const [name, maximum] of [['bundle.json', 2097152], ['report.pdf', 33554432], ['report.svg', 33554432]]) {
       const filename = path.join(folder, name), info = await exactPath(filename);
@@ -33,13 +33,13 @@ export async function reportMailEligible(store, code) {
       } finally { await file.close(); }
       await exactPath(filename);
     }
-    await exactPath(folder, true); return true;
+    await exactPath(folder, true); return !await isAdminOnlyReport(folder);
   } catch { return false; }
 }
 export function createReportMail({ store, mail } = {}) {
   return Object.freeze({
     enabled: () => !!mail?.reportEnabled(),
-    status(code) { if (!validCode(code) || Object.hasOwn(SAMPLE_REPORT_DATA, code)) throw failure(400); return mail ? mail.reportStatus(code) : { state: 'not_configured' }; },
+    status(code) { if (!validCode(code) || isReservedSampleCode(code)) throw failure(400); return mail ? mail.reportStatus(code) : { state: 'not_configured' }; },
     async request(code, input) {
       if (!input || Array.isArray(input) || Object.keys(input).length !== 2 || !Object.hasOwn(input, 'recipientEmail') || input.confirm !== true || !validMailbox(input.recipientEmail)) throw failure(400);
       if (!await reportMailEligible(store, code)) throw failure();

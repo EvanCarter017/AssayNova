@@ -223,13 +223,13 @@ test('explicit LAN binding serves normal SPA, reports and privacy without exposi
     assert.match(output(), /Bind: 0\.0\.0\.0/);
     assert.match(output(), /Local: http:\/\/127\.0\.0\.1:/);
     const expectedCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
-    for (const route of ['/testing-methods', '/about', '/verify', '/contact', '/coa/AN-7K9Q-2M4X']) {
+    for (const route of ['/testing-methods', '/about', '/verify', '/contact']) {
       const response = await fetch(base + route);
       assert.equal(response.status, 200, route); assert.equal(await response.text(), privacyHTML, route);
       assert.equal(response.headers.get('content-security-policy'), expectedCSP);
       const head = await fetch(base + route, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(await head.text(), '');
     }
-    for (const route of ['/styles.css', '/app.js', '/reports/sample-a.pdf', '/privacy/consent.js']) {
+    for (const route of ['/styles.css', '/app.js', '/privacy/consent.js']) {
       const response = await fetch(base + route); assert.equal(response.status, 200, route);
       assert.deepEqual(Buffer.from(await response.arrayBuffer()), await readFile(path.join(fixture, 'dist', route)));
       assert.equal((await fetch(base + route, { method: 'HEAD' })).status, 200);

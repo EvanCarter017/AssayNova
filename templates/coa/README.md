@@ -93,7 +93,7 @@ Do not invent methods, numerical limits, overall pass results, signatures,
 accreditation, contacts or verification claims. Omit unavailable fields instead
 of adding placeholders.
 
-## Public specimen reports
+## Administrator specimen reports
 
 `build_sample_coa.py` remains separate from both strict private-data builders.
 The authoritative `sample_reports.json` supplies real peptide names and fixed
@@ -101,8 +101,8 @@ synthetic sample fields, measurements and instrument-style traces. Lookup codes,
 summary results and dates stay aligned with the published sample fixtures.
 
 ```powershell
-python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../dist/reports
-python build_sample_coa.py --lookup-code AN-8P6R-3N5Y --output-dir ../../dist/reports
+python build_sample_coa.py --lookup-code AN-7K9Q-2M4X --output-dir ../../conference/sample-reports
+python build_sample_coa.py --lookup-code AN-8P6R-3N5Y --output-dir ../../conference/sample-reports
 ```
 
 Both records are validated before any output is replaced. Each command writes its
@@ -139,7 +139,7 @@ ownership or untouched photographic pixels. Prior Thirdman/Pexels JPEGs and
 source/license records remain archived unchanged. Optional --product-image
 PNG/JPEG replacement remains available.
 The images, logo and sample-only handwritten name graphic are embedded for
-offline use. The public builder uses assets/sample-signature.png, a synthetic
+offline use. The specimen builder uses assets/sample-signature.png, a synthetic
 Dylan Greene design for the two fictional specimens. No private source report
 or client data are read by this builder, and no digital issuance is performed.
 
@@ -224,11 +224,9 @@ standard dark modules, medium error correction and a four-module white quiet
 zone; it stays vector in both PDF and SVG. The PDF QR area is also clickable.
 SVG remains self-contained and describes the URL without loading remote assets.
 
-The supplied domain need not be deployed for local building or decode checks.
-Local servers expose the same exact path: the two built-in master PDFs are
-always available, while generated PDFs require the existing report-reader
-opt-in and a published record. Future deployment must route this path and retain
-the published store. Runtime localhost/LAN origins never change the encoded URL.
+The QR design is preserved in the administrator specimens. Its public URL only
+serves genuine published reports. Studio-generated reports and the two built-in
+specimens remain behind administrator authentication.
 Only rebuilt masters and future generated snapshots gain the QR; existing
 immutable reports are not rewritten automatically. A later change of the
 canonical domain must deliberately update `REPORT_ORIGIN` and revalidate exports.

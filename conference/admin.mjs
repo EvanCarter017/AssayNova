@@ -7,7 +7,7 @@ import { createImports } from './imports.mjs';
 import { importChunkRoute } from './import-limits.mjs';
 import { searchableCatalog } from './import-match.mjs';
 import { recordsDTO } from './catalog-records.mjs';
-import { DEFAULT_STORE, validCode } from './reader.mjs';
+import { DEFAULT_STORE, REPORT_ASSET_POLICY, validCode } from './reader.mjs';
 import { createStore, validateFields, validateComponents } from './store.mjs';
 import { createAuth, DEFAULT_AUTH_STORE } from './auth.mjs';
 
@@ -16,6 +16,7 @@ const headers = {
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 };
 const files = new Map([['/admin', 'operator.html'], ['/admin/', 'operator.html'], ['/admin/operator.js', 'operator.js'], ['/admin/operator.css', 'operator.css'], ['/admin/product-search.mjs', 'product-search.mjs'], ['/admin/import-ui.mjs', 'import-ui.mjs'], ['/admin/catalog-correction-ui.mjs', 'catalog-correction-ui.mjs'], ['/admin/report-removal-ui.mjs', 'report-removal-ui.mjs'], ['/admin/report-mail-ui.mjs', 'report-mail-ui.mjs']]);
+const sampleFiles = new Set(['sample-a.pdf', 'sample-a.svg', 'sample-c.pdf', 'sample-c.svg']);
 const inNamespace = pathname => pathname === '/admin' || pathname.startsWith('/admin/');
 export const isLoopbackPeer = address => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(address);
 
@@ -196,7 +197,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
         const components = validateComponents(input.components, selected.components);
         const product = { ...selected, components, unit: new Set(components.map(row => row.unit)).size === 1 ? components[0].unit : 'mixed' };
         const result = await reports.generate(product, { ...fields, client: catalog.customer.name }, input.publish);
-        send(response, 201, { ...result, previewURL: '/admin' + result.previewURL, pdfURL: '/admin' + result.pdfURL, publicURL: new URL('/coa/' + result.report.lookupCode, publicURL).href });
+        send(response, 201, { ...result, previewURL: '/admin' + result.previewURL, pdfURL: '/admin' + result.pdfURL, publicURL: result.adminOnly ? null : new URL('/coa/' + result.report.lookupCode, publicURL).href });
       } catch (error) { send(response, error.status || 400, { error: error.code ? 'Report operation failed; previous reports are preserved.' : error.message }); }
       return true;
     }
@@ -247,6 +248,15 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
       if (pathname === '/admin/api/history') {
         if (!['/admin/api/history', '/admin/api/history?state=removed'].includes(request.url)) { send(response, 400, { error: 'Choose Published or Removed reports.' }, undefined, head); return true; }
         send(response, 200, await reports.history(request.url.endsWith('?state=removed') ? 'removed' : 'published'), undefined, head); return true;
+      }
+      const sampleFile = pathname.slice('/admin/sample-reports/'.length);
+      if (pathname.startsWith('/admin/sample-reports/') && request.url === pathname && sampleFiles.has(sampleFile)) {
+        const bytes = await readFile(new URL('./sample-reports/' + sampleFile, import.meta.url));
+        if (sampleFile.endsWith('.svg')) {
+          response.writeHead(200, { ...headers, 'Content-Security-Policy': REPORT_ASSET_POLICY, 'Content-Type': 'image/svg+xml' });
+          response.end(head ? undefined : bytes);
+        } else send(response, 200, bytes, 'application/pdf', head);
+        return true;
       }
       if (files.has(pathname)) {
         const file = files.get(pathname), type = file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8';

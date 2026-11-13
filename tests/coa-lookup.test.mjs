@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import * as reportData from '../dist/data.js';
-import { SAMPLE_REPORT_DATA } from '../dist/reports/sample-data.js';
+import { SAMPLE_REPORT_DATA } from '../conference/sample-reports/sample-data.js';
 import * as pageData from '../dist/routes.js';
 import * as supportData from '../dist/support.js';
 import * as submissionData from '../dist/submission.js';
@@ -18,65 +18,19 @@ import { createContactForm } from '../dist/contact-form.js';
 import { createCustomerAccountClient } from '../dist/customer-account.js';
 import { requestKind } from '../dist/account-requests.js';
 import { createRequestPage } from '../dist/request-page.js';
-import { DEMO_REPORT, DEMO_REPORTS, normalizeLookupCode, findReportByLookupCode, findLegacyReport, reportPath, lookupResultPath, resolveCOARoute, validateSubmission } from '../dist/data.js';
+import { normalizeLookupCode, lookupResultPath, resolveCOARoute, validateSubmission } from '../dist/data.js';
 
-test('published immutable lookup codes identify two distinct fictional report records', () => {
-  assert.ok(Object.isFrozen(DEMO_REPORTS));
-  assert.equal(DEMO_REPORTS.length, 2);
-  assert.equal(DEMO_REPORT, DEMO_REPORTS[0]);
-  const first = findReportByLookupCode('AN-7K9Q-2M4X');
-  const second = findReportByLookupCode('AN-8P6R-3N5Y');
-  assert.equal(first.id, 'AN-2026-0042');
-  assert.equal(first.sample, 'Reference sample A');
-  assert.equal(second.sample, 'Reference sample C');
-  for (const key of ['id', 'batch', 'purity', 'identity', 'identityOutcome', 'retentionTime', 'lookupCode']) assert.notEqual(first[key], second[key], key);
-  assert.equal(first.identityOutcome, 'matched');
-  assert.equal(second.identityOutcome, 'partial');
-  for (const report of DEMO_REPORTS) {
-    assert.ok(Object.isFrozen(report));
-    assert.equal(report.publication, 'published');
-    assert.notEqual(report.lookupCode, report.id);
-    assert.match(report.disclaimer, /Fictional data/);
-    assert.match(report.disclaimer, /Not a valid certificate of analysis/);
-    assert.throws(() => { report.lookupCode = 'AN-0000-0000'; }, TypeError);
-  }
-});
+const sampleCodes = ['AN-7K9Q-2M4X', 'AN-8P6R-3N5Y'];
 
-test('lookup trims/case-normalizes exactly and rejects unknown, blank, malformed and report/submission IDs', () => {
-  assert.equal(normalizeLookupCode('  an-7k9q-2m4x\n'), 'AN-7K9Q-2M4X');
-  assert.equal(findReportByLookupCode('  an-7k9q-2m4x\n'), DEMO_REPORT);
-  for (const value of ['', ' ', null, undefined, {}, 42, 'AN-7K9Q', '7K9Q-2M4X', 'AN-7K9Q-2M4X-extra', 'AN-7K9Q- 2M4X', 'AN-0000-0000', 'AN-2026-0042', 'AN-2026-0043', 'AN-DEMO-12345678', 'ＡＮ-7K9Q-2M4X', 'AN-7K9Q-2M4X'.repeat(100)]) {
-    assert.equal(findReportByLookupCode(value), null, String(value));
+test('Lookup Code normalization and narrow route parsing do not resolve report records', () => {
+  assert.equal(normalizeLookupCode('  an-abcd-1234\n'), 'AN-ABCD-1234');
+  for (const value of ['', ' ', null, undefined, {}, 42, 'AN-ABCD', 'ABCD-1234', 'AN-ABCD-1234-extra', 'AN-ABCD- 1234', 'ＡＮ-ABCD-1234', 'AN-ABCD-1234'.repeat(100)]) {
+    assert.equal(normalizeLookupCode(value), '', String(value));
   }
-});
-
-test('draft/unpublished and ambiguous duplicate codes reveal no selected record', () => {
-  const draft = { ...DEMO_REPORT, publication: 'draft' };
-  assert.equal(findReportByLookupCode(DEMO_REPORT.lookupCode, [draft]), null);
-  assert.equal(findReportByLookupCode(DEMO_REPORT.lookupCode, [{ ...DEMO_REPORT, publication: undefined }]), null);
-  for (const duplicate of [{ ...DEMO_REPORT }, { ...draft }, { ...DEMO_REPORT, lookupCode: DEMO_REPORT.lookupCode.toLowerCase() }]) {
-    assert.equal(findReportByLookupCode(DEMO_REPORT.lookupCode, [DEMO_REPORT, duplicate]), null);
-  }
-  assert.equal(findReportByLookupCode(DEMO_REPORT.lookupCode, null), null);
-});
-
-test('canonical paths, narrow route parsing and explicit legacy-ID resolution stay separate', () => {
-  for (const report of DEMO_REPORTS) {
-    const canonical = '/coa/' + report.lookupCode;
-    assert.equal(reportPath(report.lookupCode.toLowerCase()), canonical);
-    assert.equal(resolveCOARoute(canonical).report, report);
-    assert.equal(resolveCOARoute(canonical.toLowerCase() + '/').canonicalPath, canonical);
-    assert.equal(findLegacyReport(' ' + report.id.toLowerCase() + ' '), report);
-    assert.equal(findReportByLookupCode(report.id), null);
-    assert.equal(new URL(canonical, 'http://127.0.0.1:4318').origin, 'http://127.0.0.1:4318');
-  }
-  assert.equal(findLegacyReport(DEMO_REPORT.lookupCode), null);
-  assert.equal(findLegacyReport('AN-DEMO-12345678'), null);
-  assert.equal(reportPath('AN-2026-0042'), null);
-  assert.equal(resolveCOARoute('/coa/AN-0000-0000').report, null);
-  assert.equal(resolveCOARoute('/coa/unknown').canonicalPath, null);
-  assert.equal(resolveCOARoute('/coa/%41N-7K9Q-2M4X').report, DEMO_REPORT);
-  for (const route of ['/', '/other', '/coa/', '/coa/a/b', '/coa/AN-7K9Q-2M4X/app.js', '/coa/unknown.css', '/coa/%2Fetc', '/coa/%ZZ', '/coa/' + 'A'.repeat(65)]) assert.equal(resolveCOARoute(route), null, route);
+  assert.deepEqual(resolveCOARoute('/coa/an-abcd-1234/'), { code: 'AN-ABCD-1234' });
+  assert.deepEqual(resolveCOARoute('/coa/unknown'), { code: '' });
+  assert.deepEqual(resolveCOARoute('/coa/%41N-ABCD-1234'), { code: 'AN-ABCD-1234' });
+  for (const route of ['/', '/other', '/coa/', '/coa/a/b', '/coa/AN-ABCD-1234/app.js', '/coa/unknown.css', '/coa/%2Fetc', '/coa/%ZZ', '/coa/' + 'A'.repeat(65)]) assert.equal(resolveCOARoute(route), null, route);
 });
 
 test('existing submission validation still validates requests independently from lookup', () => {
@@ -91,7 +45,7 @@ test('failed lookup destinations are safe, refreshable not-found routes rather t
   for (const value of ['AN-0000-0000', 'AN-2026-0042', '', '   ', '<script>alert(1)</script>', 'AN-7K9Q- 2M4X', '../secret?value=private']) {
     const destination = lookupResultPath(value);
     assert.match(destination, /^\/coa\/[A-Za-z0-9-]+$/);
-    assert.equal(resolveCOARoute(destination).report, null);
+    assert.deepEqual(resolveCOARoute(destination), { code: normalizeLookupCode(value) });
     assert.ok(!destination.includes('private'));
   }
   assert.equal(lookupResultPath('an-8p6r-3n5y '), '/coa/AN-8P6R-3N5Y');
@@ -225,7 +179,7 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   const internals = {};
   if (accountTransport) node('meta[name="assaynova-accounts"]').setAttribute('content','enabled');
   runInNewContext(runnable + '\nObject.assign(testInternals, { accountClient, getRecovery: () => recoveryForm, getReturn: () => recoveryReturn, navigateToURL });', {
-    ...reportData, ...pageData, ...supportData, ...submissionData, captureMailAction, SAMPLE_REPORT_DATA, createRequestPage, createContactForm, requestKind, createCustomerAccountClient: () => createCustomerAccountClient({ fetcher: accountTransport }), createAccountPage: () => ({ leave() {}, activate() {} }), testInternals: internals, document, window, location, history, URL,
+    ...reportData, ...pageData, ...supportData, ...submissionData, captureMailAction, createRequestPage, createContactForm, requestKind, createCustomerAccountClient: () => createCustomerAccountClient({ fetcher: accountTransport }), createAccountPage: () => ({ leave() {}, activate() {} }), testInternals: internals, document, window, location, history, URL,
     navigator: { clipboard: { writeText(value) { copied.push(value); if (clipboardWrite) return clipboardWrite(value); return clipboardBlocked ? Promise.reject(new Error('Synthetic clipboard restriction')) : Promise.resolve(); } }, sendBeacon: unexpectedNetwork },
     fetch: remoteFetch ?? unexpectedNetwork, AbortController, XMLHttpRequest: class { constructor() { unexpectedNetwork('XMLHttpRequest'); } },
     localStorage: {
@@ -323,67 +277,30 @@ function bootApp(initialPath = '/', savedRequests = [], { storageBlocked = false
   };
 }
 
-test('actual public form handlers clear A on failure, survive refresh/history and then select C exactly', () => {
-  const master = (html, code, stem) => {
-    const other = stem === 'sample-a' ? 'sample-c' : 'sample-a';
-    assert.ok(html.includes(`src="/reports/${stem}.svg"`));
-    assert.ok(html.includes(`href="/reports/${stem}.pdf" download`));
-    assert.ok(html.includes(code));
-    assert.ok(!html.includes(`/reports/${other}.`));
-    const record = SAMPLE_REPORT_DATA[code];
-    const otherRecord = SAMPLE_REPORT_DATA[code === 'AN-7K9Q-2M4X' ? 'AN-8P6R-3N5Y' : 'AN-7K9Q-2M4X'];
-    for (const value of [record.product, record.client, record.reportId, record.received, record.reported, record.identity, ...record.purity.map(value => value + '%')]) assert.ok(html.includes(value), value);
-    for (const value of [otherRecord.client, otherRecord.reportId, otherRecord.purity[2] + '%', otherRecord.identity]) assert.ok(!html.includes(value), value);
-    assert.ok(!/\[(?:Product name|Client name|YYYY-MM-DD|Analyte|Result|Spectrum|Title)|--\.--|identity-matched|identity-neutral|Chromatogram schematic/.test(html));
-    assert.ok(html.includes('Report fields') && html.includes('Dylan Greene') && html.includes('Chief Chemist'));
-    assert.ok(html.includes('Fictional data for illustration. Not a valid certificate of analysis.'));
-    assert.ok(html.includes('Lookup Code') && !html.includes('COA Lookup Code'));
-    assert.ok(html.includes('HPLC-UV chromatogram') && html.includes(record.retentionTime + ' min'));
-    for (const analyte of ['GHK-Cu', 'KPV', 'BPC-157', 'Thymosin Beta-4']) assert.ok(html.includes(analyte));
-    assert.ok(!/Aster-[1-4]|Cedar-[1-4]/.test(html));
-    assert.ok(html.includes('GHK (apo ligand)') && html.includes('[M+2H]2+'));
-    for (const row of record.composition) assert.ok(html.includes(row.analyte) && html.includes(row.summary));
-  };
-  const app = bootApp('/coa/AN-7K9Q-2M4X');
-  const view = app.nodes.get('#coa-view');
-  master(view.innerHTML, 'AN-7K9Q-2M4X', 'sample-a');
-  assert.equal(app.document.title, 'Sample report · AN-7K9Q-2M4X · AssayNova');
-  app.submitLookup('AN-0000-0000');
-  assert.equal(app.location.pathname, '/coa/AN-0000-0000');
-  assert.ok(view.innerHTML.includes('No COA found.'));
-  assert.ok(!/\/reports\/sample-[ac]\.(?:svg|pdf)|coa-master-paper/.test(view.innerHTML));
-  assert.ok(!/data-action="(?:print|copy-code|copy-link)"/.test(view.innerHTML));
-  app.click('copy-code'); app.click('print');
-  assert.equal(app.copied.length, 0);
-  assert.equal(app.printed(), 0);
-  assert.ok(bootApp(app.location.pathname).nodes.get('#coa-view').innerHTML.includes('No COA found.'));
-  app.travel(-1);
-  master(view.innerHTML, 'AN-7K9Q-2M4X', 'sample-a');
-  app.travel(1);
-  assert.ok(view.innerHTML.includes('No COA found.'));
-  app.submitLookup('<script>private</script>');
-  assert.equal(app.location.pathname, '/coa/not-found');
-  assert.ok(bootApp(app.location.pathname).nodes.get('#coa-view').innerHTML.includes('No COA found.'));
-  app.submitLookup('an-8p6r-3n5y ');
-  assert.equal(app.location.pathname, '/coa/AN-8P6R-3N5Y');
-  master(view.innerHTML, 'AN-8P6R-3N5Y', 'sample-c');
-  assert.ok(view.innerHTML.includes('Reference sample C'));
-  assert.equal(app.document.title, 'Sample report · AN-8P6R-3N5Y · AssayNova');
-  app.click('copy-code'); app.click('copy-link');
-  assert.deepEqual(app.copied, ['AN-8P6R-3N5Y', 'http://127.0.0.1:4999/coa/AN-8P6R-3N5Y']);
-  app.travel(-1); assert.ok(view.innerHTML.includes('No COA found.'));
-  app.travel(1); master(view.innerHTML, 'AN-8P6R-3N5Y', 'sample-c');
-  app.click('home');
-  assert.equal(view.innerHTML, '');
-  app.click('copy-code');
-  assert.equal(app.copied.length, 2);
-  app.clickLink('/verify');
-  app.submitLookup('bad input', false);
-  assert.equal(app.location.pathname, '/verify');
-  assert.match(app.nodes.get('#verify-error').textContent, /No COA found/);
+test('retired sample codes never render fixture content through direct lookup or navigation', async () => {
+  for (const code of sampleCodes) {
+    const options = { publishedReader: true, remoteFetch: async () => ({ ok: false }) };
+    const app = bootApp('/coa/' + code, [], options);
+    await flushLookup();
+    const view = app.nodes.get('#coa-view');
+    assert.match(view.innerHTML, /No COA found/);
+    assert.doesNotMatch(view.innerHTML, /Reference sample|Download PDF|copy-code|coa-master-paper/);
+    app.click('copy-code'); app.click('print');
+    assert.equal(app.copied.length, 0); assert.equal(app.printed(), 0);
+    app.submitLookup('<script>private</script>');
+    assert.equal(app.location.pathname, '/coa/not-found');
+    app.travel(-1);
+    await flushLookup();
+    assert.match(view.innerHTML, /No COA found/);
+    app.clickLink('/verify');
+    app.submitLookup(code.toLowerCase(), false);
+    await flushLookup();
+    assert.equal(app.location.pathname, '/verify');
+    assert.match(app.nodes.get('#verify-error').textContent, /No COA found/);
+  }
 });
 
-test('public lookup has no sample shortcuts while sample reports and drafts preserve their disclosures and references', async () => {
+test('public pages omit fixture content and retain lookup guidance and account submissions', async () => {
   const homeHTML = await readFile(path.join(project, 'dist/index.html'), 'utf8');
   const text = (html) => html.replace(/<[^>]*>/g, ' ');
   assert.ok(!homeHTML.includes('class="preview-bar"'));
@@ -396,15 +313,11 @@ test('public lookup has no sample shortcuts while sample reports and drafts pres
   assert.match(publicReports, /id="home-reports-title">Your code\.<br>The published report\./);
   assert.match(publicReports, /href="\/verify">Find a COA/);
   assert.match(homeHTML, /id="report-id"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
-  const sample = bootApp('/coa/AN-7K9Q-2M4X');
-  assert.match(sample.nodes.get('#coa-view').innerHTML, /id="coa-lookup-code"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
-  const reportHtml = sample.nodes.get('#coa-view').innerHTML;
-  const header = reportHtml.match(/<header class="coa-master-heading">([\s\S]*?)<\/header>/)[1];
-  assert.match(header, /id="report-title" tabindex="-1" class="sr-only">Reference sample A<\/h1>/);
-  assert.match(header, /Lookup Code <strong>AN-7K9Q-2M4X<\/strong>/);
-  assert.doesNotMatch(header, /Sample report|report-demo-label/);
-  assert.match(text(reportHtml), /Sample report/);
-  assert.match(text(sample.nodes.get('#coa-view').innerHTML), /Not a valid certificate of analysis/);
+  assert.doesNotMatch(homeHTML, /Illustrative data|Method illustrations|data-method-chart|method-charts-entry/);
+  assert.match(homeHTML, /From sample to report/);
+  const report = bootApp('/coa/not-found');
+  assert.match(report.nodes.get('#coa-view').innerHTML, /id="coa-lookup-code"[^>]*placeholder="e\.g\. AN-XXXX-XXXX"/);
+  assert.doesNotMatch(appSource, /sample-data|Sample report|Reference sample|AN-7K9Q-2M4X|AN-8P6R-3N5Y/);
   const app = bootApp('/submit-sample');
   assert.match(app.nodes.get('#request-flow').innerHTML, /Submissions are unavailable/);
   assert.deepEqual(app.storageCalls, []);
@@ -458,20 +371,20 @@ test('actual anchor interception preserves modified, nonprimary, external, targe
   const before = app.entryCount();
   app.clickLink('/coa/AN-8P6R-3N5Y', { dataAction: 'report' });
   assert.equal(app.entryCount(), before + 1, 'A report anchor with a legacy data action navigates only once');
-  assert.match(app.nodes.get('#coa-view').innerHTML, /src="\/reports\/sample-c\.svg"/);
+  assert.match(app.nodes.get('#coa-view').innerHTML, /No COA found/);
   assert.deepEqual(app.navLinks.filter((link) => link.getAttribute('aria-current') === 'page').map((link) => link.getAttribute('href')), ['/verify', '/verify']);
 });
 
 test('legacy hashes, trailing slashes and COA queries canonicalize without losing the previous page', () => {
   for (const [input, output, view] of [
     ['/#testing', '/testing-methods', '#testing-view'], ['/#verify', '/verify', '#verify-view'], ['/about/', '/about', '#about-view'],
-    ['/?coa=AN-2026-0043', '/coa/AN-8P6R-3N5Y', '#coa-view'], ['/?coa=unknown', '/verify', '#verify-view']
+    ['/?coa=AN-2026-0043', '/verify', '#verify-view'], ['/?coa=unknown', '/verify', '#verify-view']
   ]) {
     const app = bootApp(input);
     assert.equal(app.location.pathname, output);
     assert.equal(app.entryCount(), 1);
     assert.deepEqual(app.visibleViews(), [view]);
-    if (input.includes('unknown')) assert.match(app.nodes.get('#verify-error').textContent, /No report matches/);
+    if (input.includes('?coa=')) assert.match(app.nodes.get('#verify-error').textContent, /No report matches/);
     assert.deepEqual(bootApp(app.location.pathname).visibleViews(), [view]);
   }
   for (const [hash, path] of [['testing', '/testing-methods'], ['verify', '/verify']]) {
@@ -493,8 +406,9 @@ test('legacy hashes, trailing slashes and COA queries canonicalize without losin
 });
 
 test('native report fragments preserve skip focus, report DOM and pending manual-copy state across popstate then hashchange', async () => {
-  for (const code of ['AN-7K9Q-2M4X', 'AN-8P6R-3N5Y']) {
-    const app = bootApp('/coa/' + code, [], { clipboardBlocked: true });
+  for (const code of ['AN-ABCD-1234', 'AN-DCBA-4321']) {
+    const app = bootApp('/coa/' + code, [], { clipboardBlocked: true, publishedReader: true, remoteFetch: async () => ({ ok: true, json: async () => generatedFixture(code) }) });
+    await flushLookup();
     app.click('copy-link');
     await new Promise((resolve) => setImmediate(resolve)); // Settle the host/VM promise boundary.
     const report = app.nodes.get('#coa-view');
@@ -567,7 +481,7 @@ test('deferred native-history focus is cancelled by a later skip fragment or req
   assert.equal(dialog.nodes.get('#app-dialog').open, false);
 });
 
-test('request navigation uses its own page while saved-draft dialogs and mobile menu retain focus behavior', () => {
+test('request navigation uses its own page while saved-draft dialogs and mobile menu retain focus behavior', async () => {
   for (const route of pageData.PAGE_ROUTES) {
     const app = bootApp(route.path);
     const event = app.click('submit');
@@ -593,13 +507,15 @@ test('request navigation uses its own page while saved-draft dialogs and mobile 
     assert.equal(app.nodes.get('#mobile-nav').hidden, true);
     assert.equal(app.networkCalls.length, 0);
   }
-  const verify = bootApp('/verify');
-  verify.submitLookup('  an-7k9q-2m4x  ', false);
-  assert.equal(verify.location.pathname, '/coa/AN-7K9Q-2M4X');
-  assert.match(verify.nodes.get('#coa-view').innerHTML, /src="\/reports\/sample-a\.svg"/);
-  assert.match(verify.nodes.get('#coa-view').innerHTML, /href="\/reports\/sample-a\.pdf" download/);
-  assert.match(verify.nodes.get('#coa-view').innerHTML, /99\.32%/);
-  assert.ok(verify.nodes.get('#coa-view').innerHTML.includes(SAMPLE_REPORT_DATA['AN-7K9Q-2M4X'].product));
+  const code = 'AN-ABCD-1234';
+  const verify = bootApp('/verify', [], { publishedReader: true, remoteFetch: async () => ({ ok: true, json: async () => generatedFixture(code) }) });
+  verify.submitLookup('  an-abcd-1234  ', false);
+  await flushLookup();
+  assert.equal(verify.location.pathname, '/coa/' + code);
+  const html = verify.nodes.get('#coa-view').innerHTML;
+  assert.ok(html.includes('src="/__reports/' + code + '/report.svg"'));
+  assert.ok(html.includes('href="/__reports/' + code + '/report.pdf" download'));
+  assert.match(html, /99\.32%/);
 });
 
 async function availablePort() {
@@ -618,6 +534,7 @@ async function withCOAServer(mode, callback) {
   let output = '';
   try {
     for (const entry of ['server.mjs', 'report-pdf.mjs', 'dev-client.js', 'dev', 'dist', 'package.json']) await cp(path.join(project, entry), path.join(fixture, entry), { recursive: true });
+    await cp(path.join(project, 'conference/sample-reports'), path.join(fixture, 'dist/reports'), { recursive: true });
     const port = await availablePort();
     child = spawn(process.execPath, ['server.mjs', '--no-accounts', `--port=${port}`, ...(mode === 'default' ? [] : ['--watch'])], {
       cwd: fixture, env: { ...process.env, NODE_ENV: mode === 'production' ? 'production' : 'test' }, stdio: ['ignore', 'pipe', 'pipe']
@@ -663,57 +580,21 @@ for (const mode of ['default', 'production', 'watch']) {
           assert.equal((await fetch(base + route, { method: 'POST' })).status, 405);
         }
       }
-      for (const report of DEMO_REPORTS) {
-        const route = reportPath(report.lookupCode);
-        const response = await fetch(base + route);
-        assert.equal(response.status, 200);
-        assert.match(response.headers.get('content-type'), /text\/html/);
-        assert.equal(response.headers.get('content-security-policy'), "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
-        const html = await response.text();
-        assert.ok(html.includes('id="coa-view"'));
-        assert.ok(html.includes('src="/app.js"'));
-        assert.ok(html.includes('href="/styles.css"'));
-        assert.equal(html.includes('/__dev/client.js'), mode === 'watch');
-        assert.equal(html.includes('data-an-dev-file'), mode === 'watch');
-        const head = await fetch(base + route, { method: 'HEAD' });
-        assert.equal(head.status, 200);
-        assert.equal(await head.text(), '');
-        assert.equal((await fetch(base + route.toLowerCase())).status, 200);
-        assert.equal((await fetch(base + route + '/')).status, 200);
+      const retiredAssets = ['/reports/sample-a.svg', '/reports/sample-a.pdf', '/reports/sample-c.svg', '/reports/sample-c.pdf', '/reports/sample-data.js'];
+      for (const code of sampleCodes) {
+        retiredAssets.push('/coa/' + code + '/report.pdf', '/__reports/' + code, '/__reports/' + code + '/report.svg', '/__reports/' + code + '/report.pdf');
+        const report = await fetch(base + '/coa/' + code);
+        assert.equal(report.status, 404);
+        assert.match(await report.text(), /id="coa-view"/);
       }
-      const reportDownloads = [];
-      for (const [stem, code, otherCode] of [['sample-a', 'AN-7K9Q-2M4X', 'AN-8P6R-3N5Y'], ['sample-c', 'AN-8P6R-3N5Y', 'AN-7K9Q-2M4X']]) {
-        for (const extension of ['svg', 'pdf']) {
-          const url = `/reports/${stem}.${extension}`;
-          const response = await fetch(base + url);
-          assert.equal(response.status, 200, url);
-          const bytes = Buffer.from(await response.arrayBuffer());
-          assert.deepEqual(bytes, await readFile(path.join(project, 'dist', url)));
-          const head = await fetch(base + url, { method: 'HEAD' });
-          assert.equal(head.status, 200, url);
-          assert.equal((await head.arrayBuffer()).byteLength, 0);
-          assert.equal(head.headers.get('content-type'), response.headers.get('content-type'));
-          if (extension === 'svg') {
-            const svg = bytes.toString('utf8');
-            assert.match(response.headers.get('content-type'), /image\/svg\+xml/);
-            assert.ok(svg.includes(code) && !svg.includes(otherCode));
-            assert.ok(svg.includes('width="210mm"') && svg.includes('height="297mm"'));
-            assert.ok(!/<(?:script|text)\b|onload=|href="https?:/i.test(svg));
-            assert.equal((svg.match(/<image\b/g) || []).length, 3, 'Logo, product image and original signature are embedded');
-            assert.equal((svg.match(/href="data:image\/png;base64,/g) || []).length, 3);
-            assert.ok(svg.includes('fixed fictional sample data') && !svg.includes('placeholder'));
-          } else {
-            assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
-            reportDownloads.push(url);
-          }
+      for (const route of retiredAssets) {
+        for (const method of ['GET', 'HEAD']) {
+          const response = await fetch(base + route, { method });
+          assert.equal(response.status, 404, route);
+          assert.equal(response.headers.get('cache-control'), 'no-store', route);
         }
       }
-      assert.equal(new Set(reportDownloads).size, 2);
-      const moduleResponse = await fetch(base + '/reports/sample-data.js');
-      assert.equal(moduleResponse.status, 200);
-      assert.equal(await moduleResponse.text(), await readFile(path.join(project, 'dist/reports/sample-data.js'), 'utf8'));
-      assert.equal((await fetch(base + '/reports/sample-data.js', { method: 'HEAD' })).status, 200);
-      assert.match(await (await fetch(base + '/app.js')).text(), /import \{ SAMPLE_REPORT_DATA \} from '\.\/reports\/sample-data\.js'/);
+      for (const asset of ['/app.js', '/data.js']) assert.doesNotMatch(await (await fetch(base + asset)).text(), /Reference sample|sample-data|AN-7K9Q-2M4X|AN-8P6R-3N5Y/);
       for (const route of ['/coa/AN-0000-0000', '/coa/AN-2026-0042', '/coa/unknown', '/coa/not-found']) {
         const response = await fetch(base + route);
         assert.equal(response.status, 404);
@@ -728,7 +609,7 @@ for (const mode of ['default', 'production', 'watch']) {
         assert.equal(await response.text(), 'Not found');
       }
       assert.equal((await fetch(base + '/coa/%ZZ')).status, 400);
-      assert.equal((await fetch(base + reportPath(DEMO_REPORT.lookupCode), { method: 'POST' })).status, 405);
+      assert.equal((await fetch(base + '/coa/AN-ABCD-1234', { method: 'POST' })).status, 405);
       assert.equal((await fetch(base + '/?coa=AN-2026-0042')).status, 200);
       assert.equal((await fetch(base + '/__dev/context')).status, mode === 'watch' ? 200 : 404);
       const heroPath = '/assets/assaynova-lab-hero.jpg';
@@ -748,18 +629,11 @@ for (const mode of ['default', 'production', 'watch']) {
   });
 }
 
-test('public report module matches its authoritative fictional catalog and published summaries', async () => {
+test('private sample records match their build data and measured summaries', async () => {
   const catalog = JSON.parse(await readFile(new URL('../templates/coa/sample_reports.json', import.meta.url), 'utf8'));
   assert.deepEqual(SAMPLE_REPORT_DATA, catalog);
-  assert.deepEqual(Object.keys(catalog).sort(), DEMO_REPORTS.map(report => report.lookupCode).sort());
-  for (const report of DEMO_REPORTS) {
-    const record = catalog[report.lookupCode];
-    assert.equal(record.reportId, report.id);
-    assert.equal(record.purity[2] + '%', report.purity);
-    assert.equal(record.identity, report.identity);
-    assert.equal(record.retentionTime + ' min', report.retentionTime);
-    assert.equal(record.received, report.received);
-    assert.equal(record.reported, report.issued);
+  assert.deepEqual(Object.keys(catalog).sort(), sampleCodes);
+  for (const record of Object.values(catalog)) {
     assert.equal(record.composition.length, 4);
     assert.equal(record.spectra.length, 4);
     assert.equal(record.screenings[0].result, record.identity);
@@ -807,8 +681,14 @@ test('sample ion envelopes use primary neutral masses, charge spacing and purity
   }
 });
 
-function generatedFixture(code='AN-ABCD-1234') {
-  return {report:{...DEMO_REPORT,lookupCode:code,sample:'HCG 5000IU',disclaimer:undefined},record:{...SAMPLE_REPORT_DATA[DEMO_REPORT.lookupCode],product:'HCG 5000IU',contentUnit:'IU'},label:'HCG 5000IU',assets:{svg:'/__reports/'+code+'/report.svg',pdf:'/__reports/'+code+'/report.pdf'}};
+function generatedFixture(code = 'AN-ABCD-1234') {
+  const record = { ...structuredClone(SAMPLE_REPORT_DATA[sampleCodes[0]]), product: 'HCG 5000IU', contentUnit: 'IU' };
+  return {
+    report: { lookupCode: code, publication: 'published' },
+    record,
+    label: record.product,
+    assets: { svg: '/__reports/' + code + '/report.svg', pdf: '/__reports/' + code + '/report.pdf' }
+  };
 }
 const flushLookup = async () => { for(let index=0;index<6;index++) await Promise.resolve(); };
 test('opt-in lookup works without reload, preserves generated title/units/actions, refresh and back/forward',async()=>{
@@ -820,24 +700,7 @@ test('opt-in lookup works without reload, preserves generated title/units/action
   app.click('copy-code');await flushLookup();assert.equal(app.copied.at(-1),'AN-ABCD-1234');app.click('copy-link');await flushLookup();assert.equal(app.copied.at(-1),'http://127.0.0.1:4999/coa/AN-ABCD-1234');
   app.clickLink('/about');app.travel(-1);await flushLookup();assert.match(app.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);app.travel(1);assert.equal(app.location.pathname,'/about');
   const refreshed=bootApp('/coa/an-abcd-1234',[],{publishedReader:true,remoteFetch});await flushLookup();assert.equal(refreshed.location.pathname,'/coa/AN-ABCD-1234');assert.match(refreshed.nodes.get('#coa-view').innerHTML,/HCG 5000IU/);
-  app.click('report',{lookupCode:DEMO_REPORT.lookupCode});assert.match(app.nodes.get('#coa-view').innerHTML,/Sample report/);
 });
-test('actual static screening transcripts clarify only the PCR and fentanyl rows without changing records', () => {
-  const before = JSON.stringify(SAMPLE_REPORT_DATA);
-  for (const code of Object.keys(SAMPLE_REPORT_DATA)) {
-    const app = bootApp('/coa/' + code);
-    const html = app.nodes.get('#coa-view').innerHTML;
-    const screening = html.match(/<h2>Screening outcomes<\/h2><dl[^>]*>([\s\S]*?)<\/dl>/)[1];
-    assert.ok(screening.includes('<dt>Microbial Screening (PCR)</dt><dd>No microbial DNA detected</dd>'));
-    assert.ok(screening.includes('<dt>Fentanyl Screening</dt><dd>Not detected</dd>'));
-    assert.doesNotMatch(screening, /Microbial analysis \(PCR\)|Target microbial DNA not detected\.|Target signal not detected in the screen\.| · <\/dd>/);
-    for (const row of SAMPLE_REPORT_DATA[code].screenings.slice(0, 3)) {
-      assert.ok(screening.includes(`<dt>${row.test}</dt><dd>${row.result} · ${row.details}</dd>`));
-    }
-  }
-  assert.equal(JSON.stringify(SAMPLE_REPORT_DATA), before);
-});
-
 test('actual generated screening transcripts preserve unassessed, positive, conflicting and escaped unknown states', async () => {
   const pcr = 'Microbial Screening (PCR)', fentanyl = 'Fentanyl Screening';
   const cases = [

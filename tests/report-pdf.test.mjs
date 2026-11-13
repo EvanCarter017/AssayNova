@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { parseReportPDFRoute, builtinReportPDF } from '../report-pdf.mjs';
-import { SAMPLE_REPORT_DATA } from '../dist/reports/sample-data.js';
+import { parseReportPDFRoute } from '../report-pdf.mjs';
+import { SAMPLE_REPORT_DATA } from '../conference/sample-reports/sample-data.js';
 import { handlePublicReport } from '../conference/reader.mjs';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
@@ -35,25 +35,24 @@ async function server(t, store, { enabled = false, production = false } = {}) {
   throw new Error('PDF fixture did not start: ' + output);
 }
 
-test('canonical PDF route is exact and has only two fixed built-in file mappings', () => {
+test('canonical PDF route accepts only the exact code and path', () => {
   assert.equal(parseReportPDFRoute('/coa/AN-TEST-0001/report.pdf'), 'AN-TEST-0001');
   for (const route of ['/coa/an-test-0001/report.pdf', '/coa/AN-TEST-0001/report.pdf?x=1', '/coa/%41N-TEST-0001/report.pdf', '/coa/AN-TEST-0001/report.pdf/', '/coa/AN-TEST-0001/../report.pdf', '/coa/AN-TEST-0001/report.svg', '/coa/AN-TEST-0001/report.pdf#part', '/coa/AN-TEST-0001/report.pdf\n', '/coa/AN-TEST-0001/report.pdf\r\n']) assert.equal(parseReportPDFRoute(route), null, route);
-  assert.equal(builtinReportPDF('AN-7K9Q-2M4X'), 'sample-a.pdf'); assert.equal(builtinReportPDF('AN-8P6R-3N5Y'), 'sample-c.pdf'); assert.equal(builtinReportPDF('AN-TEST-0001'), null);
 });
 
-test('static and production aliases serve the correct two master PDFs inline with HEAD parity and existing pages intact', async t => {
+test('retired specimen aliases and public reports are closed without an enabled reader', async t => {
   const { store } = await fixture(t);
   for (const production of [false, true]) {
     const origin = await server(t, store, { production });
-    for (const [code, stem] of [['AN-7K9Q-2M4X', 'sample-a'], ['AN-8P6R-3N5Y', 'sample-c']]) {
-      const route = '/coa/' + code + '/report.pdf', response = await fetch(origin + route), bytes = Buffer.from(await response.arrayBuffer());
-      assert.equal(response.status, 200); assert.equal(response.headers.get('content-type'), 'application/pdf'); assert.equal(response.headers.get('content-disposition'), `inline; filename="${code}.pdf"`); assert.equal(response.headers.get('cache-control'), 'no-store'); assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
-      assert.deepEqual(bytes, await readFile(path.join(project, 'dist/reports/' + stem + '.pdf'))); assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
-      const head = await fetch(origin + route, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(await head.text(), ''); for (const header of ['content-type', 'content-disposition', 'cache-control', 'x-content-type-options']) assert.equal(head.headers.get(header), response.headers.get(header));
-      assert.equal((await fetch(origin + '/coa/' + code)).status, 200);
-      assert.equal((await fetch(origin + route, { method: 'POST' })).status, 405);
+    for (const code of ['AN-7K9Q-2M4X', 'AN-8P6R-3N5Y', 'AN-TEST-0001']) {
+      for (const route of ['/coa/' + code, '/coa/' + code + '/report.pdf']) {
+        assert.equal((await fetch(origin + route)).status, 404, route);
+        assert.equal((await fetch(origin + route, { method: 'HEAD' })).status, 404, route);
+      }
     }
-    for (const route of ['/coa/AN-TEST-0001/report.pdf', '/coa/AN-7K9Q-2M4X/report.pdf?x=1', '/coa/%41N-7K9Q-2M4X/report.pdf', '/coa/AN-7K9Q-2M4X/report.pdf/extra', '/__dev/context', '/admin/api/session']) assert.equal((await fetch(origin + route)).status, 404, route);
+    for (const route of ['/reports/sample-a.pdf', '/reports/sample-c.svg', '/reports/sample-data.js', '/__dev/context', '/admin/api/session']) {
+      assert.equal((await fetch(origin + route)).status, 404, route);
+    }
   }
 });
 

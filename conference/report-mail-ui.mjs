@@ -12,7 +12,7 @@ export function createReportMailUI({ document, request, language, context, setPe
     $('report-notice').setAttribute('aria-busy', String(pending)); applyLanguage();
   }
   function clear() { const wasPending = pending; revision++; controller?.abort(); controller = null; pending = false; code = null; intent = null; state = ''; uncertain = false; $('notice-email').value = ''; $('notice-confirm').checked = false; if (wasPending) setPending(false); refresh(); }
-  function select(value) { clear(); if (value?.published && !value.removed && validCode(value.report?.lookupCode)) code = value.report.lookupCode; refresh(); }
+  function select(value) { clear(); if (value?.published && !value.adminOnly && !value.removed && validCode(value.report?.lookupCode)) code = value.report.lookupCode; refresh(); }
   async function send() {
     const current = context(); if (pending || !code || !current?.enabled || current.blocked || !$('notice-confirm').checked) return;
     if (!intent) { const recipientEmail = $('notice-email').value; if (typeof recipientEmail !== 'string' || recipientEmail.length > 254 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(recipientEmail)) { state = 'unavailable'; refresh(); $('notice-email').focus(); return; } intent = Object.freeze({ code, recipientEmail, token: current.token }); }

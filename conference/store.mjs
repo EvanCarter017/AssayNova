@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { publicBundle, validCode } from './reader.mjs';
+import { isAdminOnlyReport, isReservedSampleCode, publicBundle, validCode } from './reader.mjs';
 
 export const PYTHON = 'C:\\Users\\Administrator\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe';
 export function validateFields(input = {}) {
@@ -72,7 +72,7 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
     catch { throw fail(409, 'Report snapshot is unavailable.'); }
   }
   async function changeState(code, state) {
-    if (!validCode(code) || ['AN-7K9Q-2M4X','AN-8P6R-3N5Y'].includes(code)) throw fail(400, 'Choose a generated report Lookup Code.');
+    if (!validCode(code) || isReservedSampleCode(code)) throw fail(400, 'Choose a generated report Lookup Code.');
     if (busy) throw fail(409, 'Another report is being generated. Wait for it to finish.');
     busy = true;
     try {
@@ -87,7 +87,7 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
       const targetEntry = await lstat(targetBase);
       if (!targetEntry.isDirectory() || targetEntry.isSymbolicLink() || await realpath(targetBase) !== path.join(await realpath(root), to)) throw fail(409, 'Report snapshot is unavailable.');
       if (hasSource) await rename(source, destination);
-      return { lookupCode: code, state, label: bundle.label };
+      return { lookupCode: code, state, label: bundle.label, adminOnly: await isAdminOnlyReport(destination) };
     } finally { busy = false; }
   }
   async function generate(product, fields, publish) {
@@ -98,7 +98,7 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
       let code;
       for (let attempt=0;attempt<10;attempt++) {
         const candidate = codeFactory();
-        if (!validCode(candidate) || ['AN-7K9Q-2M4X','AN-8P6R-3N5Y'].includes(candidate)) continue;
+        if (!validCode(candidate) || isReservedSampleCode(candidate)) continue;
         const reserved = await Promise.all([published,previews,removed].map(dir => exists(path.join(dir,candidate))));
         if (!reserved.some(Boolean)) { code = candidate; break; }
       }
@@ -117,7 +117,7 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
       const destination = path.join(publish ? published : previews,code);
       // Only this process writes the store. A directory rename exposes the complete snapshot at once.
       await rename(output,destination);
-      return { ...bundle, published:publish, previewURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.svg', pdfURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.pdf' };
+      return { ...bundle, published:publish, adminOnly: true, previewURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.svg', pdfURL:'/bundles/' + (publish ? 'published/' : 'previews/') + code + '/report.pdf' };
     } finally { busy = false; if (job) await rm(job,{recursive:true,force:true}); }
   }
   async function preview(product, fields, { seed, deadline = Date.now() + 60000 } = {}) {
@@ -154,7 +154,7 @@ export async function createStore(root, { render = runRenderer, codeFactory = ()
     if (!['published', 'removed'].includes(state)) throw fail(400, 'Choose Published or Removed reports.');
     const rows = [];
     for (const code of await readdir(path.join(root, state))) if (validCode(code)) {
-      try { const bundle = await snapshot(state, code); rows.push({lookupCode:code,label:bundle.label,reported:bundle.report.issued}); } catch {}
+      try { const bundle = await snapshot(state, code); rows.push({lookupCode:code,label:bundle.label,reported:bundle.report.issued,adminOnly:await isAdminOnlyReport(path.join(root,state,code))}); } catch {}
     }
     return rows.sort((a,b) => b.reported.localeCompare(a.reported)).slice(0,100);
   }
