@@ -215,10 +215,10 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
   assert.deepEqual(JSON.parse((await raw(studio.origin, '/admin/api/history', { headers: { Cookie: localCookie } })).text).map(row => row.lookupCode), [code]);
   const reader = await launch(t, files, ['--conference-reports', '--conference-store=' + files.store]);
   assert.equal((await raw(reader.origin, '/verify')).status, 200);
-  assert.equal(published.adminOnly, true); assert.equal(published.publicURL, null);
+  assert.equal(published.studioGenerated, true); assert.equal(published.publicURL, 'http://127.0.0.1:4318/coa/' + code);
   assert.equal(published.record.client, 'Research Client');
   for (const route of ['/coa/' + code, '/__reports/' + code, '/__reports/' + code + '/report.pdf', '/__reports/' + code + '/report.svg', '/coa/' + code + '/report.pdf']) {
-    for (const method of ['GET', 'HEAD']) assert.equal((await raw(reader.origin, route, { method })).status, 404);
+    for (const method of ['GET', 'HEAD']) assert.equal((await raw(reader.origin, route, { method })).status, 200);
   }
   for (const ext of ['pdf', 'svg']) {
     const adminAsset = '/admin/bundles/published/' + code + '/report.' + ext;
@@ -237,7 +237,7 @@ test('bridge and primary generate through one writer/busy lock, with unchanged p
     assert.deepEqual((await raw(proxy.origin, route, { headers: { Cookie: bridgeCookie } })).bytes, await readFile(path.join(files.store, 'removed', code, 'report.' + ext)));
   }
   assert.equal((await stateChange('restore')).status, 200);
-  assert.equal((await raw(reader.origin, '/coa/' + code + '/report.pdf')).status, 404);
+  assert.equal((await raw(reader.origin, '/coa/' + code + '/report.pdf')).status, 200);
   assert.deepEqual((await raw(proxy.origin, published.pdfURL, { headers: { Cookie: bridgeCookie } })).bytes, await readFile(path.join(files.store, 'published', code, 'report.pdf')));
 });
 

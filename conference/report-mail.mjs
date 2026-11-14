@@ -1,7 +1,7 @@
 import { lstat, realpath, open } from 'node:fs/promises';
 import path from 'node:path';
 import { constants } from 'node:fs';
-import { isAdminOnlyReport, isReservedSampleCode, publicBundle, validCode } from './reader.mjs';
+import { hasStudioProvenance, isReservedSampleCode, publicBundle, validCode } from './reader.mjs';
 import { validMailbox } from '../accounts/mail-config.mjs';
 
 const failure = (status = 404) => Object.assign(new Error('Publication notice is unavailable for this report.'), { status });
@@ -19,7 +19,7 @@ export async function reportMailEligible(store, code) {
   if (!path.isAbsolute(store) || !validCode(code) || isReservedSampleCode(code)) return false;
   try {
     const folder = path.join(store, 'published', code); await exactPath(folder, true);
-    if (await isAdminOnlyReport(folder)) return false;
+    if (await hasStudioProvenance(folder)) return false;
     for (const state of ['removed', 'previews']) { try { await lstat(path.join(store, state, code)); return false; } catch (error) { if (error.code !== 'ENOENT') throw error; } }
     for (const [name, maximum] of [['bundle.json', 2097152], ['report.pdf', 33554432], ['report.svg', 33554432]]) {
       const filename = path.join(folder, name), info = await exactPath(filename);
@@ -33,7 +33,7 @@ export async function reportMailEligible(store, code) {
       } finally { await file.close(); }
       await exactPath(filename);
     }
-    await exactPath(folder, true); return !await isAdminOnlyReport(folder);
+    await exactPath(folder, true); return !await hasStudioProvenance(folder);
   } catch { return false; }
 }
 export function createReportMail({ store, mail } = {}) {
