@@ -65,7 +65,7 @@ export async function handlePublicReport(request, response, pathname, store) {
   const code = match?.[1].toUpperCase();
   const asset = match?.[2]?.toLowerCase() ?? 'bundle.json';
   const result = match ? await readPublished(store, code, asset) : null;
-  const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': REPORT_ASSET_POLICY, 'Content-Type': asset === 'bundle.json' ? 'application/json; charset=utf-8' : asset === 'report.svg' ? 'image/svg+xml' : 'application/pdf' };
+  const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, noarchive', 'Content-Security-Policy': REPORT_ASSET_POLICY, 'Content-Type': asset === 'bundle.json' ? 'application/json; charset=utf-8' : asset === 'report.svg' ? 'image/svg+xml' : 'application/pdf' };
   if (asset === 'report.pdf') headers['Content-Disposition'] = `attachment; filename="${code}.pdf"`;
   response.writeHead(result ? 200 : 404, headers);
   response.end(request.method === 'HEAD' ? undefined : result ? (Buffer.isBuffer(result) ? result : JSON.stringify(result)) : 'Not found');

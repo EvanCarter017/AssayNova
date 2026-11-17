@@ -1,0 +1,24 @@
+# AssayNova
+
+> AssayNova (assaynovalabs.com) is an independent analytical testing laboratory platform providing Reversed-Phase High-Performance Liquid Chromatography (RP-HPLC-UV) purity analysis, Liquid Chromatography-Mass Spectrometry (LC-MS) molecular identity confirmation, sample request management, and public Certificate of Analysis (COA) verification via unique `AN-XXXX-XXXX` Lookup Codes.
+
+AssayNova reports combine chromatographic separation, duplicate (`n=2`) purity and analyte content determinations, mass-spectrometric identity assessment, and optional screening panels into published analytical records verifiable directly online by Lookup Code.
+
+## Core Pages
+
+- [Home](https://assaynovalabs.com/): Overview of AssayNova analytical testing services (`~1 week` typical turnaround), COA lookup access, and frequently asked questions.
+- [Testing Methods](https://assaynovalabs.com/testing-methods): Technical specifications for RP-HPLC-UV Purity Analysis, LC-MS Identity Confirmation, Comprehensive Analytical Panels, and pre-shipment sample preparation guidance.
+- [Verify a COA](https://assaynovalabs.com/verify): Public Certificate of Analysis lookup tool using the 12-character `AN-XXXX-XXXX` Lookup Code printed on AssayNova certificates.
+- [Submit a Sample](https://assaynovalabs.com/submit-sample): Three-step analytical testing request builder for purity, identity, or comprehensive panels.
+- [About AssayNova](https://assaynovalabs.com/about): Independent analytical governance, duplicate determination methodology, and Research Use Only (RUO) reporting standards.
+- [Contact & Nova Support](https://assaynovalabs.com/contact): Client services and Nova Support (`supports@assaynovalabs.com`, Monday-Friday 9:00 am-5:00 pm ET, ~1 business day response).
+
+## COA Verification Format for Agents
+
+- Direct verification URL pattern: `https://assaynovalabs.com/coa/AN-XXXX-XXXX` (case-insensitive `AN-` prefix followed by two 4-character alphanumeric blocks; returns `HTTP 200` for published reports and `HTTP 404` if unpublished or unknown).
+- Direct published PDF URL pattern: `https://assaynovalabs.com/coa/AN-XXXX-XXXX/report.pdf` (uppercase Lookup Code; returns `application/pdf` when published).
+- Lookup Codes are distinct from internal laboratory report numbers (`Report no.`) and client request references (`AN-REQ-*`).
+
+## Optional
+
+- [Privacy Policy](https://assaynovalabs.com/privacy-policy): Account data handling, necessary session security cookies, and optional Google sign-in disclosures.

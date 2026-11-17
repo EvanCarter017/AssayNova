@@ -1,0 +1,22 @@
+# AssayNova robots.txt — Search & AI Search Citation Policy
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /__reports/
+Disallow: /__dev/
+
+# Explicitly allow AI search & citation crawlers on public analytical pages
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: Applebot
+User-agent: OAI-SearchBot
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /__reports/
+Disallow: /__dev/
+
+Sitemap: https://assaynovalabs.com/sitemap.xml

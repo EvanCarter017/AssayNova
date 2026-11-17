@@ -5,7 +5,7 @@ import { watch } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCOARoute } from './dist/data.js';
-import { resolvePageRoute } from './dist/routes.js';
+import { resolvePageRoute, injectRouteSEO } from './dist/routes.js';
 import { parseReportPDFRoute } from './report-pdf.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
@@ -85,7 +85,9 @@ const customerAccountProxy = accountOptions.mode === 'proxy' ? (await import('./
 const mime = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8'
+  '.webp': 'image/webp', '.avif': 'image/avif',
+  '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8', '.txt': 'text/plain; charset=utf-8'
 };
 
 const server = http.createServer(async (request, response) => {
@@ -191,25 +193,49 @@ const server = http.createServer(async (request, response) => {
       contents = Buffer.from(devTools.annotateHTML(contents.toString('utf8'), sourceFile)
         .replace(/<\/body>/i, '<script type="module" src="/__dev/client.js"></script></body>'));
     }
-    if (path.extname(filename) === '.html') {
+    const isHTML = path.extname(filename) === '.html';
+    if (isHTML) {
+      let html = contents.toString('utf8');
       // Add production privacy assets after development annotation so original source lines remain accurate.
-      contents = Buffer.from(contents.toString('utf8')
+      html = html
         .replace(/<\/head>/i, '<link rel="stylesheet" href="/vendor/cookieconsent-3.2.1/cookieconsent.css"><link rel="stylesheet" href="/privacy/consent.css"></head>')
-        .replace(/<\/body>/i, '<script type="module" src="/privacy/consent.js"></script></body>'));
-      if (conferenceEnabled) contents = Buffer.from(contents.toString('utf8').replace(/<\/head>/i, '<meta name="assaynova-report-reader" content="enabled"></head>'));
-      if (accountOptions.mode !== 'disabled') contents = Buffer.from(contents.toString('utf8').replace(/<\/head>/i, '<meta name="assaynova-accounts" content="enabled"></head>'));
+        .replace(/<\/body>/i, '<script type="module" src="/privacy/consent.js"></script></body>');
+      if (conferenceEnabled) html = html.replace(/<\/head>/i, '<meta name="assaynova-report-reader" content="enabled"></head>');
+      if (accountOptions.mode !== 'disabled') html = html.replace(/<\/head>/i, '<meta name="assaynova-accounts" content="enabled"></head>');
+      if (pageRoute || coaRoute) {
+        html = injectRouteSEO(html, { pageRoute, coaRoute, generatedReport, liveReload });
+      }
+      contents = Buffer.from(html);
     }
-    response.writeHead(coaRoute && !generatedReport ? 404 : 200, {
+    const isPrivateRoute = Boolean(coaRoute || pageRoute?.noindex);
+    const cacheControl = isPrivateRoute
+      ? 'no-store'
+      : liveReload
+        ? 'no-cache'
+        : isHTML
+          ? 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400'
+          : 'public, max-age=86400, stale-while-revalidate=604800';
+    const responseHeaders = {
       'Content-Type': mime[path.extname(filename)] ?? 'application/octet-stream',
-      'Cache-Control': 'no-store',
+      'Cache-Control': cacheControl,
       'X-Content-Type-Options': 'nosniff',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
       'Referrer-Policy': ['/verify-email', '/reset-password', '/google-signin'].includes(pathname.replace(/\/$/, '')) ? 'no-referrer' : 'same-origin',
       'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
-    });
+    };
+    if (coaRoute) responseHeaders['X-Robots-Tag'] = 'noindex, noarchive';
+    else if (pageRoute?.noindex) responseHeaders['X-Robots-Tag'] = 'noindex, nofollow';
+    response.writeHead(coaRoute && !generatedReport ? 404 : 200, responseHeaders);
     response.end(request.method === 'HEAD' ? undefined : contents);
   } catch {
-    response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    response.end('Not found');
+    response.writeHead(404, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'same-origin'
+    });
+    response.end(request.method === 'HEAD' ? undefined : 'Not found');
   }
 });
 if (adminEnabled || proxyEnabled || accountOptions.mode !== 'disabled') { server.requestTimeout = 10000; server.headersTimeout = 10000; }

@@ -11,12 +11,14 @@ import { fileURLToPath } from 'node:url';
 import { annotateHTML, rendererDefinitions } from '../dev/context.mjs';
 import { buildPrompt, sanitizeContext, sanitizeMarkup, sanitizeAddress, REQUEST_PLACEHOLDER } from '../dev/prompt.js';
 import { primaryGesture, sourceHint, rendererForView } from '../dev/locator.js';
+import { resolvePageRoute, injectRouteSEO } from '../dist/routes.js';
 
 const project = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const baselineHTML = await readFile(path.join(project, 'dist/index.html'), 'utf8');
 const privacyHTML = baselineHTML
   .replace(/<\/head>/i, '<link rel="stylesheet" href="/vendor/cookieconsent-3.2.1/cookieconsent.css"><link rel="stylesheet" href="/privacy/consent.css"></head>')
   .replace(/<\/body>/i, '<script type="module" src="/privacy/consent.js"></script></body>');
+const expectedRouteHTML = (pathname) => injectRouteSEO(privacyHTML, { pageRoute: resolvePageRoute(pathname) });
 const baselineApp = await readFile(path.join(project, 'dist/app.js'), 'utf8');
 const sourceLine = (source, needle) => {
   const index = source.indexOf(needle);
@@ -194,7 +196,7 @@ for (const mode of ['default', 'production', 'watch']) {
       const enabled = mode === 'watch';
       assert.equal(html.includes('/__dev/client.js'), enabled);
       assert.equal(html.includes('data-an-dev-file'), enabled);
-      if (!enabled) assert.equal(html, privacyHTML);
+      if (!enabled) assert.equal(html, expectedRouteHTML('/'));
       for (const route of ['client.js', 'locator.js', 'prompt.js', 'context', 'status']) {
         const result = await fetch(`${base}/__dev/${route}`);
         assert.equal(result.status, enabled ? 200 : 404, route);
@@ -225,7 +227,7 @@ test('explicit LAN binding serves normal SPA, reports and privacy without exposi
     const expectedCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
     for (const route of ['/testing-methods', '/about', '/verify', '/contact']) {
       const response = await fetch(base + route);
-      assert.equal(response.status, 200, route); assert.equal(await response.text(), privacyHTML, route);
+      assert.equal(response.status, 200, route); assert.equal(await response.text(), expectedRouteHTML(route), route);
       assert.equal(response.headers.get('content-security-policy'), expectedCSP);
       const head = await fetch(base + route, { method: 'HEAD' }); assert.equal(head.status, 200); assert.equal(await head.text(), '');
     }

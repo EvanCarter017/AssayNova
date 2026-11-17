@@ -19,7 +19,7 @@ export function createAccountPage({ roots, client, navigate, onResume, onNewRequ
   let path = '', root = null, revision = 0, actionRevision = 0, controller = null, busy = false;
   let user = null, documents = [], tab = 'requests', selected = null, pendingDelete = null, next = '/account';
   let returnSecurity = false;
-  const googleButton = (emailAlternative = true) => client.snapshot().google?.enabled ? '<div class="ac-google-choice"><button class="ac-google-button" type="button" data-account-action="google-login" aria-label="Continue with Google"><img src="/assets/google-signin-light.png" alt=""></button><p class="ac-help">Google shares your basic identity with AssayNova. <a href="/privacy-policy">Privacy policy</a></p>' + (emailAlternative ? '<p class="ac-divider">or use your email</p>' : '') + '</div>' : '';
+  const googleButton = (emailAlternative = true) => client.snapshot().google?.enabled ? '<div class="ac-google-choice"><button class="ac-google-button" type="button" data-account-action="google-login" aria-label="Continue with Google"><img src="/assets/google-signin-light.png" width="360" height="80" alt=""></button><p class="ac-help">Google shares your basic identity with AssayNova. <a href="/privacy-policy">Privacy policy</a></p>' + (emailAlternative ? '<p class="ac-divider">or use your email</p>' : '') + '</div>' : '';
   const googleController = createGoogleAccountController({ client, onComplete(result) {
     user = client.snapshot().user;
     returnSecurity = result.intent !== 'login'; navigate(result.next, { replace: true });

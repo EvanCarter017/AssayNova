@@ -129,7 +129,7 @@ function boot() {
     const signalText = signal === true ? 'Global Privacy Control is on. Sale, sharing and marketing stay off, including previously granted choices.' : 'Optional services, if offered, require your explicit choice. An unavailable privacy signal keeps optional services off.';
     return {
       root: document.body, mode: 'opt-in', revision: POLICY.revision, hideFromBots: false,
-      autoShow: true, disablePageInteraction: false, manageScriptTags: false, autoClearCookies: false, respectGpc: false,
+      autoShow: optional, disablePageInteraction: false, manageScriptTags: false, autoClearCookies: false, respectGpc: false,
       cookie: { name: POLICY.cookie, domain: '', path: '/', secure: true, sameSite: 'Lax', expiresAfterDays: POLICY.days, useLocalStorage: false },
       categories,
       guiOptions: { consentModal: { layout: 'bar inline', position: 'bottom', equalWeightButtons: true }, preferencesModal: { layout: 'box', equalWeightButtons: true } },

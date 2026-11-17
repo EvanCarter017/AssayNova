@@ -27,6 +27,21 @@ let previousFocus;
 let toastTimer;
 const pageViews = Object.fromEntries(PAGE_ROUTES.map((route) => [route.path, document.querySelector('#' + route.view)]));
 const coaView = document.querySelector('#coa-view');
+const deferredViewMarkup = new Map();
+const deferredViewsNode = document.querySelector('#an-deferred-views');
+if (deferredViewsNode?.textContent) {
+  try {
+    for (const [viewId, markup] of Object.entries(JSON.parse(deferredViewsNode.textContent))) {
+      deferredViewMarkup.set(viewId, markup);
+    }
+  } catch {}
+}
+function ensureViewMounted(viewId) {
+  if (!deferredViewMarkup.has(viewId)) return;
+  const section = document.getElementById(viewId);
+  if (section) section.innerHTML = deferredViewMarkup.get(viewId);
+  deferredViewMarkup.delete(viewId);
+}
 let renderedURL = '';
 let historyFocusRevision = 0;
 let activeReport = null;
@@ -65,8 +80,31 @@ function makeSampleId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-const requestPage = createRequestPage(document.querySelector('#request-flow'), { makeId: makeSampleId, openMyRequests: () => navigateToURL('/account'), accountEnabled: accountsEnabled, saveAccountRequest: (record, options) => accountClient.saveRequest(record, options), onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/submit-sample')) });
-const contactForm = createContactForm(document.querySelector('#contact-form'), { client: accountClient, accountEnabled: accountsEnabled, makeId: makeSampleId, onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/contact')), onView: () => navigateToURL('/account') });
+let requestPageInstance = null;
+let contactFormInstance = null;
+let accountPageInstance = null;
+let latestSessionUser = null;
+let latestSessionReason;
+let hasSessionBroadcast = false;
+
+function getRequestPage() {
+  if (!requestPageInstance) {
+    ensureViewMounted('request-view');
+    requestPageInstance = createRequestPage(document.querySelector('#request-flow'), { makeId: makeSampleId, openMyRequests: () => navigateToURL('/account'), accountEnabled: accountsEnabled, saveAccountRequest: (record, options) => accountClient.saveRequest(record, options), onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/submit-sample')) });
+    if (hasSessionBroadcast) requestPageInstance.setAccountSession(latestSessionUser, latestSessionReason);
+  }
+  return requestPageInstance;
+}
+
+function getContactForm() {
+  if (!contactFormInstance) {
+    ensureViewMounted('contact-view');
+    contactFormInstance = createContactForm(document.querySelector('#contact-form'), { client: accountClient, accountEnabled: accountsEnabled, makeId: makeSampleId, onSignIn: () => navigateToURL('/login?next=' + encodeURIComponent('/contact')), onView: () => navigateToURL('/account') });
+    if (hasSessionBroadcast) contactFormInstance.setAccountSession(latestSessionUser, latestSessionReason);
+  }
+  return contactFormInstance;
+}
+
 let recoveryForm = null, recoveryOwnerId = null, recoveryReturn = null, recoveryCloseForAuth = false;
 function clearRecoveryReturn() { recoveryReturn?.controller.destroy(); recoveryReturn = null; }
 function signInForRecovery() {
@@ -78,14 +116,38 @@ function signInForRecovery() {
   node.remove(); recoveryForm = null; recoveryOwnerId = null; recoveryCloseForAuth = true;
   navigateToURL('/login?next=' + encodeURIComponent('/contact?request=report-recovery'));
 }
-const accountPage = accountsEnabled ? createAccountPage({ roots: Object.fromEntries(['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'].map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => {
-  const kind = requestKind(doc.record);
-  if (kind === 'testing') { if (requestPage.resume(doc.record, { ...doc, ownerId })) navigateToURL('/submit-sample'); }
-  else if (kind === 'contact') { navigateToURL('/contact'); contactForm?.resume(doc, ownerId); }
-  else { navigateToURL('/contact'); renderRecovery(doc, ownerId); }
-}, onNewRequest: () => renderSubmission(undefined, true), onRegistrationNotice: showToast }) : null;
+
+const ACCOUNT_PATHS = ['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'];
+function getAccountPage() {
+  if (!accountsEnabled) return null;
+  if (!accountPageInstance) {
+    for (const path of ACCOUNT_PATHS) {
+      const route = PAGE_ROUTES.find((r) => r.path === path);
+      if (route) ensureViewMounted(route.view);
+    }
+    accountPageInstance = createAccountPage({ roots: Object.fromEntries(ACCOUNT_PATHS.map(path => [path, pageViews[path]?.querySelector('[data-account-content]')])), client: accountClient, navigate: navigateToURL, onResume: (doc, ownerId) => {
+      const kind = requestKind(doc.record);
+      if (kind === 'testing') { if (getRequestPage().resume(doc.record, { ...doc, ownerId })) navigateToURL('/submit-sample'); }
+      else if (kind === 'contact') { navigateToURL('/contact'); getContactForm()?.resume(doc, ownerId); }
+      else { navigateToURL('/contact'); renderRecovery(doc, ownerId); }
+    }, onNewRequest: () => renderSubmission(undefined, true), onRegistrationNotice: showToast });
+  }
+  return accountPageInstance;
+}
+
+if (deferredViewMarkup.size === 0) {
+  getRequestPage();
+  getContactForm();
+  getAccountPage();
+}
+
 accountClient?.subscribe((user, reason) => {
-  requestPage.setAccountSession(user, reason); contactForm?.setAccountSession(user, reason); recoveryForm?.setAccountSession(user, reason);
+  latestSessionUser = user;
+  latestSessionReason = reason;
+  hasSessionBroadcast = true;
+  requestPageInstance?.setAccountSession(user, reason);
+  contactFormInstance?.setAccountSession(user, reason);
+  recoveryForm?.setAccountSession(user, reason);
   if (recoveryReturn) {
     if (reason === 'logout' || user && user.id !== recoveryReturn.ownerId) clearRecoveryReturn();
     else recoveryReturn.controller.setAccountSession(user, reason);
@@ -128,7 +190,7 @@ dialog.addEventListener('click', (event) => {
 });
 
 function renderSubmission(service, reset = false) {
-  requestPage.activate({ service, reset });
+  getRequestPage().activate({ service, reset });
   navigateToURL('/submit-sample');
 }
 
@@ -210,9 +272,9 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
   const bundle = checkedCurrent ? checked.bundle : null;
   if (bundle) { current.url.pathname = lookupResultPath(current.coa.code); current.url.search = ''; }
   accountLoadRevision++; accountLoadController?.abort(); accountLoadController = null;
-  if (renderedURL && new URL(renderedURL, location.href).pathname === '/submit-sample' && current.url.pathname !== '/submit-sample') requestPage.suspend();
-  accountPage?.leave();
-  contactForm?.suspend();
+  if (renderedURL && new URL(renderedURL, location.href).pathname === '/submit-sample' && current.url.pathname !== '/submit-sample') requestPageInstance?.suspend();
+  accountPageInstance?.leave();
+  contactFormInstance?.suspend();
   recoveryForm?.destroy(); recoveryForm = null; recoveryOwnerId = null;
   const recoveryAuthPath = ['/login', '/register', '/recover-account'].includes(current.url.pathname) || current.url.pathname === '/contact' && current.url.search === '?request=report-recovery';
   if (!recoveryAuthPath) clearRecoveryReturn();
@@ -225,12 +287,14 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
   previousFocus = null;
   if (dialog.open) dialog.close();
   const page = current.page || PAGE_ROUTES[0];
+  if (!current.coa) ensureViewMounted(page.view);
+  if (legacyError || current.invalidLegacy) ensureViewMounted('verify-view');
   for (const route of PAGE_ROUTES) pageViews[route.path].hidden = !!current.coa || route.path !== page.path;
   coaView.hidden = !current.coa;
   document.body.classList.toggle('report-page', !!current.coa);
   const error = document.querySelector('#verify-error');
-  error.textContent = legacyError || current.invalidLegacy ? 'No report matches that link. Enter a Lookup Code below.' : '';
-  document.querySelector('#report-id').removeAttribute('aria-invalid');
+  if (error) error.textContent = legacyError || current.invalidLegacy ? 'No report matches that link. Enter a Lookup Code below.' : '';
+  document.querySelector('#report-id')?.removeAttribute('aria-invalid');
   if (current.coa) {
     activeReport = bundle?.report ?? null;
     if (activeReport) {
@@ -248,17 +312,24 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
         });
       }
     }
-  } else document.title = page.title;
+  } else {
+    document.title = page.title;
+    if (page.description) document.querySelector('meta[name="description"]')?.setAttribute('content', page.description);
+    if (!page.noindex) document.querySelector('link[rel="canonical"]')?.setAttribute('href', 'https://assaynovalabs.com' + (page.path === '/' ? '/' : page.path));
+  }
   if (!current.coa && page.path === '/submit-sample') {
-    requestPage.checkAccountSession(); requestPage.activate();
-    if (accountClient) { const ticket = accountLoadRevision; const controller = new AbortController(); accountLoadController = controller; accountClient.getSession({ signal: controller.signal }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) requestPage.setAccountSession(null, 'session'); }); }
+    const rq = getRequestPage();
+    rq.checkAccountSession(); rq.activate();
+    if (accountClient) { const ticket = accountLoadRevision; const controller = new AbortController(); accountLoadController = controller; accountClient.getSession({ signal: controller.signal }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) rq.setAccountSession(null, 'session'); }); }
   }
   if (!current.coa && ['/account', '/login', '/register', '/recover-account', '/verify-email', '/reset-password', '/google-signin'].includes(page.path)) {
-    if (accountPage) void accountPage.activate(page.path, current.url.searchParams.get('next'), actionToken);
+    const ap = getAccountPage();
+    if (ap) void ap.activate(page.path, current.url.searchParams.get('next'), actionToken);
     else { const content = pageViews[page.path]?.querySelector('[data-account-content]'); if (content) content.innerHTML = '<div class="ac-card"><h2>Accounts are unavailable in this view.</h2><p>Public testing information and COA lookup remain available.</p><a href="/submit-sample">Explore testing</a></div>'; }
   }
   if (!current.coa && page.path === '/contact') {
-    contactForm?.activate({ checking: !!accountClient });
+    const cf = getContactForm();
+    cf?.activate({ checking: !!accountClient });
     if (accountClient) {
       const ticket = accountLoadRevision, expectedURL = location.href, controller = new AbortController(); accountLoadController = controller;
       accountClient.getSession({ signal: controller.signal }).then(user => {
@@ -267,7 +338,7 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
           if (!user) { navigateToURL('/login?next=' + encodeURIComponent('/contact?request=report-recovery'), { replace: true }); return; }
           history.replaceState(null, '', '/contact'); renderedURL = location.href; renderRecovery();
         }
-      }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) contactForm?.setAccountSession(null); });
+      }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) cf?.setAccountSession(null); });
     }
   }
   const activePath = current.coa ? '/verify' : page.path;
@@ -341,7 +412,11 @@ document.addEventListener('click', (event) => {
     if (destination.hash && destination.pathname === location.pathname && destination.search === location.search) return;
     event.preventDefault();
     closeMobileNavigation();
-    navigateToURL(destination.href);
+    if (destination.pathname === '/submit-sample' && anchor.dataset?.service) {
+      renderSubmission(anchor.dataset.service);
+    } else {
+      navigateToURL(destination.href);
+    }
     return;
   }
   const target = event.target.closest('[data-action]');
