@@ -15,6 +15,8 @@ import { readPublished } from '../conference/reader.mjs';
 import { SAMPLE_REPORT_DATA } from '../conference/sample-reports/sample-data.js';
 
 const project=fileURLToPath(new URL('../',import.meta.url));
+// Same resolution as the runtime: ASSAYNOVA_PYTHON first, then the platform default.
+const TEST_PYTHON=process.env.ASSAYNOVA_PYTHON||(process.platform==='win32'?PYTHON:'python3');
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6V4AAAAAASUVORK5CYII=','base64');
 const product={id:'test-product',name:'BPC-157 10mg',imagePath:'private-fixture',...parseProduct('BPC-157 10mg')};
 async function temporary(t) {const directory=await mkdtemp(path.join(tmpdir(),'assaynova-studio-'));t.after(()=>rm(directory,{recursive:true,force:true}));return directory;}
@@ -184,7 +186,7 @@ test('real Python closed loop saves distinct products and repeated runs, preserv
     const pdfPath=path.join(root,dto.report.lookupCode+'.pdf');await writeFile(pdfPath,pdf);snapshots.push({dto,pdf,svg,pdfPath});
   }
   assert.equal(new Set(snapshots.map(row=>row.dto.report.lookupCode)).size,5);assert.notDeepEqual(snapshots[0].dto.record.chromatogram,snapshots[1].dto.record.chromatogram);assert.notDeepEqual(snapshots[0].dto.record.chromatogram,snapshots[4].dto.record.chromatogram);assert.equal(snapshots[4].dto.record.purity[2],'99.42');
-  const inspect=JSON.parse(execFileSync(PYTHON,['-B','-c','import json,sys; from pypdf import PdfReader; print(json.dumps([{ "pages":len((r:=PdfReader(p)).pages),"width":float(r.pages[0].mediabox.width),"height":float(r.pages[0].mediabox.height),"text":r.pages[0].extract_text()} for p in sys.argv[1:]]))',...snapshots.map(row=>row.pdfPath)],{encoding:'utf8',windowsHide:true}));
+  const inspect=JSON.parse(execFileSync(TEST_PYTHON,['-B','-c','import json,sys; from pypdf import PdfReader; print(json.dumps([{ "pages":len((r:=PdfReader(p)).pages),"width":float(r.pages[0].mediabox.width),"height":float(r.pages[0].mediabox.height),"text":r.pages[0].extract_text()} for p in sys.argv[1:]]))',...snapshots.map(row=>row.pdfPath)],{encoding:'utf8',windowsHide:true}));
   for(const [index,proof] of inspect.entries()){assert.equal(proof.pages,1);assert.ok(Math.abs(proof.width-595.2756)<.1);assert.ok(Math.abs(proof.height-841.8898)<.1);assert.ok(proof.text.includes(snapshots[index].dto.report.lookupCode));assert.ok(proof.text.includes(snapshots[index].dto.record.purity[2]));assert.doesNotMatch(proof.text,/Sample report|demo report|conference|meeting example/i);}
   const restarted=await createStore(store);assert.equal((await restarted.history()).length,5);for(const snapshot of snapshots){assert.equal((await readPublished(store,snapshot.dto.report.lookupCode)).report.lookupCode,snapshot.dto.report.lookupCode);assert.deepEqual(Buffer.from(await (await securedFetch(studio.origin+snapshot.dto.pdfURL)).arrayBuffer()),snapshot.pdf);}
 });
@@ -192,6 +194,6 @@ test('real Python closed loop saves distinct products and repeated runs, preserv
 test('default renderer honors the explicit Python interpreter and retains bounded CLI arguments',async t=>{
  const root=await temporary(t),output=path.join(root,'output'),request=path.join(root,'request.json'),script=path.join(root,'renderer-fixture.py');await mkdir(output);await writeFile(request,'{}');await writeFile(script,"import json,sys,pathlib\noutput=pathlib.Path(sys.argv[sys.argv.index('--output')+1])\n(output/'proof.json').write_text(json.dumps({'args':sys.argv[1:],'noBytecode':sys.flags.dont_write_bytecode}))\n");
  const old=process.env.ASSAYNOVA_PYTHON;
- try{process.env.ASSAYNOVA_PYTHON=path.join(root,'missing-interpreter');await assert.rejects(runRenderer(request,output,{renderer:script}),/could not start/);process.env.ASSAYNOVA_PYTHON=PYTHON;await runRenderer(request,output,{renderer:script});const proof=JSON.parse(await readFile(path.join(output,'proof.json'),'utf8'));assert.deepEqual(proof.args,['--request',request,'--output',output]);assert.equal(proof.noBytecode,1);}
+ try{process.env.ASSAYNOVA_PYTHON=path.join(root,'missing-interpreter');await assert.rejects(runRenderer(request,output,{renderer:script}),/could not start/);process.env.ASSAYNOVA_PYTHON=TEST_PYTHON;await runRenderer(request,output,{renderer:script});const proof=JSON.parse(await readFile(path.join(output,'proof.json'),'utf8'));assert.deepEqual(proof.args,['--request',request,'--output',output]);assert.equal(proof.noBytecode,1);}
  finally{if(old===undefined)delete process.env.ASSAYNOVA_PYTHON;else process.env.ASSAYNOVA_PYTHON=old;}
 });
