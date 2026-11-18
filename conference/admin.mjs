@@ -197,7 +197,7 @@ export async function createAdmin({ origin, images = DEFAULT_IMAGES, store = DEF
         const components = validateComponents(input.components, selected.components);
         const product = { ...selected, components, unit: new Set(components.map(row => row.unit)).size === 1 ? components[0].unit : 'mixed' };
         const result = await reports.generate(product, { ...fields, client: catalog.customer.name }, input.publish);
-        send(response, 201, { ...result, previewURL: '/admin' + result.previewURL, pdfURL: '/admin' + result.pdfURL, publicURL: result.published ? new URL('/coa/' + result.report.lookupCode, publicURL).href : null });
+        send(response, 201, { ...result, previewURL: '/admin' + result.previewURL, pdfURL: '/admin' + result.pdfURL, publicURL: result.adminOnly ? null : new URL('/coa/' + result.report.lookupCode, publicURL).href });
       } catch (error) { send(response, error.status || 400, { error: error.code ? 'Report operation failed; previous reports are preserved.' : error.message }); }
       return true;
     }

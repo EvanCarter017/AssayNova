@@ -11,7 +11,7 @@ export const isReservedSampleCode = code => sampleCodes.has(code);
 
 // Every saved studio snapshot includes this marker, including historical saves.
 // Independently supplied reports have no marker. Never read its private contents.
-export async function hasStudioProvenance(folder) {
+export async function isAdminOnlyReport(folder) {
   try { await lstat(path.join(folder, 'private.json')); }
   catch (error) { return error.code !== 'ENOENT'; }
   return true;
@@ -38,7 +38,7 @@ export async function readPublished(store, code, asset = 'bundle.json') {
   try {
     const published = await realpath(path.join(store, 'published'));
     const folder = await realpath(path.join(published, code));
-    if (folder !== path.join(published, code)) return null;
+    if (folder !== path.join(published, code) || await isAdminOnlyReport(folder)) return null;
     const bundle = await readReportFile(folder, 'bundle.json');
     const dto = publicBundle(JSON.parse(bundle), code);
     return asset === 'bundle.json' ? dto : await readReportFile(folder, asset);

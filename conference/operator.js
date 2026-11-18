@@ -108,7 +108,7 @@ async function libraryFetch(url,options){
 function renderSelectionLanguage(){
   $('selected-name').textContent=selected?selected.name:t(session&&!currentCustomerId?'noCustomers':$('product').options.length===0?'noProduct':'chooseProduct');
 }
-function renderResultLanguage(){if(result)$('result-state').textContent=t(result.removed?'removedSnapshot':result.published?'publishedSnapshot':'privateSnapshot');}
+function renderResultLanguage(){if(result)$('result-state').textContent=t(result.removed?'removedSnapshot':result.adminOnly&&result.published?'adminSavedSnapshot':result.published?'publishedSnapshot':'privateSnapshot');}
 function applyLanguage(){
   language.apply(document,'reportsTitle');
   document.querySelector('.brand span').textContent=t('admin');
@@ -178,7 +178,7 @@ function showResult(value){
   result=value;$('empty').hidden=true;$('result').hidden=false;
   $('code').textContent=value.report.lookupCode;$('result-name').textContent=value.label;renderResultLanguage();
   $('paper').src=value.previewURL;$('paper').hidden=false;$('pdf').href=value.pdfURL;
-  const shareable = value.published && !!value.publicURL;
+  const shareable = value.published && !value.adminOnly && !!value.publicURL;
   if(shareable)$('public-link').href=value.publicURL;else $('public-link').removeAttribute('href');
   $('public-link').hidden=!shareable;$('copy-code').hidden=!shareable;
   $('manual-label').hidden=true;$('code').focus();
@@ -186,7 +186,7 @@ function showResult(value){
 async function history(){
   await reportLibrary.load();
 }
-function showSavedReport(row,state){const code=row.lookupCode;showResult({published:state==='published',studioGenerated:row.studioGenerated,removed:state==='removed',report:{lookupCode:code},label:row.label,previewURL:'/admin/bundles/'+state+'/'+code+'/report.svg',pdfURL:'/admin/bundles/'+state+'/'+code+'/report.pdf',publicURL:session.publicOrigin+'/coa/'+code});}
+function showSavedReport(row,state){const code=row.lookupCode;showResult({published:state==='published',adminOnly:row.adminOnly,removed:state==='removed',report:{lookupCode:code},label:row.label,previewURL:'/admin/bundles/'+state+'/'+code+'/report.svg',pdfURL:'/admin/bundles/'+state+'/'+code+'/report.pdf',publicURL:session.publicOrigin+'/coa/'+code});}
 function clearUncertainReport({lookupCode}){
   reportNotice?.clear();
   if(result?.report.lookupCode!==lookupCode)return;
@@ -223,13 +223,13 @@ $('publish').addEventListener('click',async()=>{
     await drainLive();
     const response=await adminFetch('/admin/api/generate',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':session.token},body:JSON.stringify(body)});
     const value=await response.json();if(!response.ok)throw new Error(value.error||'');
-    showResult(value);status('publishedReady');
+    showResult(value);status(value.adminOnly ? 'adminSavedReady' : 'publishedReady');
     try{await history();}catch(error){statusError(error.message,'historyFallback');}
   }catch(error){statusError(error.message,'generateFallback');if(!result&&!live.stopped)liveStatus('liveError');$('status').focus();}
   finally{busy=false;updateControls();}
 });
 $('copy-code').addEventListener('click',async()=>{
-  if(!result?.published || !result.publicURL)return;
+  if(!result || !result.published || result.adminOnly)return;
   try{await navigator.clipboard.writeText(result.report.lookupCode);status('copied');}
   catch{$('manual-label').hidden=false;$('manual-copy').value=result.report.lookupCode;$('manual-copy').focus();$('manual-copy').select();}
 });
