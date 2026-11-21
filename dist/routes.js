@@ -7,8 +7,8 @@ export const PAGE_ROUTES = Object.freeze([
     path: '/',
     view: 'home-view',
     heading: 'hero-title',
-    title: 'Analytical Testing Lab & COA Verification | AssayNova',
-    description: 'Independent HPLC purity analysis and LC-MS identity confirmation in the US & EU. Submit research samples or verify a Certificate of Analysis (COA) online.',
+    title: 'COA Analytical Testing Lab & Verification | AssayNova',
+    description: 'Independent Certificate of Analysis (COA) lab serving the US & Puerto Rico. Submit samples for HPLC purity & LC-MS identity testing or verify a COA online.',
     breadcrumb: 'Home',
     noindex: false
   },
@@ -16,8 +16,8 @@ export const PAGE_ROUTES = Object.freeze([
     path: '/testing-methods',
     view: 'testing-view',
     heading: 'testing-page-title',
-    title: 'HPLC Purity & LC-MS Identity Testing Services | AssayNova',
-    description: 'Explore reversed-phase HPLC-UV purity assays, LC-MS molecular identity confirmation, and combined COA panels with ~1-week turnaround and duplicate reporting.',
+    title: 'HPLC Purity & LC-MS COA Testing Services | AssayNova',
+    description: 'Reversed-phase HPLC-UV purity assays, LC-MS molecular identity confirmation, and combined COA panels (~1-week turnaround) across the US & Puerto Rico.',
     breadcrumb: 'Our Testing',
     noindex: false
   },
@@ -25,8 +25,8 @@ export const PAGE_ROUTES = Object.freeze([
     path: '/about',
     view: 'about-view',
     heading: 'about-title',
-    title: 'About AssayNova | Independent Analytical Chemistry Lab',
-    description: 'Learn how AssayNova pairs HPLC chromatographic separation, LC-MS mass confirmation, and direct Lookup Code access to deliver verifiable Certificates of Analysis.',
+    title: 'About AssayNova | Independent Analytical & COA Lab',
+    description: 'Learn how AssayNova pairs duplicate HPLC purity assays, LC-MS mass confirmation, and Lookup Code access to issue verifiable COAs across the US & PR.',
     breadcrumb: 'About AssayNova',
     noindex: false
   },
@@ -35,7 +35,7 @@ export const PAGE_ROUTES = Object.freeze([
     view: 'verify-view',
     heading: 'verify-page-title',
     title: 'Verify a Certificate of Analysis (COA) Lookup | AssayNova',
-    description: 'Authenticate any published AssayNova Certificate of Analysis (COA) instantly. Enter your AN-XXXX-XXXX Lookup Code to inspect analytical results and signed PDFs.',
+    description: 'Verify any published AssayNova Certificate of Analysis (COA) online across the US & Puerto Rico. Enter your AN-XXXX-XXXX Lookup Code to check lab results.',
     breadcrumb: 'Verify a COA',
     noindex: false
   },
@@ -44,7 +44,7 @@ export const PAGE_ROUTES = Object.freeze([
     view: 'contact-view',
     heading: 'contact-title',
     title: 'Contact AssayNova | Analytical Testing Quotes & COA Support',
-    description: 'Contact AssayNova Client Services and Nova Support (Mon-Fri 9am-5pm ET) for HPLC or LC-MS testing enquiries, sample shipping guidance, or COA Lookup Code help.',
+    description: 'Contact AssayNova Client Services (Mon-Fri 9am-5pm ET / AST) for US & Puerto Rico COA testing quotes, domestic sample shipping, or Lookup Code support.',
     breadcrumb: 'Contact Us',
     noindex: false
   },
@@ -53,7 +53,7 @@ export const PAGE_ROUTES = Object.freeze([
     view: 'request-view',
     heading: 'request-page-title',
     title: 'Submit a Sample for HPLC & LC-MS COA Testing | AssayNova',
-    description: 'Plan your analytical testing request: select HPLC purity, LC-MS identity, or a comprehensive COA panel, enter sample batch details, and submit online.',
+    description: 'Submit research samples from any US state or Puerto Rico for HPLC purity, LC-MS identity, or full Certificate of Analysis (COA) testing at AssayNova.',
     breadcrumb: 'Submit a Sample',
     noindex: false
   },
@@ -148,6 +148,21 @@ function safeJSONScript(data) {
   return JSON.stringify(data).replace(/</g, '\\u003c');
 }
 
+const SERVICE_AREAS = Object.freeze([
+  {
+    '@type': 'Country',
+    name: 'United States',
+    identifier: 'US',
+    sameAs: 'https://www.wikidata.org/wiki/Q30'
+  },
+  {
+    '@type': 'AdministrativeArea',
+    name: 'Puerto Rico',
+    identifier: 'PR',
+    sameAs: 'https://www.wikidata.org/wiki/Q1183'
+  }
+]);
+
 function baseOrganizationGraph() {
   return [
     {
@@ -157,8 +172,16 @@ function baseOrganizationGraph() {
       alternateName: 'AssayNova Labs',
       url: `${CANONICAL_ORIGIN}/`,
       slogan: 'Precision in testing. Clarity in every result.',
-      description: 'Independent analytical testing laboratory platform providing reversed-phase HPLC purity analysis, LC-MS molecular identity confirmation, combined analytical panels, and Lookup Code verification for published Certificates of Analysis (COA).',
+      description: 'Independent analytical testing laboratory platform serving the United States and Puerto Rico with reversed-phase HPLC purity analysis, LC-MS molecular identity confirmation, combined analytical panels, and Lookup Code verification for published Certificates of Analysis (COA).',
       email: 'supports@assaynovalabs.com',
+      areaServed: SERVICE_AREAS,
+      knowsAbout: [
+        'Certificate of Analysis (COA)',
+        'High-Performance Liquid Chromatography (HPLC)',
+        'Liquid Chromatography-Mass Spectrometry (LC-MS)',
+        'Peptide Purity and Identity Analysis',
+        'Analytical Chemistry Quality Control'
+      ],
       logo: {
         '@type': 'ImageObject',
         '@id': `${CANONICAL_ORIGIN}/#logo`,
@@ -184,6 +207,7 @@ function baseOrganizationGraph() {
           name: 'Nova Support & Client Services',
           email: 'supports@assaynovalabs.com',
           url: `${CANONICAL_ORIGIN}/contact`,
+          areaServed: ['US', 'PR'],
           availableLanguage: ['en'],
           hoursAvailable: {
             '@type': 'OpeningHoursSpecification',
@@ -225,7 +249,8 @@ function serviceOfferCatalog() {
           '@id': `${CANONICAL_ORIGIN}/testing-methods#method-purity`,
           name: 'HPLC Purity Analysis',
           serviceType: 'High-Performance Liquid Chromatography (RP-HPLC-UV) Purity & Content Analysis',
-          description: 'Reversed-phase HPLC separation measuring relative chromatographic peak-area purity and duplicate analyte content determinations with ~1-week typical turnaround.',
+          description: 'Reversed-phase HPLC separation measuring relative chromatographic peak-area purity and duplicate analyte content determinations with ~1-week typical turnaround across the US and Puerto Rico.',
+          areaServed: SERVICE_AREAS,
           provider: { '@id': `${CANONICAL_ORIGIN}/#organization` },
           url: `${CANONICAL_ORIGIN}/testing-methods#method-purity`
         }
@@ -237,7 +262,8 @@ function serviceOfferCatalog() {
           '@id': `${CANONICAL_ORIGIN}/testing-methods#method-identity`,
           name: 'LC-MS Identity Confirmation',
           serviceType: 'Liquid Chromatography-Mass Spectrometry (LC-MS) Identity Confirmation',
-          description: 'Electrospray ionization LC-MS combining chromatographic separation with monoisotopic mass and charge-state isotope assessment to confirm analyte identity.',
+          description: 'Electrospray ionization LC-MS combining chromatographic separation with monoisotopic mass and charge-state isotope assessment to confirm analyte identity across the US and Puerto Rico.',
+          areaServed: SERVICE_AREAS,
           provider: { '@id': `${CANONICAL_ORIGIN}/#organization` },
           url: `${CANONICAL_ORIGIN}/testing-methods#method-identity`
         }
@@ -249,7 +275,8 @@ function serviceOfferCatalog() {
           '@id': `${CANONICAL_ORIGIN}/testing-methods#method-comprehensive`,
           name: 'Comprehensive Analytical COA Panel',
           serviceType: 'Combined HPLC Purity + LC-MS Identity Certificate of Analysis Panel',
-          description: 'Combined HPLC-UV purity analysis and LC-MS molecular identity confirmation reported on a published Certificate of Analysis (COA) verifiable via Lookup Code.',
+          description: 'Combined HPLC-UV purity analysis and LC-MS molecular identity confirmation reported on a published Certificate of Analysis (COA) verifiable via Lookup Code across the US and Puerto Rico.',
+          areaServed: SERVICE_AREAS,
           provider: { '@id': `${CANONICAL_ORIGIN}/#organization` },
           url: `${CANONICAL_ORIGIN}/testing-methods#method-comprehensive`
         }
@@ -408,6 +435,13 @@ export function injectRouteSEO(rawHtml, { pageRoute, coaRoute, generatedReport, 
 
   if (canonicalUrl) {
     headParts.push(`<link rel="canonical" href="${escapeHTML(canonicalUrl)}">`);
+    if (!coaRoute && !activeRoute.noindex) {
+      headParts.push(
+        `<link rel="alternate" hreflang="en-US" href="${escapeHTML(canonicalUrl)}">`,
+        `<link rel="alternate" hreflang="en-PR" href="${escapeHTML(canonicalUrl)}">`,
+        `<link rel="alternate" hreflang="x-default" href="${escapeHTML(canonicalUrl)}">`
+      );
+    }
   }
 
   if (!coaRoute && activeRoute.path === '/') {

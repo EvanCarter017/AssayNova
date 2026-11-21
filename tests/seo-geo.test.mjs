@@ -76,8 +76,20 @@ test('public routes emit unique SSR title, meta description, canonical, OpenGrap
       assert.ok(descMatch, `Missing meta description on ${route.path}`);
       assert.ok(canonMatch, `Missing canonical on ${route.path}`);
       assert.ok(ogImageMatch, `Missing og:image on ${route.path}`);
-      assert.equal(canonMatch[1], `https://assaynovalabs.com${route.path === '/' ? '/' : route.path}`);
+      const expectedCanonical = `https://assaynovalabs.com${route.path === '/' ? '/' : route.path}`;
+      assert.equal(canonMatch[1], expectedCanonical);
       assert.equal(ogImageMatch[1], 'https://assaynovalabs.com/assets/assaynova-og-card.jpg');
+
+      const hreflangMatches = [...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]*)"\s+href="([^"]*)">/gi)];
+      assert.deepEqual(
+        hreflangMatches.map((m) => [m[1], m[2]]),
+        [
+          ['en-US', expectedCanonical],
+          ['en-PR', expectedCanonical],
+          ['x-default', expectedCanonical]
+        ],
+        `Expected en-US, en-PR, and x-default hreflang tags on ${route.path}`
+      );
 
       titles.add(titleMatch[1]);
       descriptions.add(descMatch[1]);
@@ -96,6 +108,13 @@ test('public routes emit unique SSR title, meta description, canonical, OpenGrap
       const parsed = JSON.parse(jsonLdMatches[0][1]);
       assert.equal(parsed['@context'], 'https://schema.org');
       assert.ok(Array.isArray(parsed['@graph']) && parsed['@graph'].length >= 3);
+      const orgNode = parsed['@graph'].find((node) => node['@type'] === 'Organization');
+      assert.ok(orgNode, `Missing Organization schema node on ${route.path}`);
+      assert.deepEqual(
+        (orgNode.areaServed || []).map((area) => area.identifier),
+        ['US', 'PR'],
+        `Organization.areaServed must target US and Puerto Rico on ${route.path}`
+      );
     }
 
     assert.equal(titles.size, publicRoutes.length, 'Every public route must have a unique <title>');
@@ -113,6 +132,7 @@ test('auth/account and COA routes enforce noindex and no-store while sitemap.xml
       const html = await response.text();
       assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
       assert.doesNotMatch(html, /<link rel="canonical"/);
+      assert.doesNotMatch(html, /hreflang=/);
     }
 
     const robots = await fetch(`${base}/robots.txt`);

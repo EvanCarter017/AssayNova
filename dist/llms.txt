@@ -1,17 +1,22 @@
 # AssayNova
 
-> AssayNova (assaynovalabs.com) is an independent analytical testing laboratory platform providing Reversed-Phase High-Performance Liquid Chromatography (RP-HPLC-UV) purity analysis, Liquid Chromatography-Mass Spectrometry (LC-MS) molecular identity confirmation, sample request management, and public Certificate of Analysis (COA) verification via unique `AN-XXXX-XXXX` Lookup Codes.
+> AssayNova (assaynovalabs.com) is an independent analytical testing laboratory platform serving all 50 United States and Puerto Rico, providing Reversed-Phase High-Performance Liquid Chromatography (RP-HPLC-UV) purity analysis, Liquid Chromatography-Mass Spectrometry (LC-MS) molecular identity confirmation, sample request management, and public Certificate of Analysis (COA) verification via unique `AN-XXXX-XXXX` Lookup Codes.
 
-AssayNova reports combine chromatographic separation, duplicate (`n=2`) purity and analyte content determinations, mass-spectrometric identity assessment, and optional screening panels into published analytical records verifiable directly online by Lookup Code.
+AssayNova reports combine chromatographic separation, duplicate (`n=2`) purity and analyte content determinations, mass-spectrometric identity assessment, and optional screening panels into published analytical records verifiable directly online by Lookup Code across the US, Puerto Rico, and international research corridors.
+
+## Service Coverage (United States & Puerto Rico)
+
+- **Regions served**: All 50 U.S. states (`US`) and Puerto Rico (`PR`), with domestic U.S. mail-in sample coordination (USPS, FedEx, and UPS without international customs clearance for Puerto Rico submissions), plus international research partners.
+- **Operating hours**: Monday-Friday, 9:00 am-5:00 pm ET / AST (`supports@assaynovalabs.com`, ~1 business day response; ~1 week typical analytical turnaround from receipt).
 
 ## Core Pages
 
-- [Home](https://assaynovalabs.com/): Overview of AssayNova analytical testing services (`~1 week` typical turnaround), COA lookup access, and frequently asked questions.
-- [Testing Methods](https://assaynovalabs.com/testing-methods): Technical specifications for RP-HPLC-UV Purity Analysis, LC-MS Identity Confirmation, Comprehensive Analytical Panels, and pre-shipment sample preparation guidance.
+- [Home](https://assaynovalabs.com/): Overview of AssayNova COA analytical testing services (`~1 week` typical turnaround), US & Puerto Rico sample intake FAQ, and COA lookup access.
+- [Testing Methods](https://assaynovalabs.com/testing-methods): Technical specifications for RP-HPLC-UV Purity Analysis, LC-MS Identity Confirmation, Comprehensive Analytical COA Panels, and pre-shipment sample preparation guidance.
 - [Verify a COA](https://assaynovalabs.com/verify): Public Certificate of Analysis lookup tool using the 12-character `AN-XXXX-XXXX` Lookup Code printed on AssayNova certificates.
-- [Submit a Sample](https://assaynovalabs.com/submit-sample): Three-step analytical testing request builder for purity, identity, or comprehensive panels.
+- [Submit a Sample](https://assaynovalabs.com/submit-sample): Three-step analytical testing request builder for purity, identity, or comprehensive COA panels.
 - [About AssayNova](https://assaynovalabs.com/about): Independent analytical governance, duplicate determination methodology, and Research Use Only (RUO) reporting standards.
-- [Contact & Nova Support](https://assaynovalabs.com/contact): Client services and Nova Support (`supports@assaynovalabs.com`, Monday-Friday 9:00 am-5:00 pm ET, ~1 business day response).
+- [Contact & Nova Support](https://assaynovalabs.com/contact): Client services and Nova Support (`supports@assaynovalabs.com`, Monday-Friday 9:00 am-5:00 pm ET / AST).
 
 ## COA Verification Format for Agents
 

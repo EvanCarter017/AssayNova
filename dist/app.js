@@ -315,7 +315,11 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
   } else {
     document.title = page.title;
     if (page.description) document.querySelector('meta[name="description"]')?.setAttribute('content', page.description);
-    if (!page.noindex) document.querySelector('link[rel="canonical"]')?.setAttribute('href', 'https://assaynovalabs.com' + (page.path === '/' ? '/' : page.path));
+    if (!page.noindex) {
+      const canonicalHref = 'https://assaynovalabs.com' + (page.path === '/' ? '/' : page.path);
+      document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonicalHref);
+      for (const alt of document.querySelectorAll('link[rel="alternate"][hreflang]')) alt.setAttribute('href', canonicalHref);
+    }
   }
   if (!current.coa && page.path === '/submit-sample') {
     const rq = getRequestPage();
