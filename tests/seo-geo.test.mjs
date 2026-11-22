@@ -54,7 +54,7 @@ async function withSEOServer(callback) {
 test('public routes emit unique SSR title, meta description, canonical, OpenGraph, valid JSON-LD and exactly one H1', async () => {
   await withSEOServer(async (base) => {
     const publicRoutes = PAGE_ROUTES.filter((r) => !r.noindex);
-    assert.equal(publicRoutes.length, 7);
+    assert.equal(publicRoutes.length, 10);
     const titles = new Set();
     const descriptions = new Set();
 
@@ -80,15 +80,27 @@ test('public routes emit unique SSR title, meta description, canonical, OpenGrap
       assert.equal(canonMatch[1], expectedCanonical);
       assert.equal(ogImageMatch[1], 'https://assaynovalabs.com/assets/assaynova-og-card.jpg');
 
+      const expectedLang = route.lang || 'en';
+      assert.match(html, new RegExp(`<html\\s+lang="${expectedLang}">`, 'i'), `Expected <html lang="${expectedLang}"> on ${route.path}`);
+
       const hreflangMatches = [...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]*)"\s+href="([^"]*)">/gi)];
-      assert.deepEqual(
-        hreflangMatches.map((m) => [m[1], m[2]]),
-        [
+      const expectedHreflang = (route.path === '/' || route.path === '/es')
+        ? [
+          ['en-US', 'https://assaynovalabs.com/'],
+          ['en-PR', 'https://assaynovalabs.com/'],
+          ['es-PR', 'https://assaynovalabs.com/es'],
+          ['es-US', 'https://assaynovalabs.com/es'],
+          ['x-default', 'https://assaynovalabs.com/']
+        ]
+        : [
           ['en-US', expectedCanonical],
           ['en-PR', expectedCanonical],
           ['x-default', expectedCanonical]
-        ],
-        `Expected en-US, en-PR, and x-default hreflang tags on ${route.path}`
+        ];
+      assert.deepEqual(
+        hreflangMatches.map((m) => [m[1], m[2]]),
+        expectedHreflang,
+        `Unexpected hreflang tags on ${route.path}`
       );
 
       titles.add(titleMatch[1]);
@@ -115,6 +127,12 @@ test('public routes emit unique SSR title, meta description, canonical, OpenGrap
         ['US', 'PR'],
         `Organization.areaServed must target US and Puerto Rico on ${route.path}`
       );
+      if (route.path === '/how-to-read-a-coa') {
+        assert.ok(parsed['@graph'].some((node) => node['@type'] === 'TechArticle'), 'Expected TechArticle JSON-LD on /how-to-read-a-coa');
+      }
+      if (['/', '/testing-methods', '/coa-testing', '/es'].includes(route.path)) {
+        assert.ok(parsed['@graph'].some((node) => node['@type'] === 'OfferCatalog'), `Expected OfferCatalog JSON-LD on ${route.path}`);
+      }
     }
 
     assert.equal(titles.size, publicRoutes.length, 'Every public route must have a unique <title>');
@@ -132,7 +150,7 @@ test('auth/account and COA routes enforce noindex and no-store while sitemap.xml
       const html = await response.text();
       assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
       assert.doesNotMatch(html, /<link rel="canonical"/);
-      assert.doesNotMatch(html, /hreflang=/);
+      assert.doesNotMatch(html, /<link\s+rel="alternate"\s+hreflang=/i);
     }
 
     const robots = await fetch(`${base}/robots.txt`);
@@ -146,6 +164,9 @@ test('auth/account and COA routes enforce noindex and no-store while sitemap.xml
     assert.equal(sitemap.status, 200);
     assert.match(sitemap.headers.get('content-type') || '', /^application\/xml/);
     const sitemapText = await sitemap.text();
+    assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/coa-testing<\/loc>/);
+    assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/how-to-read-a-coa<\/loc>/);
+    assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/es<\/loc>/);
     assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/submit-sample<\/loc>/);
     assert.doesNotMatch(sitemapText, /\/login|\/account|\/coa\//);
 

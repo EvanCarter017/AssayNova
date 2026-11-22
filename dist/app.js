@@ -314,11 +314,18 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
     }
   } else {
     document.title = page.title;
+    if (document.documentElement) document.documentElement.lang = page.lang || 'en';
     if (page.description) document.querySelector('meta[name="description"]')?.setAttribute('content', page.description);
     if (!page.noindex) {
       const canonicalHref = 'https://assaynovalabs.com' + (page.path === '/' ? '/' : page.path);
       document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonicalHref);
-      for (const alt of document.querySelectorAll('link[rel="alternate"][hreflang]')) alt.setAttribute('href', canonicalHref);
+      const altMap = Array.isArray(page.alternates)
+        ? Object.fromEntries(page.alternates.map((a) => [a.hreflang, 'https://assaynovalabs.com' + (a.path === '/' ? '/' : a.path)]))
+        : null;
+      for (const alt of document.querySelectorAll('link[rel="alternate"][hreflang]')) {
+        const langCode = alt.getAttribute('hreflang');
+        alt.setAttribute('href', (altMap && altMap[langCode]) || canonicalHref);
+      }
     }
   }
   if (!current.coa && page.path === '/submit-sample') {

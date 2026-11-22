@@ -10,6 +10,14 @@ export const PAGE_ROUTES = Object.freeze([
     title: 'COA Analytical Testing Lab & Verification | AssayNova',
     description: 'Independent Certificate of Analysis (COA) lab serving the US & Puerto Rico. Submit samples for HPLC purity & LC-MS identity testing or verify a COA online.',
     breadcrumb: 'Home',
+    lang: 'en',
+    alternates: Object.freeze([
+      { hreflang: 'en-US', path: '/' },
+      { hreflang: 'en-PR', path: '/' },
+      { hreflang: 'es-PR', path: '/es' },
+      { hreflang: 'es-US', path: '/es' },
+      { hreflang: 'x-default', path: '/' }
+    ]),
     noindex: false
   },
   {
@@ -19,6 +27,45 @@ export const PAGE_ROUTES = Object.freeze([
     title: 'HPLC Purity & LC-MS COA Testing Services | AssayNova',
     description: 'Reversed-phase HPLC-UV purity assays, LC-MS molecular identity confirmation, and combined COA panels (~1-week turnaround) across the US & Puerto Rico.',
     breadcrumb: 'Our Testing',
+    lang: 'en',
+    noindex: false
+  },
+  {
+    path: '/coa-testing',
+    view: 'coa-testing-view',
+    heading: 'coa-testing-title',
+    title: 'Third-Party COA Testing Lab — US & Puerto Rico | AssayNova',
+    description: 'Independent third-party COA testing lab for all 50 US states and Puerto Rico. Duplicate HPLC purity, LC-MS identity, domestic shipping & online COA lookup.',
+    breadcrumb: 'COA Testing Lab',
+    lang: 'en',
+    noindex: false
+  },
+  {
+    path: '/how-to-read-a-coa',
+    view: 'coa-guide-view',
+    heading: 'coa-guide-title',
+    title: 'How to Read & Verify a COA (HPLC & LC-MS) | AssayNova',
+    description: 'Step-by-step guide to reading and verifying a Certificate of Analysis (COA): HPLC purity vs. net content, LC-MS identity, duplicate runs, and QR lookup.',
+    breadcrumb: 'How to Read a COA',
+    lang: 'en',
+    schemaType: 'TechArticle',
+    noindex: false
+  },
+  {
+    path: '/es',
+    view: 'es-view',
+    heading: 'es-title',
+    title: 'Laboratorio de Certificado de Análisis (COA) | AssayNova',
+    description: 'Laboratorio independiente de Certificado de Análisis (COA) para Puerto Rico y EE. UU. Pureza HPLC, identidad LC-MS, envío doméstico y verificación en línea.',
+    breadcrumb: 'COA en Español',
+    lang: 'es-PR',
+    alternates: Object.freeze([
+      { hreflang: 'en-US', path: '/' },
+      { hreflang: 'en-PR', path: '/' },
+      { hreflang: 'es-PR', path: '/es' },
+      { hreflang: 'es-US', path: '/es' },
+      { hreflang: 'x-default', path: '/' }
+    ]),
     noindex: false
   },
   {
@@ -28,6 +75,7 @@ export const PAGE_ROUTES = Object.freeze([
     title: 'About AssayNova | Independent Analytical & COA Lab',
     description: 'Learn how AssayNova pairs duplicate HPLC purity assays, LC-MS mass confirmation, and Lookup Code access to issue verifiable COAs across the US & PR.',
     breadcrumb: 'About AssayNova',
+    lang: 'en',
     noindex: false
   },
   {
@@ -37,6 +85,7 @@ export const PAGE_ROUTES = Object.freeze([
     title: 'Verify a Certificate of Analysis (COA) Lookup | AssayNova',
     description: 'Verify any published AssayNova Certificate of Analysis (COA) online across the US & Puerto Rico. Enter your AN-XXXX-XXXX Lookup Code to check lab results.',
     breadcrumb: 'Verify a COA',
+    lang: 'en',
     noindex: false
   },
   {
@@ -46,6 +95,7 @@ export const PAGE_ROUTES = Object.freeze([
     title: 'Contact AssayNova | Analytical Testing Quotes & COA Support',
     description: 'Contact AssayNova Client Services (Mon-Fri 9am-5pm ET / AST) for US & Puerto Rico COA testing quotes, domestic sample shipping, or Lookup Code support.',
     breadcrumb: 'Contact Us',
+    lang: 'en',
     noindex: false
   },
   {
@@ -55,6 +105,7 @@ export const PAGE_ROUTES = Object.freeze([
     title: 'Submit a Sample for HPLC & LC-MS COA Testing | AssayNova',
     description: 'Submit research samples from any US state or Puerto Rico for HPLC purity, LC-MS identity, or full Certificate of Analysis (COA) testing at AssayNova.',
     breadcrumb: 'Submit a Sample',
+    lang: 'en',
     noindex: false
   },
   {
@@ -64,6 +115,7 @@ export const PAGE_ROUTES = Object.freeze([
     title: 'Privacy Policy & Cookie Storage | AssayNova',
     description: 'Read AssayNova’s privacy policy covering customer account records, optional Google sign-in, necessary session security cookies, and public COA lookup.',
     breadcrumb: 'Privacy Policy',
+    lang: 'en',
     noindex: false
   },
   {
@@ -342,6 +394,7 @@ function buildStructuredData({ pageRoute, coaRoute, generatedReport }) {
     });
   }
 
+  const pageLang = pageRoute.lang || 'en';
   const webPage = {
     '@type': pageRoute.path === '/about' ? 'AboutPage' : pageRoute.path === '/contact' ? 'ContactPage' : 'WebPage',
     '@id': `${canonicalUrl}#webpage`,
@@ -350,7 +403,7 @@ function buildStructuredData({ pageRoute, coaRoute, generatedReport }) {
     description: pageRoute.description,
     isPartOf: { '@id': `${CANONICAL_ORIGIN}/#website` },
     about: { '@id': `${CANONICAL_ORIGIN}/#organization` },
-    inLanguage: 'en',
+    inLanguage: pageLang,
     primaryImageOfPage: {
       '@type': 'ImageObject',
       url: OG_CARD_URL,
@@ -375,7 +428,35 @@ function buildStructuredData({ pageRoute, coaRoute, generatedReport }) {
 
   graph.push(webPage);
 
-  if (pageRoute.path === '/' || pageRoute.path === '/testing-methods') {
+  if (pageRoute.schemaType === 'TechArticle') {
+    graph.push({
+      '@type': 'TechArticle',
+      '@id': `${canonicalUrl}#article`,
+      headline: 'How to Read and Verify a Certificate of Analysis (COA): HPLC Purity, Net Content, and LC-MS Identity',
+      description: pageRoute.description,
+      url: canonicalUrl,
+      inLanguage: pageLang,
+      datePublished: '2026-11-22',
+      dateModified: '2026-11-22',
+      author: { '@id': `${CANONICAL_ORIGIN}/#organization` },
+      publisher: { '@id': `${CANONICAL_ORIGIN}/#organization` },
+      mainEntityOfPage: { '@id': `${canonicalUrl}#webpage` },
+      image: {
+        '@type': 'ImageObject',
+        url: OG_CARD_URL,
+        width: 1200,
+        height: 630
+      },
+      about: [
+        'Certificate of Analysis (COA)',
+        'High-Performance Liquid Chromatography (HPLC)',
+        'Liquid Chromatography-Mass Spectrometry (LC-MS)',
+        'COA Lookup Code Verification'
+      ]
+    });
+  }
+
+  if (['/', '/testing-methods', '/coa-testing', '/es'].includes(pageRoute.path)) {
     graph.push(serviceOfferCatalog());
   }
 
@@ -423,6 +504,11 @@ export function injectRouteSEO(rawHtml, { pageRoute, coaRoute, generatedReport, 
     canonicalUrl = '';
   }
 
+  const docLang = (!coaRoute && activeRoute.lang) ? activeRoute.lang : 'en';
+  if (docLang !== 'en') {
+    html = html.replace(/<html\s+lang="[^"]*">/i, `<html lang="${escapeHTML(docLang)}">`);
+  }
+
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHTML(title)}</title>`);
   html = html.replace(
     /<meta\s+name="description"\s+content="[^"]*">/i,
@@ -436,11 +522,19 @@ export function injectRouteSEO(rawHtml, { pageRoute, coaRoute, generatedReport, 
   if (canonicalUrl) {
     headParts.push(`<link rel="canonical" href="${escapeHTML(canonicalUrl)}">`);
     if (!coaRoute && !activeRoute.noindex) {
-      headParts.push(
-        `<link rel="alternate" hreflang="en-US" href="${escapeHTML(canonicalUrl)}">`,
-        `<link rel="alternate" hreflang="en-PR" href="${escapeHTML(canonicalUrl)}">`,
-        `<link rel="alternate" hreflang="x-default" href="${escapeHTML(canonicalUrl)}">`
-      );
+      const alternates = Array.isArray(activeRoute.alternates) && activeRoute.alternates.length > 0
+        ? activeRoute.alternates.map((entry) => ({
+          hreflang: entry.hreflang,
+          href: `${CANONICAL_ORIGIN}${entry.path === '/' ? '/' : entry.path}`
+        }))
+        : [
+          { hreflang: 'en-US', href: canonicalUrl },
+          { hreflang: 'en-PR', href: canonicalUrl },
+          { hreflang: 'x-default', href: canonicalUrl }
+        ];
+      for (const alt of alternates) {
+        headParts.push(`<link rel="alternate" hreflang="${escapeHTML(alt.hreflang)}" href="${escapeHTML(alt.href)}">`);
+      }
     }
   }
 
@@ -451,10 +545,12 @@ export function injectRouteSEO(rawHtml, { pageRoute, coaRoute, generatedReport, 
   }
 
   const ogUrl = canonicalUrl || `${CANONICAL_ORIGIN}/`;
+  const ogLocale = docLang === 'es-PR' ? 'es_PR' : 'en_US';
   headParts.push(
     '<meta property="og:type" content="website">',
     '<meta property="og:site_name" content="AssayNova">',
-    '<meta property="og:locale" content="en_US">',
+    `<meta property="og:locale" content="${ogLocale}">`,
+    ...(docLang === 'es-PR' ? ['<meta property="og:locale:alternate" content="en_US">'] : activeRoute.path === '/' ? ['<meta property="og:locale:alternate" content="es_PR">'] : []),
     `<meta property="og:url" content="${escapeHTML(ogUrl)}">`,
     `<meta property="og:title" content="${escapeHTML(title)}">`,
     `<meta property="og:description" content="${escapeHTML(description)}">`,
