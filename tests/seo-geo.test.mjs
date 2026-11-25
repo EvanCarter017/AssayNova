@@ -54,7 +54,7 @@ async function withSEOServer(callback) {
 test('public routes emit unique SSR title, meta description, canonical, OpenGraph, valid JSON-LD and exactly one H1', async () => {
   await withSEOServer(async (base) => {
     const publicRoutes = PAGE_ROUTES.filter((r) => !r.noindex);
-    assert.equal(publicRoutes.length, 10);
+    assert.equal(publicRoutes.length, 14);
     const titles = new Set();
     const descriptions = new Set();
 
@@ -92,11 +92,19 @@ test('public routes emit unique SSR title, meta description, canonical, OpenGrap
           ['es-US', 'https://assaynovalabs.com/es'],
           ['x-default', 'https://assaynovalabs.com/']
         ]
-        : [
-          ['en-US', expectedCanonical],
-          ['en-PR', expectedCanonical],
-          ['x-default', expectedCanonical]
-        ];
+        : (route.path === '/how-to-read-a-coa' || route.path === '/como-leer-un-coa')
+          ? [
+            ['en-US', 'https://assaynovalabs.com/how-to-read-a-coa'],
+            ['en-PR', 'https://assaynovalabs.com/how-to-read-a-coa'],
+            ['es-PR', 'https://assaynovalabs.com/como-leer-un-coa'],
+            ['es-US', 'https://assaynovalabs.com/como-leer-un-coa'],
+            ['x-default', 'https://assaynovalabs.com/how-to-read-a-coa']
+          ]
+          : [
+            ['en-US', expectedCanonical],
+            ['en-PR', expectedCanonical],
+            ['x-default', expectedCanonical]
+          ];
       assert.deepEqual(
         hreflangMatches.map((m) => [m[1], m[2]]),
         expectedHreflang,
@@ -127,10 +135,13 @@ test('public routes emit unique SSR title, meta description, canonical, OpenGrap
         ['US', 'PR'],
         `Organization.areaServed must target US and Puerto Rico on ${route.path}`
       );
-      if (route.path === '/how-to-read-a-coa') {
-        assert.ok(parsed['@graph'].some((node) => node['@type'] === 'TechArticle'), 'Expected TechArticle JSON-LD on /how-to-read-a-coa');
+      if (route.path === '/how-to-read-a-coa' || route.path === '/como-leer-un-coa') {
+        assert.ok(parsed['@graph'].some((node) => node['@type'] === 'TechArticle'), `Expected TechArticle JSON-LD on ${route.path}`);
       }
-      if (['/', '/testing-methods', '/coa-testing', '/es'].includes(route.path)) {
+      if (route.path === '/coa-calculator') {
+        assert.ok(parsed['@graph'].some((node) => node['@type'] === 'WebApplication'), 'Expected WebApplication JSON-LD on /coa-calculator');
+      }
+      if (['/', '/testing-methods', '/coa-testing', '/hplc-purity-testing', '/lc-ms-identity-testing', '/es'].includes(route.path)) {
         assert.ok(parsed['@graph'].some((node) => node['@type'] === 'OfferCatalog'), `Expected OfferCatalog JSON-LD on ${route.path}`);
       }
     }
@@ -165,7 +176,11 @@ test('auth/account and COA routes enforce noindex and no-store while sitemap.xml
     assert.match(sitemap.headers.get('content-type') || '', /^application\/xml/);
     const sitemapText = await sitemap.text();
     assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/coa-testing<\/loc>/);
+    assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/hplc-purity-testing<\/loc>/);
+    assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/lc-ms-identity-testing<\/loc>/);
     assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/how-to-read-a-coa<\/loc>/);
+    assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/como-leer-un-coa<\/loc>/);
+    assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/coa-calculator<\/loc>/);
     assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/es<\/loc>/);
     assert.match(sitemapText, /<loc>https:\/\/assaynovalabs\.com\/submit-sample<\/loc>/);
     assert.doesNotMatch(sitemapText, /\/login|\/account|\/coa\//);
@@ -174,5 +189,10 @@ test('auth/account and COA routes enforce noindex and no-store while sitemap.xml
     assert.equal(llms.status, 200);
     assert.match(llms.headers.get('content-type') || '', /^text\/plain/);
     assert.match(await llms.text(), /# AssayNova/);
+
+    const indexnow = await fetch(`${base}/21a517ee3351d1197bfa1b705bd956ff.txt`);
+    assert.equal(indexnow.status, 200);
+    assert.match(indexnow.headers.get('content-type') || '', /^text\/plain/);
+    assert.equal((await indexnow.text()).trim(), '21a517ee3351d1197bfa1b705bd956ff');
   });
 });

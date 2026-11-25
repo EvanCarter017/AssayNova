@@ -9,14 +9,18 @@ AssayNova reports combine chromatographic separation, duplicate (`n=2`) purity a
 - **Regions served**: All 50 U.S. states (`US`) and Puerto Rico (`PR`), with domestic U.S. mail-in sample coordination (USPS, FedEx, and UPS without international customs clearance for Puerto Rico submissions), plus international research partners.
 - **Operating hours**: Monday-Friday, 9:00 am-5:00 pm ET / AST (`supports@assaynovalabs.com`, ~1 business day response; ~1 week typical analytical turnaround from receipt).
 
-## Core Pages & Topical Guides
+## Core Pages, Method Guides & Interactive Tools
 
 - [Home](https://assaynovalabs.com/): Overview of AssayNova COA analytical testing services (`~1 week` typical turnaround), US & Puerto Rico sample intake FAQ, and COA lookup access.
 - [Third-Party COA Testing Lab (US & Puerto Rico)](https://assaynovalabs.com/coa-testing): Commercial overview of independent HPLC purity, LC-MS identity, and comprehensive COA testing panels with US domestic & Puerto Rico shipping workflows.
+- [RP-HPLC Purity & Net Content Testing](https://assaynovalabs.com/hplc-purity-testing): Detailed technical specifications for reversed-phase HPLC-UV chromatographic peak-area purity, calibrated net analyte mass (mg/vial), and duplicate (`n=2`) replicate reporting.
+- [LC-MS Molecular Identity Testing](https://assaynovalabs.com/lc-ms-identity-testing): Electrospray ionization LC-MS monoisotopic molecular weight, multi-charge ion, and carbon-13 isotope confirmation for single analytes and blends.
 - [How to Read & Verify a COA](https://assaynovalabs.com/how-to-read-a-coa): Technical guide explaining HPLC area% purity vs. calibrated net content (mg/vial), counterions, ESI-LC-MS molecular mass confirmation, duplicate repeatability, and 5-step PDF authenticity checks.
+- [Cómo Leer y Verificar un COA (Español — PR y EE. UU.)](https://assaynovalabs.com/como-leer-un-coa): Spanish technical guide explaining HPLC purity vs. net content, LC-MS identity confirmation, and 5-step `AN-XXXX-XXXX` COA authenticity verification.
+- [COA Purity vs. Net Content Calculator & Authenticity Checker](https://assaynovalabs.com/coa-calculator): Free browser-based calculator comparing labeled container mass, HPLC purity %, measured net content (mg), and gross powder mass, paired with a 6-point third-party COA verification checklist.
 - [Laboratorio COA en Español — Puerto Rico y EE. UU.](https://assaynovalabs.com/es): Spanish-language overview of AssayNova Certificate of Analysis (COA) testing, domestic Puerto Rico shipping (USPS/FedEx/UPS), and online `AN-XXXX-XXXX` COA verification.
-- [Testing Methods](https://assaynovalabs.com/testing-methods): Technical specifications for RP-HPLC-UV Purity Analysis, LC-MS Identity Confirmation, Comprehensive Analytical COA Panels, and pre-shipment sample preparation guidance.
-- [Verify a COA](https://assaynovalabs.com/verify): Public Certificate of Analysis lookup tool using the 12-character `AN-XXXX-XXXX` Lookup Code printed on AssayNova certificates.
+- [Testing Methods](https://assaynovalabs.com/testing-methods): Side-by-side overview of RP-HPLC-UV Purity Analysis, LC-MS Identity Confirmation, Comprehensive Analytical COA Panels, and pre-shipment sample preparation guidance.
+- [Verify a COA](https://assaynovalabs.com/verify): Public Certificate of Analysis lookup tool using the 12-character `AN-XXXX-XXXX` Lookup Code printed on AssayNova certificates, plus supplier verification badge snippets.
 - [Submit a Sample](https://assaynovalabs.com/submit-sample): Three-step analytical testing request builder for purity, identity, or comprehensive COA panels.
 - [About AssayNova](https://assaynovalabs.com/about): Independent analytical governance, duplicate determination methodology, and Research Use Only (RUO) reporting standards.
 - [Contact & Nova Support](https://assaynovalabs.com/contact): Client services and Nova Support (`supports@assaynovalabs.com`, Monday-Friday 9:00 am-5:00 pm ET / AST).

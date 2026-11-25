@@ -114,6 +114,7 @@
         </div>
       </header>
       <nav class="container methods-nav" aria-label="Explore our testing"><a href="/testing-methods#method-purity"><span>01</span>HPLC Purity Analysis <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a><a href="/testing-methods#method-identity"><span>02</span>LC–MS Identity Confirmation <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a><a href="/testing-methods#method-comprehensive"><span>03</span>Comprehensive COA Panel <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a></nav>
+      <div class="container seo-hub-links" style="margin-top:0;padding-bottom:10px"><a href="/hplc-purity-testing">RP-HPLC-UV technical specifications</a><a href="/lc-ms-identity-testing">ESI-LC–MS identity confirmation details</a><a href="/coa-calculator">HPLC Purity vs. Net Content Calculator</a></div>
       <section id="testing" class="container methods-suite" aria-labelledby="testing-title">
         <div class="methods-section-heading"><p class="methods-kicker">CHROMATOGRAPHY &amp; MASS SPECTROMETRY</p><h2 id="testing-title">Complementary methods for defensible Certificates of Analysis.</h2></div>
         <article id="method-purity" tabindex="-1" class="methods-article" aria-labelledby="method-purity-title">
@@ -152,6 +153,17 @@
         <div class="verify-help-options">
           <div class="verify-help-option"><h3>Lost your Lookup Code?</h3><p>Submitters can request report recovery through Nova Support using the testing email address and company or project reference associated with the batch.</p><button class="verify-support-link" type="button" data-action="recover-report">Recover a report <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></button></div>
           <div class="verify-help-option"><h3>Code not found or mismatched PDF?</h3><p>If an <code>AN-XXXX-XXXX</code> code returns no published record or differs from a document shared by a third party, email Client Services directly with the code and PDF for verification review, or review our <a href="/how-to-read-a-coa" style="text-decoration:underline;font-weight:600;color:#006f69">guide to reading and authenticating a COA</a>.</p><a class="verify-support-link" href="/contact">Contact support <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a></div>
+        </div>
+        <div class="verify-badge-card" aria-labelledby="verify-badge-title">
+          <h3 id="verify-badge-title">Display a Verified COA Badge on Your Product Pages</h3>
+          <p>Suppliers and research partners who publish AssayNova COAs can link buyers directly to the laboratory verification registry. Copy the portal badge below, or open any published <code>/coa/AN-XXXX-XXXX</code> record and select <strong>Copy verify badge HTML</strong> for a lot-specific link.</p>
+          <div class="verify-badge-row">
+            <span class="verify-badge-sample" aria-hidden="true">✓ Verify COA · AssayNova Labs</span>
+            <button type="button" class="button button-outline button-small" data-action="copy-supplier-badge">Copy badge HTML</button>
+            <a class="text-button" href="/coa-calculator">Open COA Purity Calculator <svg class="icon small" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          </div>
+          <label class="sr-only" for="verify-badge-snippet">Verified COA badge HTML</label>
+          <textarea id="verify-badge-snippet" class="verify-badge-code" readonly>&lt;a href="https://assaynovalabs.com/verify" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:6px;border:1px solid #008e86;background:#092d42;color:#ffffff;font:600 13px/1.4 'Segoe UI',Arial,sans-serif;text-decoration:none"&gt;Verified COA · AssayNova Labs&lt;/a&gt;</textarea>
         </div>
       </section>
     </section>
@@ -283,7 +295,8 @@
           <p class="seo-lead">A practical analytical chemistry guide to interpreting reversed-phase HPLC chromatographic purity, calibrated net analyte content (mg/vial), electrospray LC–MS mass confirmation, duplicate repeatability, and Lookup Code authentication.</p>
           <div class="seo-hero-actions">
             <a class="button button-teal" href="/verify">Verify a COA now <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a>
-            <a class="seo-hero-link" href="/coa-testing">Submit a sample for independent testing <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow-up"/></svg></a>
+            <a class="seo-hero-link" href="/coa-calculator">Open Purity vs. Net Content Calculator <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow-up"/></svg></a>
+            <a class="seo-lang-pill" href="/como-leer-un-coa" hreflang="es-PR">Leer guía en Español</a>
           </div>
         </div>
       </header>
@@ -437,7 +450,7 @@
         <div class="seo-faq">
           <details><summary>¿Qué incluye un Certificado de Análisis (COA) emitido por AssayNova?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Cada COA publicado incluye la identificación del compuesto y lote, determinaciones por duplicado (Réplica 1, Réplica 2 y Promedio) de pureza cromatográfica por HPLC-UV, contenido neto cuando aplica, evaluación de identidad molecular por LC–MS, figuras vectoriales, archivo PDF firmado y un código único <code>AN-XXXX-XXXX</code> verificable en línea.</p></details>
           <details><summary>¿Cómo puedo verificar si un Certificado de Análisis (COA) es auténtico?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Ingrese a la página <a href="/verify" style="text-decoration:underline;font-weight:600;color:#006f69">Verify a COA</a> y escriba el código de consulta de 12 caracteres <code>AN-XXXX-XXXX</code> (incluyendo ambos guiones). Compare el nombre del producto, número de lote, fechas, pureza promedio y PDF oficial directamente contra la copia recibida.</p></details>
-          <details><summary>¿Por qué la pureza por HPLC (%) es distinta al contenido neto en mg por vial?<svg class="icon"><use href="#i-plus"/></svg></summary><p>La pureza por área de pico UV (%) mide únicamente las sustancias detectables por UV en el cromatograma, mientras que sales (acetato o TFA), humedad residual y excipientes no absorben en UV. Por ello AssayNova reporta la pureza cromatográfica separada del contenido neto calibrado. Puede ampliar este tema en nuestra <a href="/how-to-read-a-coa" style="text-decoration:underline;font-weight:600;color:#006f69">guía técnica para leer un COA (en inglés)</a>.</p></details>
+          <details><summary>¿Por qué la pureza por HPLC (%) es distinta al contenido neto en mg por vial?<svg class="icon"><use href="#i-plus"/></svg></summary><p>La pureza por área de pico UV (%) mide únicamente las sustancias detectables por UV en el cromatograma, mientras que sales (acetato o TFA), humedad residual y excipientes no absorben en UV. Por ello AssayNova reporta la pureza cromatográfica separada del contenido neto calibrado. Puede leer nuestra <a href="/como-leer-un-coa" style="text-decoration:underline;font-weight:600;color:#006f69">guía completa en español sobre cómo leer un COA</a> o usar la <a href="/coa-calculator" style="text-decoration:underline;font-weight:600;color:#006f69">calculadora de pureza vs. contenido neto</a>.</p></details>
           <details><summary>¿Cuál es el alcance operativo de los análisis?<svg class="icon"><use href="#i-plus"/></svg></summary><p>Todos los análisis se realizan exclusivamente para uso en investigación no clínica (Research Use Only — RUO) y control analítico de calidad. El alcance, la cantidad mínima de muestra y la cotización se confirman antes del envío.</p></details>
         </div>
         <div class="seo-cta">
@@ -449,6 +462,313 @@
             <a class="button button-teal" href="/submit-sample" data-service="comprehensive">Preparar solicitud <svg class="icon small" aria-hidden="true"><use href="#i-arrow"/></svg></a>
             <a class="button button-outline" href="/verify">Verificar COA</a>
             <a class="button button-outline" href="/contact">Contacto</a>
+          </div>
+        </div>
+      </section>
+    </section>
+    <section id="hplc-testing-view" class="page-view seo-hub" aria-labelledby="hplc-testing-title" hidden>
+      <header class="seo-hero">
+        <div class="container seo-hero-inner">
+          <p class="seo-kicker">RP-HPLC-UV CHROMATOGRAPHY · UNITED STATES &amp; PUERTO RICO</p>
+          <h1 id="hplc-testing-title" tabindex="-1">RP-HPLC Purity &amp; Net Content COA Testing.</h1>
+          <p class="seo-lead">Independent reversed-phase High-Performance Liquid Chromatography (RP-HPLC-UV) quantifying chromatographic peak-area purity (%) and calibrated net analyte content (mg/vial or IU/vial) with duplicate determinations (n=2) for research teams and suppliers across all 50 US states and Puerto Rico.</p>
+          <div class="seo-hero-actions">
+            <a class="button button-teal" href="/submit-sample" data-service="purity">Request HPLC purity analysis <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a>
+            <a class="seo-hero-link" href="/coa-calculator">Open Purity vs. Net Content Calculator <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow-up"/></svg></a>
+          </div>
+        </div>
+      </header>
+      <div class="seo-facts-bar">
+        <dl class="container seo-facts">
+          <div class="seo-fact"><dt>Analytical Method</dt><dd>Reversed-Phase HPLC-UV Gradient</dd></div>
+          <div class="seo-fact"><dt>Repeatability Standard</dt><dd>Duplicate (Replicate 1, 2 &amp; Mean)</dd></div>
+          <div class="seo-fact"><dt>Quantitative Output</dt><dd>Peak-Area Purity (%) &amp; Net mg/vial</dd></div>
+          <div class="seo-fact"><dt>Typical Turnaround</dt><dd>~1 Week · US &amp; Puerto Rico Domestic</dd></div>
+        </dl>
+      </div>
+      <section class="container seo-section" aria-labelledby="hplc-overview-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">CHROMATOGRAPHIC SEPARATION</p>
+          <h2 id="hplc-overview-title">What RP-HPLC-UV Measures on Your Certificate of Analysis.</h2>
+          <p>Reversed-phase HPLC resolves target peptides, small molecules, and research compounds from closely related synthesis byproducts, deletion sequences, oxidized species, and hydrolytic degradants across controlled mobile-phase gradients.</p>
+        </div>
+        <div class="seo-grid-2">
+          <article class="seo-card">
+            <h3>Relative Chromatographic Purity (UV Area%)</h3>
+            <p>Measures the integrated UV absorbance area of the principal analyte peak divided by the total integrated area of all UV-active peaks detected during the chromatographic run. AssayNova reports Replicate 1, Replicate 2, and Mean purity alongside principal retention time (min) and annotated chromatogram traces.</p>
+          </article>
+          <article class="seo-card seo-card-soft">
+            <h3>Calibrated Net Content (mg/vial or IU/vial)</h3>
+            <p>Separately quantifies actual active analyte mass inside each vial against a calibrated reference standard. Because counterions (acetate, TFA), bound moisture, and lyophilization excipients do not absorb UV light, net content testing protects against underfilled vials that still read above 99% UV purity.</p>
+            <a class="seo-card-link" href="/coa-calculator">Calculate purity vs. net content variance <svg class="icon small" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          </article>
+        </div>
+      </section>
+      <section class="container seo-section" aria-labelledby="hplc-deliverables-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">PUBLISHED COA DELIVERABLES</p>
+          <h2 id="hplc-deliverables-title">Included in Every AssayNova HPLC Certificate of Analysis.</h2>
+        </div>
+        <div class="seo-table-wrap">
+          <table class="seo-table">
+            <thead><tr><th>Report Element</th><th>Analytical Specification</th><th>Why It Matters</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Duplicate Determinations (n=2)</strong></td><td>Replicate 1, Replicate 2, and Mean values reported explicitly.</td><td>Exposes reconstitution and weighing variance rather than masking spread behind a single injection.</td></tr>
+              <tr><td><strong>Annotated UV Chromatogram</strong></td><td>Principal peak retention time (min), relative UV response (0–100%), and integrated peak table.</td><td>Enables chemists and B2B buyers to inspect peak symmetry and trace impurities visually.</td></tr>
+              <tr><td><strong>Registry Verification</strong></td><td>Unique <code>AN-XXXX-XXXX</code> Lookup Code, QR link, and downloadable signed PDF.</td><td>Eliminates unverifiable email-only PDFs for US, Puerto Rico, and international stakeholders.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="seo-hub-links">
+          <a href="/lc-ms-identity-testing">Pair with ESI-LC–MS molecular identity confirmation</a>
+          <a href="/coa-testing">View all US &amp; Puerto Rico COA testing panels</a>
+          <a href="/how-to-read-a-coa">Read our complete COA interpretation guide</a>
+        </div>
+        <div class="seo-cta">
+          <div>
+            <h2>Need independent RP-HPLC purity &amp; net content data?</h2>
+            <p>Submit lyophilized vials or sealed powders from any US state or Puerto Rico via domestic USPS, FedEx, or UPS with ~1-week turnaround from receipt.</p>
+          </div>
+          <div class="seo-cta-actions">
+            <a class="button button-teal" href="/submit-sample" data-service="purity">Submit HPLC sample <svg class="icon small" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+            <a class="button button-outline" href="/submit-sample" data-service="comprehensive">Combine with LC–MS</a>
+          </div>
+        </div>
+      </section>
+    </section>
+    <section id="lcms-testing-view" class="page-view seo-hub" aria-labelledby="lcms-testing-title" hidden>
+      <header class="seo-hero">
+        <div class="container seo-hero-inner">
+          <p class="seo-kicker">ESI-LC–MS MASS SPECTROMETRY · UNITED STATES &amp; PUERTO RICO</p>
+          <h1 id="lcms-testing-title" tabindex="-1">LC–MS Molecular Identity Confirmation &amp; COA Testing.</h1>
+          <p class="seo-lead">Electrospray ionization Liquid Chromatography–Mass Spectrometry (ESI-LC–MS) verifies intact molecular weight, multi-charge ion states, and carbon-13 isotope envelopes so your Certificate of Analysis confirms both compound identity and purity across the US and Puerto Rico.</p>
+          <div class="seo-hero-actions">
+            <a class="button button-teal" href="/submit-sample" data-service="identity">Request LC–MS identity testing <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a>
+            <a class="seo-hero-link" href="/hplc-purity-testing">Compare with RP-HPLC purity testing <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow-up"/></svg></a>
+          </div>
+        </div>
+      </header>
+      <div class="seo-facts-bar">
+        <dl class="container seo-facts">
+          <div class="seo-fact"><dt>Ionization Mode</dt><dd>Electrospray Ionization (ESI-LC–MS)</dd></div>
+          <div class="seo-fact"><dt>Identity Evidence</dt><dd>Monoisotopic m/z &amp; C-13 Isotopes</dd></div>
+          <div class="seo-fact"><dt>Formulation Support</dt><dd>Single Analytes &amp; Multi-Component Blends</dd></div>
+          <div class="seo-fact"><dt>Verification Access</dt><dd>Permanent AN-XXXX-XXXX Lookup Code</dd></div>
+        </dl>
+      </div>
+      <section class="container seo-section" aria-labelledby="lcms-why-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">ORTHOGONAL CONFIRMATION</p>
+          <h2 id="lcms-why-title">Why HPLC Retention Time Alone Cannot Prove Compound Identity.</h2>
+          <p>Chromatographic retention time depends on column chemistry and gradient drift. Two structurally distinct compounds—or a truncated analog and its parent compound—can elute near the same retention window on UV-only HPLC. Electrospray LC–MS adds direct mass-to-charge (<em>m/z</em>) evidence to eliminate misidentification risk.</p>
+        </div>
+        <div class="seo-grid-3">
+          <article class="seo-card">
+            <h3>Multi-Charge Ion Deconvolution</h3>
+            <p>Detects intact protonated molecular ions across expected charge states (such as [M+H]+, [M+2H]2+, and [M+3H]3+) within calibrated scan windows to verify molecular formula concordance.</p>
+          </article>
+          <article class="seo-card">
+            <h3>Carbon-13 Isotope Spacing</h3>
+            <p>Evaluates isotopic peak spacing alongside nominal <em>m/z</em> positions to confirm charge state assignments and separate true target signals from background noise.</p>
+          </article>
+          <article class="seo-card seo-card-soft">
+            <h3>Transparent Blend Reporting</h3>
+            <p>For multi-analyte blends, each expected component is assessed individually and recorded transparently on the COA rather than collapsed into an opaque single pass/fail stamp.</p>
+          </article>
+        </div>
+      </section>
+      <section class="container seo-section" aria-labelledby="lcms-when-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">RECOMMENDED USE CASES</p>
+          <h2 id="lcms-when-title">When to Order Standalone LC–MS vs. a Comprehensive COA Panel.</h2>
+        </div>
+        <div class="seo-callout">
+          <p><strong>Best practice for US &amp; Puerto Rico batch release:</strong> Order standalone LC–MS when screening an incoming raw material solely to verify molecular identity, or select the <strong>Comprehensive Analytical COA Panel</strong> (RP-HPLC-UV + ESI-LC–MS) to publish chromatographic purity, net vial mass, and mass-spectrometric identity together under one verifiable <code>AN-XXXX-XXXX</code> Lookup Code.</p>
+        </div>
+        <div class="seo-hub-links">
+          <a href="/hplc-purity-testing">Explore RP-HPLC-UV purity &amp; content analysis</a>
+          <a href="/coa-testing">See domestic US &amp; Puerto Rico COA shipping workflow</a>
+          <a href="/verify">Verify a published COA online</a>
+        </div>
+        <div class="seo-cta">
+          <div>
+            <h2>Confirm molecular identity with orthogonal LC–MS evidence.</h2>
+            <p>Coordinate single-compound or multi-analyte LC–MS testing from any US state or Puerto Rico with ~1-week laboratory turnaround.</p>
+          </div>
+          <div class="seo-cta-actions">
+            <a class="button button-teal" href="/submit-sample" data-service="identity">Submit LC–MS sample <svg class="icon small" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+            <a class="button button-outline" href="/submit-sample" data-service="comprehensive">Order full COA panel</a>
+          </div>
+        </div>
+      </section>
+    </section>
+    <section id="coa-calculator-view" class="page-view seo-hub" aria-labelledby="coa-calculator-title" hidden>
+      <header class="seo-hero">
+        <div class="container seo-hero-inner">
+          <p class="seo-kicker">FREE ANALYTICAL TOOL · COA INTERPRETATION &amp; AUDIT</p>
+          <h1 id="coa-calculator-title" tabindex="-1">COA Purity vs. Net Content Calculator &amp; Checker.</h1>
+          <p class="seo-lead">Compare labeled vial mass against measured HPLC net content and chromatographic area purity (%), estimate non-UV salt or excipient share, and run a 6-point third-party Certificate of Analysis authenticity audit right in your browser.</p>
+          <div class="seo-hero-actions">
+            <a class="button button-teal" href="/verify">Verify an AssayNova COA <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a>
+            <a class="seo-hero-link" href="/how-to-read-a-coa">Read the full COA technical guide <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow-up"/></svg></a>
+          </div>
+        </div>
+      </header>
+      <section class="container seo-section" aria-labelledby="calc-tool-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">TOOL 01 · FILL ACCURACY &amp; PURITY VS. CONTENT</p>
+          <h2 id="calc-tool-title">HPLC Purity vs. Net Content Variance Calculator.</h2>
+          <p>Enter the values printed on your Certificate of Analysis or select an example scenario below to see how chromatographic purity (area%) differs from measured net active mass (mg/vial).</p>
+        </div>
+        <div class="calc-workspace">
+          <form id="calc-form" class="calc-panel" novalidate>
+            <div class="calc-presets" role="group" aria-label="Example COA scenarios">
+              <button type="button" class="calc-preset-btn" data-action="calc-preset" data-labeled="10" data-measured="10.2" data-purity="99.1" data-gross="42">10 mg Lyophilized Vial</button>
+              <button type="button" class="calc-preset-btn" data-action="calc-preset" data-labeled="5" data-measured="4.15" data-purity="98.8" data-gross="35">5 mg Underfilled Vial</button>
+              <button type="button" class="calc-preset-btn" data-action="calc-preset" data-labeled="50" data-measured="44.5" data-purity="99.4" data-gross="50">50 mg Raw Salt Powder</button>
+            </div>
+            <div class="calc-grid">
+              <div class="calc-field">
+                <label for="calc-labeled">Labeled Mass (mg)</label>
+                <input id="calc-labeled" type="number" step="any" min="0" value="10" inputmode="decimal">
+                <small>Nominal amount printed on vial or lot label.</small>
+              </div>
+              <div class="calc-field">
+                <label for="calc-measured">Measured Net Content (mg)</label>
+                <input id="calc-measured" type="number" step="any" min="0" value="10.2" inputmode="decimal">
+                <small>Calibrated HPLC quantitative mean per container.</small>
+              </div>
+              <div class="calc-field">
+                <label for="calc-purity">HPLC-UV Purity (%)</label>
+                <input id="calc-purity" type="number" step="0.01" min="0" max="100" value="99.1" inputmode="decimal">
+                <small>Relative chromatographic UV peak-area purity.</small>
+              </div>
+              <div class="calc-field">
+                <label for="calc-gross">Gross Powder Weight (mg, optional)</label>
+                <input id="calc-gross" type="number" step="any" min="0" value="42" inputmode="decimal">
+                <small>Total dry mass including excipients, salts &amp; water.</small>
+              </div>
+            </div>
+          </form>
+          <aside class="calc-results" aria-live="polite">
+            <h3>Calculated COA Breakdown</h3>
+            <dl class="calc-metrics">
+              <div><dt>Fill Accuracy vs. Label</dt><dd id="calc-out-accuracy">102.0% (+2.0%)</dd></div>
+              <div><dt>Estimated Pure Active Mass</dt><dd id="calc-out-pure-mass">10.11 mg</dd></div>
+              <div><dt>UV-Active Impurity Share</dt><dd id="calc-out-impurity">0.90% UV area</dd></div>
+              <div><dt>Non-UV Salts / Excipients / Moisture</dt><dd id="calc-out-nonuv">31.80 mg (75.7% of gross)</dd></div>
+            </dl>
+            <p id="calc-out-note" class="calc-note">Within ±5% of labeled container mass. Confirm replicate spread (Replicate 1 vs. Replicate 2) and LC–MS identity concordance on the full COA.</p>
+          </aside>
+        </div>
+      </section>
+      <section class="container seo-section" aria-labelledby="calc-check-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">TOOL 02 · THIRD-PARTY COA AUTHENTICITY AUDIT</p>
+          <h2 id="calc-check-title">6-Point Certificate of Analysis Verification Checklist.</h2>
+          <p>Check each item you can independently confirm on a vendor’s Certificate of Analysis before trusting the lot.</p>
+        </div>
+        <div class="calc-check-box">
+          <ul id="calc-checklist" class="calc-check-list">
+            <li><label><input type="checkbox"><span><strong>Direct registry lookup on the lab’s official domain:</strong> The COA includes a Lookup Code or QR link resolving on the laboratory’s primary domain (e.g., <code>assaynovalabs.com/verify</code>), not a static email attachment alone.</span></label></li>
+            <li><label><input type="checkbox"><span><strong>Exact batch/lot and date match:</strong> Compound name, lot number, sample receipt date, and report issue date match both the physical vial and live registry entry.</span></label></li>
+            <li><label><input type="checkbox"><span><strong>Duplicate analytical determinations (n=2):</strong> The report displays Replicate 1, Replicate 2, and Mean values rather than a single unverified percentage.</span></label></li>
+            <li><label><input type="checkbox"><span><strong>Separate HPLC purity (%) and net content (mg/vial):</strong> Chromatographic purity and quantitative active fill mass are clearly distinguished.</span></label></li>
+            <li><label><input type="checkbox"><span><strong>Orthogonal LC–MS molecular identity confirmation:</strong> Observed <em>m/z</em> ions and charge states match the expected compound formula rather than relying on HPLC retention time alone.</span></label></li>
+            <li><label><input type="checkbox"><span><strong>Annotated chromatograms and laboratory signoff:</strong> Primary vector figures, method summary, and authorized scientific review signoff match the downloadable registry PDF.</span></label></li>
+          </ul>
+          <div class="calc-check-summary" aria-live="polite">
+            <strong id="calc-check-score">0 / 6 checks confirmed</strong>
+            <p id="calc-check-verdict">High risk of incomplete or unverified documentation. Authenticate the Lookup Code directly on assaynovalabs.com/verify before relying on the batch.</p>
+          </div>
+        </div>
+        <div class="seo-hub-links">
+          <a href="/verify">Authenticate an AN-XXXX-XXXX Lookup Code</a>
+          <a href="/hplc-purity-testing">RP-HPLC-UV purity &amp; content testing</a>
+          <a href="/lc-ms-identity-testing">ESI-LC–MS identity confirmation</a>
+          <a href="/como-leer-un-coa" hreflang="es-PR">Leer guía COA en Español</a>
+        </div>
+      </section>
+    </section>
+    <section id="es-guide-view" class="page-view seo-hub" lang="es-PR" aria-labelledby="es-guide-title" hidden>
+      <header class="seo-hero">
+        <div class="container seo-hero-inner">
+          <p class="seo-kicker">GUÍA TÉCNICA EN ESPAÑOL · PUERTO RICO Y ESTADOS UNIDOS</p>
+          <h1 id="es-guide-title" tabindex="-1">Cómo Leer y Verificar un Certificado de Análisis (COA).</h1>
+          <p class="seo-lead">Guía práctica de química analítica para interpretar correctamente la pureza por RP-HPLC-UV, el contenido neto calibrado (mg/vial), la confirmación de identidad molecular por LC–MS, las réplicas por duplicado y la verificación por código <code>AN-XXXX-XXXX</code>.</p>
+          <div class="seo-hero-actions">
+            <a class="button button-teal" href="/verify">Verificar un COA ahora <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow"/></svg></a>
+            <a class="seo-hero-link" href="/es">Ver servicios COA en Español <svg class="icon small" aria-hidden="true" focusable="false"><use href="#i-arrow-up"/></svg></a>
+            <a class="seo-lang-pill" href="/how-to-read-a-coa" hreflang="en-US">Read in English</a>
+          </div>
+        </div>
+      </header>
+      <section class="container seo-section" aria-labelledby="esg-def-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">DEFINICIÓN</p>
+          <h2 id="esg-def-title">¿Qué es un Certificado de Análisis (COA)?</h2>
+        </div>
+        <div class="seo-callout">
+          <p><strong>Un Certificado de Análisis (COA)</strong> es un informe oficial emitido por un laboratorio analítico independiente que documenta mediciones experimentales verificables —como pureza cromatográfica por RP-HPLC-UV, contenido neto cuantificado (mg o UI por vial) e identidad molecular por espectrometría de masas (LC–MS)— para un lote específico y trazable.</p>
+          <p>Un COA confiable vincula el número de lote y las fechas de recepción y emisión con datos instrumentales primarios y un código público consultable directamente en el dominio oficial del laboratorio.</p>
+        </div>
+      </section>
+      <section class="container seo-section" aria-labelledby="esg-table-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">INTERPRETACIÓN DE DATOS</p>
+          <h2 id="esg-table-title">Pureza por HPLC vs. Contenido Neto vs. Identidad por LC–MS.</h2>
+          <p>El error más frecuente al revisar un COA es confundir el porcentaje de pureza cromatográfica con la masa neta del compuesto activo presente en el vial.</p>
+        </div>
+        <div class="seo-table-wrap">
+          <table class="seo-table">
+            <thead><tr><th>Medición en el COA</th><th>Pregunta que responde</th><th>Qué puede pasar por alto por sí sola</th><th>Cómo lo reporta AssayNova</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Pureza RP-HPLC-UV (% área)</strong></td>
+                <td>¿Qué porcentaje de todos los picos detectables por UV corresponde al analito principal?</td>
+                <td>No detecta contraiones (acetato, TFA), humedad residual, excipientes transparentes al UV ni compuestos distintos con tiempo de retención similar.</td>
+                <td>Determinaciones por duplicado (Réplica 1, Réplica 2 y Promedio) junto al cromatograma UV anotado.</td>
+              </tr>
+              <tr>
+                <td><strong>Contenido Neto (mg/vial o UI/vial)</strong></td>
+                <td>¿Cuánta masa activa real hay dentro del vial respecto a un estándar calibrado?</td>
+                <td>Requiere separación cromatográfica y verificación de masa para descartar impurezas estructurales.</td>
+                <td>Cuantificación por duplicado separada de la pureza para evaluar llenado real y pureza por separado.</td>
+              </tr>
+              <tr>
+                <td><strong>Identidad ESI-LC–MS (<em>m/z</em>)</strong></td>
+                <td>¿Coinciden el peso molecular monoisotópico y los isótopos de carbono-13 con el compuesto esperado?</td>
+                <td>La respuesta de ionización varía según la molécula y no sustituye la cuantificación UV calibrada.</td>
+                <td>Iones observados ([M+H]+, [M+2H]2+, [M+3H]3+) y estado explícito de concordancia por analito.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="seo-hub-links">
+          <a href="/coa-calculator">Usar la calculadora interactiva de pureza vs. contenido neto</a>
+          <a href="/es">Envío doméstico de muestras desde Puerto Rico y EE. UU.</a>
+        </div>
+      </section>
+      <section class="container seo-section" aria-labelledby="esg-steps-title">
+        <div class="seo-section-head">
+          <p class="seo-kicker">AUTENTICACIÓN PASO A PASO</p>
+          <h2 id="esg-steps-title">5 Pasos para Verificar un COA y Detectar PDF Alterados.</h2>
+        </div>
+        <ol class="seo-checklist">
+          <li><span class="seo-step-num">01</span><div><h3>Abra directamente el dominio oficial del laboratorio</h3><p>Escriba <code>https://assaynovalabs.com/verify</code> en su navegador en lugar de confiar en enlaces acortados o capturas de pantalla enviadas por terceros.</p></div></li>
+          <li><span class="seo-step-num">02</span><div><h3>Ubique el código de consulta de 12 caracteres</h3><p>Localice el código <code>AN-XXXX-XXXX</code> en el encabezado o código QR del informe. Los números internos de reporte y las referencias de solicitud (<code>AN-REQ-*</code>) son identificadores distintos.</p></div></li>
+          <li><span class="seo-step-num">03</span><div><h3>Verifique compuesto, lote y fechas</h3><p>Confirme que el nombre del analito, el número de lote y las fechas de recepción y emisión en el registro oficial coincidan exactamente con su envase y copia PDF.</p></div></li>
+          <li><span class="seo-step-num">04</span><div><h3>Compare pureza duplicada, contenido neto e identidad LC–MS</h3><p>Revise línea por línea la Réplica 1, Réplica 2, el promedio de pureza, la masa medida por vial y el estado de confirmación por espectrometría de masas.</p></div></li>
+          <li><span class="seo-step-num">05</span><div><h3>Descargue el PDF firmado directamente desde el registro</h3><p>Conserve el PDF descargado del registro en línea. Si el código no aparece o presenta diferencias respecto al archivo de un proveedor, <a href="/contact" style="text-decoration:underline;font-weight:600;color:#006f69">contacte a soporte</a> para revisión.</p></div></li>
+        </ol>
+        <div class="seo-cta">
+          <div>
+            <h2>¿Necesita verificar un COA o enviar muestras desde Puerto Rico o EE. UU.?</h2>
+            <p>Verifique cualquier código <code>AN-XXXX-XXXX</code> publicado o coordine envío doméstico sin aduana internacional desde Puerto Rico y los 50 estados.</p>
+          </div>
+          <div class="seo-cta-actions">
+            <a class="button button-teal" href="/verify">Verificar COA <svg class="icon small" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+            <a class="button button-outline" href="/submit-sample" data-service="comprehensive">Solicitar análisis</a>
           </div>
         </div>
       </section>
@@ -470,7 +790,7 @@
     <section id="recover-account-view" class="page-view account-page container" data-account-page aria-labelledby="recover-account-title" hidden><header class="ac-page-heading"><p>MY ACCOUNT</p><h1 id="recover-account-title" tabindex="-1">Recover your account.</h1></header><div class="ac-layout"><div data-account-content></div><aside class="ac-aside"><h2>Your next analysis,<br>one step closer.</h2><p>Submit testing, contact and report recovery requests, and manage them in My requests.</p><p>Public COA lookup stays open to everyone. </p><button class="text-button" type="button" data-action="portal">My requests</button></aside></div></section>
     <section id="coa-view" class="coa-view container" aria-labelledby="report-title" hidden></section>
   </main>
-  <footer class="site-footer container"><div><a class="brand footer-brand" href="/" aria-label="AssayNova home"><picture><source type="image/webp" srcset="/assets/assaynova-logo-web.webp"><img src="/assets/assaynova-logo.png" alt="AssayNova Analytical Testing Laboratory" width="2172" height="724" loading="lazy"></picture></a><p>Precision in testing. Clarity in every result.</p></div><div class="footer-right"><div><a href="/testing-methods">Our Testing</a><a href="/coa-testing">COA Testing</a><a href="/how-to-read-a-coa">COA Guide</a><a href="/verify">Verify a COA</a><a href="/submit-sample">Submit a sample</a><a href="/es" hreflang="es-PR">Español (PR/US)</a><a href="/about">About us</a><a href="/contact">Contact us</a><a href="/account" data-account-entry hidden>My account</a><a href="/privacy-policy">Privacy policy</a></div><p>© 2026 AssayNova</p></div></footer>
+  <footer class="site-footer container"><div><a class="brand footer-brand" href="/" aria-label="AssayNova home"><picture><source type="image/webp" srcset="/assets/assaynova-logo-web.webp"><img src="/assets/assaynova-logo.png" alt="AssayNova Analytical Testing Laboratory" width="2172" height="724" loading="lazy"></picture></a><p>Precision in testing. Clarity in every result.</p></div><div class="footer-right"><div><a href="/testing-methods">Our Testing</a><a href="/coa-testing">COA Testing</a><a href="/hplc-purity-testing">HPLC Purity</a><a href="/lc-ms-identity-testing">LC–MS Identity</a><a href="/how-to-read-a-coa">COA Guide</a><a href="/coa-calculator">COA Calculator</a><a href="/verify">Verify a COA</a><a href="/submit-sample">Submit a sample</a><a href="/es" hreflang="es-PR">Español (PR/US)</a><a href="/about">About us</a><a href="/contact">Contact us</a><a href="/account" data-account-entry hidden>My account</a><a href="/privacy-policy">Privacy policy</a></div><p>© 2026 AssayNova</p></div></footer>
 
   <dialog id="app-dialog" class="app-dialog" aria-labelledby="dialog-title"><button type="button" class="dialog-close icon-button" aria-label="Close dialog"><svg class="icon"><use href="#i-close"/></svg></button><div id="dialog-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

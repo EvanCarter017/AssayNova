@@ -235,7 +235,7 @@ function renderReport({ report, record, label, assets }) {
   const fields = [['Product name', record.product], ['Appearance', record.appearance], ['Client', record.client], ['Report no.', record.reportId], ['Lot', record.lot], ['Accession no.', record.accession], ['Lookup Code', report.lookupCode], ['Received', record.received], ['Reported', record.reported]];
   coaView.innerHTML = `<div class="coa-navigation"><a class="text-button" href="/" data-action="home">← Back to AssayNova</a><span>COA report</span></div><article class="coa-card coa-master-card" aria-labelledby="report-title"><header class="coa-master-heading"><div><h1 id="report-title" tabindex="-1">${escape(label)}</h1></div><p class="coa-code">Lookup Code <strong>${escape(report.lookupCode)}</strong></p></header>
     <figure class="coa-master-paper"><img src="${assets.svg}" width="595" height="842" alt="Certificate of analysis for ${escape(label)}. Lookup Code ${escape(report.lookupCode)}. Report fields are also available below."></figure>
-    <div class="report-actions coa-master-tools"><a class="button button-dark" href="${assets.pdf}" download>Download PDF</a><a class="button button-outline" href="${assets.svg}" target="_blank" rel="noopener">View full size</a><button class="button button-outline" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button></div>
+    <div class="report-actions coa-master-tools"><a class="button button-dark" href="${assets.pdf}" download>Download PDF</a><a class="button button-outline" href="${assets.svg}" target="_blank" rel="noopener">View full size</a><button class="button button-outline" data-action="print">${icon('download', true)} Print / save PDF</button><button class="text-button" data-action="copy-code">Copy lookup code</button><button class="text-button" data-action="copy-link">Copy report link</button><button class="text-button" data-action="copy-badge">Copy verify badge HTML</button></div>
     <details class="coa-master-transcript"><summary>Report fields</summary><div class="coa-master-transcript-body"><section><h2>Sample information</h2><dl class="coa-master-field-list">${fields.map(([label, value]) => `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl></section><section><h2>Analytical results</h2><p>Two determinations of the same sample.</p><p>Purity (HPLC-UV area%)</p><dl class="coa-master-field-list">${['Replicate 1', 'Replicate 2', 'Mean'].map((label, index) => `<div><dt>${escape(label)}</dt><dd>${escape(record.purity[index])}%</dd></div>`).join('')}</dl><table><caption>Measured content · ${record.contentUnit === 'mixed' ? 'Per-analyte results' : escape(record.contentUnit || 'mg') + '/vial'}</caption><thead><tr><th scope="col">Analyte</th><th scope="col">Replicate 1</th><th scope="col">Replicate 2</th><th scope="col">Mean</th></tr></thead><tbody>${record.composition.map(row => `<tr><th scope="row">${escape(row.analyte)}${row.unit ? ' (' + escape(row.unit) + '/vial)' : ''}</th><td>${escape(row.sample1)}</td><td>${escape(row.sample2)}</td><td>${escape(row.summary)}</td></tr>`).join('')}</tbody></table></section><section><h2>Analytical figures</h2><p>HPLC-UV chromatogram. Principal retention time: ${escape(record.retentionTime)} min. Relative UV response, 0-100%. Fitted target areas total ${escape(record.purity[2])}%.</p><ul>${record.chromatogram.map(peak => `<li>${escape(peak.analyte)}: ${escape(peak.time)} min; fitted area ${escape(peak.area)}%; relative peak response ${escape(peak.response)}.</li>`).join('')}</ul><ul>${record.spectra.map(spectrum => `<li>${escape(spectrum.analyte)} / ${escape(spectrum.species)}: ${escape(spectrum.status)}. Scan ${spectrum.scan.map(escape).join('-')} m/z. ${spectrum.ions.map(ion => `${escape(ion.label)}: ${escape(ion.mz)} m/z; relative intensity ${escape(ion.intensity)}; isotope peaks ${ion.isotopes.map(peak => escape(peak.mz)).join(', ')} m/z`).join('; ')}.</li>`).join('')}</ul></section><section><h2>Screening outcomes</h2><dl class="coa-master-field-list">${record.screenings.map(screeningPresentation).map(row => `<div><dt>${escape(row.test)}</dt><dd>${escape(row.result)}${row.details ? ' · ' + escape(row.details) : ''}</dd></div>`).join('')}</dl><h2>Method</h2><p>${escape(record.method)}</p></section><section><h2>Signoff</h2><p>Dylan Greene</p><p>${escape(record.signoffTitle)}</p></section></div></details>
     <div id="report-copy-fallback" class="copy-fallback" role="region" aria-label="Manual copy" hidden><p>Automatic copy was unavailable. Select and copy the complete value below.</p><label for="report-copy-value">Value to copy</label><textarea id="report-copy-value" readonly></textarea><div class="dialog-buttons"><button class="text-button" data-action="copy-select">Select all</button><button class="text-button" data-action="copy-retry">Try copying again</button></div></div>
     </article>${lookupForm()}`;
@@ -352,6 +352,10 @@ function renderCurrentRoute(focus = false, legacyError = false, checked = null) 
       }).catch(() => { if (ticket === accountLoadRevision && !controller.signal.aborted) cf?.setAccountSession(null); });
     }
   }
+  if (!current.coa && page.path === '/coa-calculator') {
+    updateCOACalculator();
+    updateCOAChecklistScore();
+  }
   const activePath = current.coa ? '/verify' : page.path;
   for (const link of document.querySelectorAll('.desktop-nav a,.mobile-nav a')) {
     if (new URL(link.getAttribute('href'), location.href).pathname === activePath) link.setAttribute('aria-current', 'page');
@@ -391,14 +395,26 @@ function renderSuccess() { navigateToURL('/account'); }
 function renderPortal() { navigateToURL('/account'); }
 function renderRequestDetail() { navigateToURL('/account'); }
 
+function buildVerifyBadgeHTML(code) {
+  const safeCode = escape(code);
+  const href = `https://assaynovalabs.com${lookupResultPath(code)}`;
+  return `<a href="${href}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:6px;border:1px solid #008e86;background:#092d42;color:#ffffff;font:600 13px/1.4 'Segoe UI',Arial,sans-serif;text-decoration:none">Verified COA · ${safeCode} · AssayNova Labs</a>`;
+}
+
 async function copyReportValue(kind) {
   const report = activeReport;
   if (!report) return;
-  const value = kind === 'link' ? new URL(lookupResultPath(report.lookupCode), location.origin).href : report.lookupCode;
+  const value = kind === 'link'
+    ? new URL(lookupResultPath(report.lookupCode), location.origin).href
+    : kind === 'badge'
+      ? buildVerifyBadgeHTML(report.lookupCode)
+      : report.lookupCode;
   pendingCopyKind = kind;
   try {
     await navigator.clipboard.writeText(value);
-    if (activeReport === report) showToast(kind === 'link' ? 'Report link copied.' : 'Lookup Code copied: ' + value);
+    if (activeReport === report) {
+      showToast(kind === 'link' ? 'Report link copied.' : kind === 'badge' ? 'Verified COA badge HTML copied.' : 'Lookup Code copied: ' + value);
+    }
   } catch {
     if (activeReport !== report) return;
     const fallback = document.querySelector('#report-copy-fallback');
@@ -408,6 +424,91 @@ async function copyReportValue(kind) {
     field.focus();
     field.select();
   }
+}
+
+function updateCOACalculator() {
+  const form = document.querySelector('#calc-form');
+  if (!form) return;
+  const labeled = Number.parseFloat(form.querySelector('#calc-labeled')?.value ?? '');
+  const measured = Number.parseFloat(form.querySelector('#calc-measured')?.value ?? '');
+  const purity = Number.parseFloat(form.querySelector('#calc-purity')?.value ?? '');
+  const gross = Number.parseFloat(form.querySelector('#calc-gross')?.value ?? '');
+  const outAccuracy = document.querySelector('#calc-out-accuracy');
+  const outPureMass = document.querySelector('#calc-out-pure-mass');
+  const outImpurity = document.querySelector('#calc-out-impurity');
+  const outNonUv = document.querySelector('#calc-out-nonuv');
+  const outNote = document.querySelector('#calc-out-note');
+  if (!outAccuracy || !outPureMass || !outImpurity || !outNonUv || !outNote) return;
+
+  const validLabel = Number.isFinite(labeled) && labeled > 0;
+  const validMeasured = Number.isFinite(measured) && measured > 0;
+  const validPurity = Number.isFinite(purity) && purity >= 0 && purity <= 100;
+  const validGross = Number.isFinite(gross) && gross > 0;
+
+  if (validLabel && validMeasured) {
+    const pctOfLabel = (measured / labeled) * 100;
+    const deltaPct = pctOfLabel - 100;
+    const sign = deltaPct >= 0 ? '+' : '';
+    outAccuracy.textContent = `${pctOfLabel.toFixed(1)}% (${sign}${deltaPct.toFixed(1)}%)`;
+    const absDelta = Math.abs(deltaPct);
+    outNote.textContent = absDelta <= 5
+      ? 'Within ±5% of labeled container mass. Confirm replicate spread (Replicate 1 vs. Replicate 2) and LC–MS identity concordance on the full COA.'
+      : absDelta <= 10
+        ? 'Moderate fill variance (5%–10% from label). Review duplicate HPLC net-content replicates before calculating dosing or experimental stock concentrations.'
+        : 'Substantial fill variance (>10% from label). Rely on measured net active content rather than nominal label mass, and authenticate the COA Lookup Code.';
+  } else {
+    outAccuracy.textContent = 'Enter labeled & measured mg';
+    outNote.textContent = 'Enter positive values for labeled vial mass, measured HPLC net content, and HPLC purity (%) to evaluate fill accuracy and active mass.';
+  }
+
+  if (validMeasured && validPurity) {
+    outPureMass.textContent = `${(measured * (purity / 100)).toFixed(2)} mg`;
+    outImpurity.textContent = `${Math.max(0, 100 - purity).toFixed(2)}% UV area`;
+  } else if (validPurity) {
+    outPureMass.textContent = '—';
+    outImpurity.textContent = `${Math.max(0, 100 - purity).toFixed(2)}% UV area`;
+  } else {
+    outPureMass.textContent = '—';
+    outImpurity.textContent = '—';
+  }
+
+  if (validGross && validMeasured && gross >= measured) {
+    const nonUvMass = gross - measured;
+    const nonUvPct = (nonUvMass / gross) * 100;
+    outNonUv.textContent = `${nonUvMass.toFixed(2)} mg (${nonUvPct.toFixed(1)}% of gross)`;
+  } else if (validGross && validMeasured && gross < measured) {
+    outNonUv.textContent = 'Gross weight < measured content (check units)';
+  } else {
+    outNonUv.textContent = 'Optional: enter gross powder mg';
+  }
+}
+
+function updateCOAChecklistScore() {
+  const list = document.querySelector('#calc-checklist');
+  const scoreEl = document.querySelector('#calc-check-score');
+  const verdictEl = document.querySelector('#calc-check-verdict');
+  if (!list || !scoreEl || !verdictEl) return;
+  const boxes = [...list.querySelectorAll('input[type="checkbox"]')];
+  const checked = boxes.filter((box) => box.checked).length;
+  scoreEl.textContent = `${checked} / ${boxes.length} checks confirmed`;
+  verdictEl.textContent = checked === boxes.length
+    ? 'All 6 analytical and registry integrity checks passed.'
+    : checked >= 4
+      ? 'Most core indicators are present. Confirm the remaining unchecked items directly on the laboratory lookup portal.'
+      : 'High risk of incomplete or unverified documentation. Authenticate the Lookup Code directly on assaynovalabs.com/verify before relying on the batch.';
+}
+
+async function copySupplierBadge(button) {
+  const snippet = document.querySelector('#verify-badge-snippet');
+  const value = snippet?.value || '<a href="https://assaynovalabs.com/verify" target="_blank" rel="noopener">Verify COA at AssayNova Labs</a>';
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast('Verified by AssayNova badge HTML copied.');
+  } catch {
+    if (snippet) { snippet.focus(); snippet.select(); }
+    showToast('Select and copy the badge HTML snippet.');
+  }
+  button?.focus();
 }
 
 document.addEventListener('click', (event) => {
@@ -449,6 +550,17 @@ document.addEventListener('click', (event) => {
     print: () => { if (activeReport) window.print(); },
     'copy-code': () => copyReportValue('code'),
     'copy-link': () => copyReportValue('link'),
+    'copy-badge': () => copyReportValue('badge'),
+    'copy-supplier-badge': () => copySupplierBadge(target),
+    'calc-preset': () => {
+      const form = document.querySelector('#calc-form');
+      if (!form) return;
+      if (target.dataset.labeled) form.querySelector('#calc-labeled').value = target.dataset.labeled;
+      if (target.dataset.measured) form.querySelector('#calc-measured').value = target.dataset.measured;
+      if (target.dataset.purity) form.querySelector('#calc-purity').value = target.dataset.purity;
+      if (target.dataset.gross !== undefined) form.querySelector('#calc-gross').value = target.dataset.gross;
+      updateCOACalculator();
+    },
     'copy-retry': () => copyReportValue(pendingCopyKind),
     'copy-select': () => { const field = document.querySelector('#report-copy-value'); field?.focus(); field?.select(); },
     'request-detail': renderRequestDetail
@@ -482,11 +594,15 @@ document.addEventListener('submit', (event) => {
   else { error.textContent = 'No COA found. Use a Lookup Code, not a report or submission number.'; input.focus(); }
 });
 document.addEventListener('input', (event) => {
+  if (event.target.closest?.('#calc-form')) { updateCOACalculator(); return; }
   if (!event.target.matches('#report-id,#coa-lookup-code')) return;
   cancelPublishedLookup();
   const error = document.querySelector(event.target.id === 'report-id' ? '#verify-error' : '#coa-lookup-error');
   if (error) error.textContent = '';
   event.target.removeAttribute('aria-invalid');
+});
+document.addEventListener('change', (event) => {
+  if (event.target.closest?.('#calc-checklist')) updateCOAChecklistScore();
 });
 const menuButton = document.querySelector('.menu-toggle');
 const mobileNavigation = document.querySelector('#mobile-nav');

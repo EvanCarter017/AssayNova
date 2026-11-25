@@ -41,6 +41,26 @@ export const PAGE_ROUTES = Object.freeze([
     noindex: false
   },
   {
+    path: '/hplc-purity-testing',
+    view: 'hplc-testing-view',
+    heading: 'hplc-testing-title',
+    title: 'HPLC Purity & Net Content COA Testing Lab | AssayNova',
+    description: 'Independent RP-HPLC-UV purity and calibrated net content testing (mg/vial) across the US & Puerto Rico. Duplicate replicates, UV chromatograms & COA lookup.',
+    breadcrumb: 'HPLC Purity Testing',
+    lang: 'en',
+    noindex: false
+  },
+  {
+    path: '/lc-ms-identity-testing',
+    view: 'lcms-testing-view',
+    heading: 'lcms-testing-title',
+    title: 'LC-MS Molecular Identity COA Testing Lab | AssayNova',
+    description: 'Electrospray LC-MS molecular weight and isotope identity confirmation across the US & Puerto Rico. Prevent misidentification on peptide & compound COAs.',
+    breadcrumb: 'LC-MS Identity Testing',
+    lang: 'en',
+    noindex: false
+  },
+  {
     path: '/how-to-read-a-coa',
     view: 'coa-guide-view',
     heading: 'coa-guide-title',
@@ -49,6 +69,42 @@ export const PAGE_ROUTES = Object.freeze([
     breadcrumb: 'How to Read a COA',
     lang: 'en',
     schemaType: 'TechArticle',
+    alternates: Object.freeze([
+      { hreflang: 'en-US', path: '/how-to-read-a-coa' },
+      { hreflang: 'en-PR', path: '/how-to-read-a-coa' },
+      { hreflang: 'es-PR', path: '/como-leer-un-coa' },
+      { hreflang: 'es-US', path: '/como-leer-un-coa' },
+      { hreflang: 'x-default', path: '/how-to-read-a-coa' }
+    ]),
+    noindex: false
+  },
+  {
+    path: '/como-leer-un-coa',
+    view: 'es-guide-view',
+    heading: 'es-guide-title',
+    title: 'Cómo Leer y Verificar un COA (HPLC y LC-MS) | AssayNova',
+    description: 'Guía técnica en español para leer y verificar un Certificado de Análisis (COA) en Puerto Rico y EE. UU.: pureza HPLC, contenido neto, LC-MS y código QR.',
+    breadcrumb: 'Cómo Leer un COA',
+    lang: 'es-PR',
+    schemaType: 'TechArticle',
+    alternates: Object.freeze([
+      { hreflang: 'en-US', path: '/how-to-read-a-coa' },
+      { hreflang: 'en-PR', path: '/how-to-read-a-coa' },
+      { hreflang: 'es-PR', path: '/como-leer-un-coa' },
+      { hreflang: 'es-US', path: '/como-leer-un-coa' },
+      { hreflang: 'x-default', path: '/how-to-read-a-coa' }
+    ]),
+    noindex: false
+  },
+  {
+    path: '/coa-calculator',
+    view: 'coa-calculator-view',
+    heading: 'coa-calculator-title',
+    title: 'COA Purity vs. Net Content Calculator & Checker | AssayNova',
+    description: 'Free COA calculator: compare labeled mg, HPLC purity %, and measured net content per vial, plus a 6-point third-party COA authenticity verification tool.',
+    breadcrumb: 'COA Calculator',
+    lang: 'en',
+    schemaType: 'WebApplication',
     noindex: false
   },
   {
@@ -429,15 +485,18 @@ function buildStructuredData({ pageRoute, coaRoute, generatedReport }) {
   graph.push(webPage);
 
   if (pageRoute.schemaType === 'TechArticle') {
+    const isEs = pageLang === 'es-PR';
     graph.push({
       '@type': 'TechArticle',
       '@id': `${canonicalUrl}#article`,
-      headline: 'How to Read and Verify a Certificate of Analysis (COA): HPLC Purity, Net Content, and LC-MS Identity',
+      headline: isEs
+        ? 'Cómo Leer y Verificar un Certificado de Análisis (COA): Pureza HPLC, Contenido Neto e Identidad LC-MS'
+        : 'How to Read and Verify a Certificate of Analysis (COA): HPLC Purity, Net Content, and LC-MS Identity',
       description: pageRoute.description,
       url: canonicalUrl,
       inLanguage: pageLang,
-      datePublished: '2026-11-22',
-      dateModified: '2026-11-22',
+      datePublished: isEs ? '2026-11-25' : '2026-11-22',
+      dateModified: '2026-11-25',
       author: { '@id': `${CANONICAL_ORIGIN}/#organization` },
       publisher: { '@id': `${CANONICAL_ORIGIN}/#organization` },
       mainEntityOfPage: { '@id': `${canonicalUrl}#webpage` },
@@ -454,9 +513,27 @@ function buildStructuredData({ pageRoute, coaRoute, generatedReport }) {
         'COA Lookup Code Verification'
       ]
     });
+  } else if (pageRoute.schemaType === 'WebApplication') {
+    graph.push({
+      '@type': 'WebApplication',
+      '@id': `${canonicalUrl}#webapp`,
+      name: 'AssayNova COA Purity vs. Net Content Calculator & Authenticity Checker',
+      description: pageRoute.description,
+      url: canonicalUrl,
+      inLanguage: pageLang,
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'Any',
+      browserRequirements: 'Requires JavaScript',
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD'
+      },
+      provider: { '@id': `${CANONICAL_ORIGIN}/#organization` }
+    });
   }
 
-  if (['/', '/testing-methods', '/coa-testing', '/es'].includes(pageRoute.path)) {
+  if (['/', '/testing-methods', '/coa-testing', '/hplc-purity-testing', '/lc-ms-identity-testing', '/es'].includes(pageRoute.path)) {
     graph.push(serviceOfferCatalog());
   }
 
@@ -546,11 +623,12 @@ export function injectRouteSEO(rawHtml, { pageRoute, coaRoute, generatedReport, 
 
   const ogUrl = canonicalUrl || `${CANONICAL_ORIGIN}/`;
   const ogLocale = docLang === 'es-PR' ? 'es_PR' : 'en_US';
+  const hasBilingualPair = Array.isArray(activeRoute.alternates) && activeRoute.alternates.some((a) => a.hreflang.startsWith('es-'));
   headParts.push(
     '<meta property="og:type" content="website">',
     '<meta property="og:site_name" content="AssayNova">',
     `<meta property="og:locale" content="${ogLocale}">`,
-    ...(docLang === 'es-PR' ? ['<meta property="og:locale:alternate" content="en_US">'] : activeRoute.path === '/' ? ['<meta property="og:locale:alternate" content="es_PR">'] : []),
+    ...(docLang === 'es-PR' ? ['<meta property="og:locale:alternate" content="en_US">'] : hasBilingualPair ? ['<meta property="og:locale:alternate" content="es_PR">'] : []),
     `<meta property="og:url" content="${escapeHTML(ogUrl)}">`,
     `<meta property="og:title" content="${escapeHTML(title)}">`,
     `<meta property="og:description" content="${escapeHTML(description)}">`,

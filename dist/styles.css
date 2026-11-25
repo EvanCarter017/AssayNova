@@ -652,3 +652,43 @@
 @media (max-width: 520px) {
   .seo-facts { grid-template-columns: minmax(0, 1fr); gap: 14px; }
 }
+
+/* Interactive COA calculator, authenticity checklist & supplier verification badge */
+.calc-workspace { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 28px; align-items: start; }
+.calc-panel, .calc-results { border: 1px solid var(--line); border-radius: 12px; padding: 28px; min-width: 0; }
+.calc-panel { background: #fff; }
+.calc-results { background: var(--navy); color: #fff; border-color: #164459; }
+.calc-presets { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
+.calc-preset-btn { padding: 8px 13px; border: 1px solid #bfd1c9; border-radius: 999px; background: #f4f9f6; color: var(--navy); font-size: 13px; font-weight: 600; min-height: 36px; }
+.calc-preset-btn:hover { background: var(--mint); border-color: var(--teal); color: #006f69; }
+.calc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.calc-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.calc-field label { font-size: 14px; font-weight: 600; color: var(--navy); }
+.calc-field input { width: 100%; min-width: 0; min-height: 46px; padding: 10px 14px; border: 1px solid #b7cdc2; border-radius: 8px; font-size: 16px; color: var(--navy); background: #fff; }
+.calc-field small { font-size: 13px; color: #566e75; line-height: 1.5; }
+.calc-results h3 { font-size: 20px; color: #fff; margin-bottom: 18px; }
+.calc-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.calc-metrics > div { padding: 15px 16px; border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; background: rgba(255,255,255,0.05); }
+.calc-metrics dt { font-size: 12px; color: #a7d4d2; line-height: 1.4; }
+.calc-metrics dd { margin: 6px 0 0; font-size: 18px; font-weight: 600; color: #fff; line-height: 1.35; overflow-wrap: anywhere; }
+.calc-note { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.16); font-size: 14px; line-height: 1.7; color: #d5e8eb; }
+.calc-check-box { border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 28px; max-width: 860px; }
+.calc-check-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+.calc-check-list label { display: flex; align-items: flex-start; gap: 12px; font-size: 15px; line-height: 1.65; color: var(--ink); cursor: pointer; }
+.calc-check-list input[type="checkbox"] { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--teal); flex-shrink: 0; }
+.calc-check-summary { margin-top: 22px; padding: 18px 20px; border-radius: 8px; background: var(--mint); border: 1px solid #cbe0d8; }
+.calc-check-summary strong { display: block; font-size: 16px; color: var(--navy); }
+.calc-check-summary p { margin-top: 6px; font-size: 14px; line-height: 1.7; color: #2b4e57; }
+.verify-badge-card { margin-top: 28px; padding: 26px 28px; border: 1px solid var(--line); border-radius: 12px; background: #f5faf8; }
+.verify-badge-card h3 { font-size: 20px; color: var(--navy); }
+.verify-badge-card > p { margin-top: 10px; max-width: 720px; font-size: 14px; line-height: 1.75; color: #476068; }
+.verify-badge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 18px; }
+.verify-badge-sample { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 6px; border: 1px solid var(--teal); background: var(--navy); color: #fff; font-size: 13px; font-weight: 600; }
+.verify-badge-code { width: 100%; margin-top: 14px; padding: 12px 14px; border: 1px solid #bfd1c9; border-radius: 8px; background: #fff; color: var(--navy); font: 13px/1.55 Consolas, monospace; min-height: 76px; resize: vertical; }
+@media (max-width: 900px) {
+  .calc-workspace { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .calc-panel, .calc-results, .calc-check-box, .verify-badge-card { padding: 20px 18px; }
+  .calc-grid, .calc-metrics { grid-template-columns: minmax(0, 1fr); }
+}
